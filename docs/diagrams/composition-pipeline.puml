@@ -1,0 +1,45 @@
+@startuml composition-pipeline
+' Levenshtein-WFST composition pipeline for the duallity crate.
+' Color legend (by owning crate):
+'   liblevenshtein  = #FADBD8 (red-ish)   fuzzy matching
+'   libdictenstein  = #D5F5E3 (green)      containers
+'   duallity        = #D6EAF8 (blue)       the WFST adapters
+'   lling-llang     = #FCF3CF (yellow)     the WFST algebra
+'   output          = #E8DAEF (purple)
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam ArrowColor #34495E
+
+title duallity — query + dictionary as a composable Levenshtein WFST
+
+rectangle "Query string\n\"helo\",  k = 2" as Query #FADBD8
+rectangle "Dictionary\n(DynamicDawgChar / SCDAWG / …)" as Dict #D5F5E3
+
+package "duallity" #D6EAF8 {
+  rectangle "LevenshteinWfst::new(&dict, query, k)\n--\nlazy product  (dict_node x automaton_state)\nWfst<char, TropicalWeight>" as Lev #D6EAF8
+}
+
+package "lling-llang" #FCF3CF {
+  rectangle "Downstream WFST\nphonetic rewrite  /  n-gram LM\nWfst<char, TropicalWeight>" as Down #FCF3CF
+  rectangle "compose(lev, down)\n--\nlazy  T1 o T2\n(min over y) [ T1(x,y) + T2(y,z) ]" as Compose #FCF3CF
+  rectangle "Shortest-path search\naccepting_paths()  /  best paths" as Search #FCF3CF
+}
+
+rectangle "Ranked corrections\nlabels + total tropical weight\n(= edit distance + downstream cost)" as Out #E8DAEF
+
+Query --> Lev
+Dict  --> Lev
+Lev   --> Compose : T1 (input: query chars,\noutput: dict chars)
+Down  --> Compose : T2
+Compose --> Search
+Search  --> Out
+
+note bottom of Compose
+  Tropical semiring (min, +):
+  paths combined by min (best wins),
+  edge costs added along a path.
+  Product states expanded lazily.
+end note
+@enduml

@@ -1,0 +1,30 @@
+[package]
+name = "duallity"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.70"
+authors = ["Dylon Edwards <dylon.devo@gmail.com>"]
+license = "Apache-2.0"
+repository = "https://github.com/vinary-tree/duallity"
+description = "Levenshtein automata as lling-llang WFSTs: composition adapters bridging liblevenshtein fuzzy matching and the lling-llang weighted-transducer framework."
+keywords = ["wfst", "levenshtein", "transducer", "fuzzy", "composition"]
+categories = ["text-processing", "algorithms"]
+readme = "README.md"
+
+[dependencies]
+liblevenshtein = { path = "../liblevenshtein-rust", version = "0.9" }
+lling-llang = { path = "../lling-llang", version = "0.1" }
+libdictenstein = { path = "../libdictenstein", version = "0.1" }
+# Direct deps used by the relocated wfst sources
+rustc-hash = "1.1"
+smallvec = "1.13"
+# Pulled by the original liblevenshtein `wfst` feature (sampling / universal automata)
+rand = "0.9"
+
+[features]
+default = []
+# Phonetic Levenshtein WFST variants (require liblevenshtein's phonetic rules)
+phonetic-rules = ["liblevenshtein/phonetic-rules"]
+
+[package.metadata.docs.rs]
+all-features = true

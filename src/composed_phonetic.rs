@@ -387,7 +387,7 @@ mod tests {
     #[test]
     #[cfg(feature = "phonetic-rules")]
     fn test_pipeline_builder_build_full() {
-        use libdictenstein::dynamic_dawg_char::DynamicDawgChar;
+        use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 
         let dict = DynamicDawgChar::<()>::from_terms(vec!["phone", "fone", "help"]);
 

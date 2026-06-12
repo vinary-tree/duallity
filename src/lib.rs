@@ -31,7 +31,7 @@
 //!
 //! ```rust,ignore
 //! use duallity::{LevenshteinWfst, DictionaryBackend};
-//! use libdictenstein::dynamic_dawg_char::DynamicDawgChar;
+//! use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 //! use lling_llang::composition::compose;
 //! use lling_llang::prelude::*;
 //!

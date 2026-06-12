@@ -164,7 +164,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use libdictenstein::dynamic_dawg_char::DynamicDawgChar;
+    use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 
     #[test]
     fn test_dictionary_backend_new() {

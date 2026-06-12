@@ -332,7 +332,7 @@ where
 mod tests {
     use super::*;
     use liblevenshtein::transducer::universal::Standard;
-    use libdictenstein::dynamic_dawg_char::DynamicDawgChar;
+    use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 
     #[test]
     fn test_universal_levenshtein_wfst_creation() {

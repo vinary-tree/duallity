@@ -367,7 +367,7 @@ fn compute_path_hash(parent_id: u32, edge_label: char) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use libdictenstein::dynamic_dawg_char::DynamicDawgChar;
+    use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 
     #[test]
     fn test_state_source_creation() {

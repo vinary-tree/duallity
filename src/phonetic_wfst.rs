@@ -359,7 +359,7 @@ mod tests {
     use super::*;
     use liblevenshtein::phonetic::nfa::compiler::compile;
     use liblevenshtein::phonetic::regex::parse;
-    use libdictenstein::dynamic_dawg_char::DynamicDawgChar;
+    use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 
     #[test]
     fn test_phonetic_wfst_creation() {

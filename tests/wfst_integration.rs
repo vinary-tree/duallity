@@ -4,7 +4,7 @@
 //! lling-llang's WFST infrastructure.
 
 
-use libdictenstein::dynamic_dawg_char::DynamicDawgChar;
+use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 use duallity::{
     DictionaryBackend, LevenshteinStateSource, LevenshteinWfst, Semiring, StateSource,
     TropicalWeight, Wfst,
@@ -205,7 +205,7 @@ fn test_dictionary_backend_with_vocabulary() {
 
 // Generalized Automata WFST Tests
 mod generalized_tests {
-    use libdictenstein::dynamic_dawg_char::DynamicDawgChar;
+    use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
     use liblevenshtein::transducer::OperationSet;
     use duallity::{GeneralizedWfst, GeneralizedWfstBuilder, Wfst};
     use lling_llang::prelude::LazyWfst;

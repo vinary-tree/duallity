@@ -1,6 +1,6 @@
 [package]
 name = "duallity"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.70"
 authors = ["Dylon Edwards <dylon.devo@gmail.com>"]
@@ -13,8 +13,8 @@ readme = "README.md"
 
 [dependencies]
 liblevenshtein = { path = "../liblevenshtein-rust", version = "0.9" }
-lling-llang = { path = "../lling-llang", version = "0.1" }
-libdictenstein = { path = "../libdictenstein", version = "0.1" }
+lling-llang = { path = "../lling-llang", version = "0.2" }
+libdictenstein = { path = "../libdictenstein", version = "0.2" }
 # Direct deps used by the relocated wfst sources
 rustc-hash = "1.1"
 smallvec = "1.13"

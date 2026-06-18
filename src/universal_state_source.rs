@@ -18,10 +18,10 @@ use lling_llang::prelude::{
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 
+use libdictenstein::{Dictionary, DictionaryNode};
 use liblevenshtein::transducer::universal::{
     CharacteristicVector, PositionVariant, UniversalAutomaton, UniversalState,
 };
-use libdictenstein::{Dictionary, DictionaryNode};
 
 use crate::state_encoding;
 
@@ -297,11 +297,11 @@ where
                         registry.register_state(next_auto_state.clone())
                     };
 
-                    // Compute the edit cost based on match
-                    let cost = if current_pos > 0
-                        && current_pos <= query_len
-                        && self.query_chars[current_pos - 1] == dict_char
-                    {
+                    // Label the transition as a transduction from the query side
+                    // to the dictionary side. When the query is exhausted, a
+                    // remaining dictionary edge is an insertion from epsilon.
+                    let query_label = self.query_chars.get(current_pos).copied();
+                    let cost = if query_label == Some(dict_char) {
                         0.0 // Match
                     } else {
                         1.0 // Edit operation
@@ -321,7 +321,7 @@ where
 
                     transitions.push(WeightedTransition::new(
                         from_state,
-                        Some(dict_char),
+                        query_label,
                         Some(dict_char),
                         target_state,
                         TropicalWeight::new(cost),
@@ -419,8 +419,8 @@ fn compute_path_hash(parent_id: u32, edge_label: char) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use liblevenshtein::transducer::universal::Standard;
     use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
+    use liblevenshtein::transducer::universal::Standard;
 
     #[test]
     fn test_universal_state_registry_creation() {
@@ -455,5 +455,50 @@ mod tests {
         let source = UniversalLevenshteinStateSource::<Standard, _>::new(&dict, "helo", 2);
 
         assert_eq!(source.query(), "helo");
+    }
+
+    fn start_transition_labels(
+        dict_terms: Vec<&str>,
+        query: &str,
+    ) -> Vec<(Option<char>, Option<char>, f64)> {
+        let dict = DynamicDawgChar::<()>::from_terms(dict_terms);
+        let source = UniversalLevenshteinStateSource::<Standard, _>::new(&dict, query, 1);
+        match source.compute_state(source.start()) {
+            LazyState::Computed { transitions, .. } => transitions
+                .iter()
+                .map(|transition| {
+                    (
+                        transition.input,
+                        transition.output,
+                        transition.weight.value(),
+                    )
+                })
+                .collect(),
+            LazyState::Pending => Vec::new(),
+        }
+    }
+
+    fn contains_label(
+        labels: &[(Option<char>, Option<char>, f64)],
+        input: Option<char>,
+        output: Option<char>,
+        weight: f64,
+    ) -> bool {
+        labels
+            .iter()
+            .any(|(actual_input, actual_output, actual_weight)| {
+                *actual_input == input
+                    && *actual_output == output
+                    && (*actual_weight - weight).abs() <= f64::EPSILON
+            })
+    }
+
+    #[test]
+    fn test_universal_state_source_transition_labels_preserve_transducer_sides() {
+        let substitution = start_transition_labels(vec!["cat"], "bat");
+        assert!(contains_label(&substitution, Some('b'), Some('c'), 1.0));
+
+        let identity = start_transition_labels(vec!["cat"], "cat");
+        assert!(contains_label(&identity, Some('c'), Some('c'), 0.0));
     }
 }

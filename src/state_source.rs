@@ -17,8 +17,8 @@ use lling_llang::prelude::{
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 
-use liblevenshtein::transducer::Algorithm;
 use libdictenstein::{Dictionary, DictionaryNode};
+use liblevenshtein::transducer::Algorithm;
 
 use crate::state_encoding;
 
@@ -227,7 +227,8 @@ where
             let from_state =
                 state_encoding::encode(dict_node_id, query_pos, self.max_automaton_states);
 
-            // Match or Substitute: consume dict_char and advance query position
+            // Match or Substitute: consume the query character and produce
+            // the dictionary character while advancing both sides.
             if pos < self.query_chars.len() {
                 let query_char = self.query_chars[pos];
                 let cost = if query_char == dict_char { 0 } else { 1 }; // Match or substitute
@@ -239,14 +240,14 @@ where
 
                 transitions.push(WeightedTransition::new(
                     from_state,
-                    Some(dict_char),
+                    Some(query_char),
                     Some(dict_char),
                     target_state,
                     TropicalWeight::new(cost as f64),
                 ));
             }
 
-            // Insert: consume dict_char without advancing query position (cost 1)
+            // Insert: produce dict_char without consuming query input (cost 1)
             // This represents an extra character in the dictionary term
             let insert_target = state_encoding::encode(
                 child_node_id,
@@ -256,7 +257,7 @@ where
 
             transitions.push(WeightedTransition::new(
                 from_state,
-                Some(dict_char),
+                None,
                 Some(dict_char),
                 insert_target,
                 TropicalWeight::new(1.0),
@@ -277,9 +278,8 @@ where
             }
         }
 
-        // Delete: advance query position without consuming dict_char (epsilon transition)
+        // Delete: consume query input without producing a dictionary character
         // This represents a missing character in the dictionary term
-        // Note: Epsilon transitions are handled differently in lazy WFSTs
         // We emit them as transitions that stay at the same dict node
         if pos < self.query_chars.len() {
             let delete_target = state_encoding::encode(
@@ -291,11 +291,10 @@ where
             let from_state =
                 state_encoding::encode(dict_node_id, query_pos, self.max_automaton_states);
 
-            // Epsilon transition (no input/output label)
             transitions.push(WeightedTransition::new(
                 from_state,
-                None, // Epsilon input
-                None, // Epsilon output
+                Some(self.query_chars[pos]),
+                None,
                 delete_target,
                 TropicalWeight::new(1.0),
             ));
@@ -397,5 +396,56 @@ mod tests {
         let cloned = source.clone();
 
         assert_eq!(source.start(), cloned.start());
+    }
+
+    fn start_transition_labels(
+        dict_terms: Vec<&str>,
+        query: &str,
+    ) -> Vec<(Option<char>, Option<char>, f64)> {
+        let dict = DynamicDawgChar::<()>::from_terms(dict_terms);
+        let source = LevenshteinStateSource::new(&dict, query, 1);
+        match source.compute_state(source.start()) {
+            LazyState::Computed { transitions, .. } => transitions
+                .iter()
+                .map(|transition| {
+                    (
+                        transition.input,
+                        transition.output,
+                        transition.weight.value(),
+                    )
+                })
+                .collect(),
+            LazyState::Pending => Vec::new(),
+        }
+    }
+
+    fn contains_label(
+        labels: &[(Option<char>, Option<char>, f64)],
+        input: Option<char>,
+        output: Option<char>,
+        weight: f64,
+    ) -> bool {
+        labels
+            .iter()
+            .any(|(actual_input, actual_output, actual_weight)| {
+                *actual_input == input
+                    && *actual_output == output
+                    && (*actual_weight - weight).abs() <= f64::EPSILON
+            })
+    }
+
+    #[test]
+    fn test_state_source_transition_labels_preserve_transducer_sides() {
+        let substitution = start_transition_labels(vec!["cat"], "bat");
+        assert!(contains_label(&substitution, Some('b'), Some('c'), 1.0));
+
+        let insertion = start_transition_labels(vec!["cat"], "at");
+        assert!(contains_label(&insertion, None, Some('c'), 1.0));
+
+        let deletion = start_transition_labels(vec!["at"], "cat");
+        assert!(contains_label(&deletion, Some('c'), None, 1.0));
+
+        let identity = start_transition_labels(vec!["cat"], "cat");
+        assert!(contains_label(&identity, Some('c'), Some('c'), 0.0));
     }
 }

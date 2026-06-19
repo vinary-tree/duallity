@@ -10,6 +10,8 @@
 //! - **Standalone phonetic matching**: Use NFA for pattern matching without edit distance
 //! - **Custom pipelines**: Build complex matching pipelines with explicit composition
 
+use std::sync::{Arc, RwLock};
+
 use lling_llang::prelude::{
     LazyState, LazyWfst, Semiring, StateId, StateSource, TropicalWeight, WeightedTransition, Wfst,
 };
@@ -50,10 +52,8 @@ pub struct PhoneticNfaWfst {
     nfa: NFAChar,
     /// Phonetic weight (cost for each NFA transition)
     phonetic_weight: f64,
-    /// State registry: maps NFA state set to WFST state ID
-    state_registry: FxHashMap<StateSetKey, StateId>,
-    /// Reverse mapping: WFST state ID -> NFA state set
-    id_to_state_set: Vec<StateSet>,
+    /// Shared NFA state-set registry for lazy and StateSource views.
+    state_registry: Arc<RwLock<NfaStateRegistry>>,
     /// Cached state information
     cache: FxHashMap<StateId, CachedNfaState>,
     /// Cache policy
@@ -66,6 +66,46 @@ pub struct PhoneticNfaWfst {
 #[cfg(feature = "phonetic-rules")]
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct StateSetKey(Vec<u32>);
+
+/// Registry for assigning stable WFST state IDs to NFA state sets.
+#[cfg(feature = "phonetic-rules")]
+struct NfaStateRegistry {
+    state_to_id: FxHashMap<StateSetKey, StateId>,
+    id_to_state_set: Vec<StateSet>,
+}
+
+#[cfg(feature = "phonetic-rules")]
+impl NfaStateRegistry {
+    fn new(initial_closure: StateSet) -> Self {
+        let mut state_to_id = FxHashMap::default();
+        let initial_key = state_set_to_key(&initial_closure);
+        state_to_id.insert(initial_key, 0);
+        Self {
+            state_to_id,
+            id_to_state_set: vec![initial_closure],
+        }
+    }
+
+    fn get(&self, state_id: StateId) -> Option<&StateSet> {
+        self.id_to_state_set.get(state_id as usize)
+    }
+
+    fn get_or_create(&mut self, state_set: StateSet) -> StateId {
+        let key = state_set_to_key(&state_set);
+        if let Some(&id) = self.state_to_id.get(&key) {
+            return id;
+        }
+
+        let id = self.id_to_state_set.len() as StateId;
+        self.state_to_id.insert(key, id);
+        self.id_to_state_set.push(state_set);
+        id
+    }
+
+    fn len(&self) -> usize {
+        self.id_to_state_set.len()
+    }
+}
 
 /// Cached state information.
 #[derive(Clone)]
@@ -96,20 +136,14 @@ impl PhoneticNfaWfst {
     /// - `nfa`: The phonetic NFA to wrap
     /// - `phonetic_weight`: Cost added for each NFA transition
     pub fn with_phonetic_weight(nfa: NFAChar, phonetic_weight: f64) -> Self {
-        let mut state_registry = FxHashMap::default();
-        let mut id_to_state_set = Vec::new();
-
         // Register initial state (epsilon closure of start state)
         let initial_closure = nfa.epsilon_closure_single(nfa.start());
-        let initial_key = state_set_to_key(&initial_closure);
-        state_registry.insert(initial_key, 0);
-        id_to_state_set.push(initial_closure);
+        let state_registry = Arc::new(RwLock::new(NfaStateRegistry::new(initial_closure)));
 
         Self {
             nfa,
             phonetic_weight,
             state_registry,
-            id_to_state_set,
             cache: FxHashMap::default(),
             cache_policy: lling_llang::wfst::CachePolicy::CacheAll,
             max_cache_size: DEFAULT_MAX_CACHE_SIZE,
@@ -127,28 +161,28 @@ impl PhoneticNfaWfst {
     }
 
     /// Get or create a state ID for a state set.
-    fn get_or_create_state(&mut self, state_set: StateSet) -> StateId {
-        let key = state_set_to_key(&state_set);
-        if let Some(&id) = self.state_registry.get(&key) {
-            return id;
-        }
-
-        let id = self.id_to_state_set.len() as StateId;
-        self.state_registry.insert(key, id);
-        self.id_to_state_set.push(state_set);
-        id
+    fn get_or_create_state(&self, state_set: StateSet) -> StateId {
+        self.state_registry
+            .write()
+            .expect("NFA state registry lock poisoned")
+            .get_or_create(state_set)
     }
 
     /// Compute transitions for an NFA state set.
     fn compute_nfa_transitions(
-        &mut self,
+        &self,
         state_id: StateId,
     ) -> (
         bool,
         TropicalWeight,
         SmallVec<[WeightedTransition<char, TropicalWeight>; 4]>,
     ) {
-        let state_set = match self.id_to_state_set.get(state_id as usize) {
+        let state_set = match self
+            .state_registry
+            .read()
+            .expect("NFA state registry lock poisoned")
+            .get(state_id)
+        {
             Some(set) => set.clone(),
             None => return (false, TropicalWeight::zero(), SmallVec::new()),
         };
@@ -297,7 +331,10 @@ impl Wfst<char, TropicalWeight> for PhoneticNfaWfst {
     }
 
     fn num_states(&self) -> usize {
-        self.id_to_state_set.len()
+        self.state_registry
+            .read()
+            .expect("NFA state registry lock poisoned")
+            .len()
     }
 
     #[inline]
@@ -307,7 +344,12 @@ impl Wfst<char, TropicalWeight> for PhoneticNfaWfst {
 
     #[inline]
     fn is_valid_state(&self, state: StateId) -> bool {
-        (state as usize) < self.id_to_state_set.len()
+        (state as usize)
+            < self
+                .state_registry
+                .read()
+                .expect("NFA state registry lock poisoned")
+                .len()
     }
 }
 
@@ -345,11 +387,17 @@ impl LazyWfst<char, TropicalWeight> for PhoneticNfaWfst {
 
 #[cfg(feature = "phonetic-rules")]
 impl StateSource<char, TropicalWeight> for PhoneticNfaWfst {
-    fn compute_state(&self, _state: StateId) -> LazyState<char, TropicalWeight> {
-        // For StateSource, we need a non-mutable version
-        // This is a simplified implementation that returns Pending
-        // since we need mutable access to compute transitions
-        LazyState::Pending
+    fn compute_state(&self, state: StateId) -> LazyState<char, TropicalWeight> {
+        if !self.is_valid_state(state) {
+            return LazyState::Pending;
+        }
+
+        let (is_final, final_weight, transitions) = self.compute_nfa_transitions(state);
+        if is_final {
+            LazyState::final_state(final_weight, transitions)
+        } else {
+            LazyState::non_final(transitions)
+        }
     }
 
     fn start(&self) -> StateId {
@@ -439,5 +487,34 @@ mod tests {
         // After expanding, more states are created
         wfst.expand(0);
         assert!(wfst.num_states() >= 1);
+    }
+
+    #[test]
+    fn test_phonetic_nfa_wfst_statesource_computes_start() {
+        let nfa = compile(&parse("(a|b)c").expect("parse")).expect("compile");
+        let wfst = PhoneticNfaWfst::new(nfa);
+
+        let state = StateSource::compute_state(&wfst, 0);
+        assert!(state.is_computed());
+
+        let transitions = state.transitions().expect("expected computed transitions");
+        assert!(transitions.iter().any(|t| t.input == Some('a')));
+        assert!(transitions.iter().any(|t| t.input == Some('b')));
+    }
+
+    #[test]
+    fn test_phonetic_nfa_wfst_statesource_matches_lazy_expansion() {
+        let nfa = compile(&parse("(a|b)c").expect("parse")).expect("compile");
+        let mut lazy = PhoneticNfaWfst::new(nfa.clone());
+        let source = PhoneticNfaWfst::new(nfa);
+
+        lazy.expand(0);
+        let lazy_transitions = lazy.transitions(0).to_vec();
+        let source_state = StateSource::compute_state(&source, 0);
+        let source_transitions = source_state
+            .transitions()
+            .expect("expected computed transitions");
+
+        assert_eq!(source_transitions, lazy_transitions.as_slice());
     }
 }

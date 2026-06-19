@@ -96,8 +96,8 @@ impl RewriteRule {
 pub struct RewriteWfst {
     /// Rewrite rules
     rules: Vec<RewriteRule>,
-    /// Maximum input pattern length (for state encoding)
-    max_input_len: usize,
+    /// Number of continuation states used to emit multi-symbol rewrites.
+    continuation_states: usize,
     /// State cache
     cache: FxHashMap<StateId, CachedRewriteState>,
     /// Cache policy
@@ -124,7 +124,7 @@ impl RewriteWfst {
     pub fn new() -> Self {
         Self {
             rules: Vec::new(),
-            max_input_len: 0,
+            continuation_states: 0,
             cache: FxHashMap::default(),
             cache_policy: lling_llang::wfst::CachePolicy::CacheAll,
             max_cache_size: DEFAULT_MAX_CACHE_SIZE,
@@ -134,14 +134,10 @@ impl RewriteWfst {
 
     /// Create a rewrite WFST with the given rules.
     pub fn with_rules(rules: Vec<RewriteRule>) -> Self {
-        let max_input_len = rules
-            .iter()
-            .map(|r| r.input.chars().count())
-            .max()
-            .unwrap_or(0);
+        let continuation_states = continuation_state_count(&rules);
         Self {
             rules,
-            max_input_len,
+            continuation_states,
             cache: FxHashMap::default(),
             cache_policy: lling_llang::wfst::CachePolicy::CacheAll,
             max_cache_size: DEFAULT_MAX_CACHE_SIZE,
@@ -151,21 +147,15 @@ impl RewriteWfst {
 
     /// Add a rewrite rule.
     pub fn add_rule(&mut self, input: &str, output: &str, cost: f64) {
-        let input_len = input.chars().count();
-        if input_len > self.max_input_len {
-            self.max_input_len = input_len;
-        }
         self.rules.push(RewriteRule::with_cost(input, output, cost));
+        self.continuation_states = continuation_state_count(&self.rules);
         self.cache.clear(); // Invalidate cache
     }
 
     /// Add a pre-built rewrite rule.
     pub fn add_rewrite_rule(&mut self, rule: RewriteRule) {
-        let input_len = rule.input.chars().count();
-        if input_len > self.max_input_len {
-            self.max_input_len = input_len;
-        }
         self.rules.push(rule);
+        self.continuation_states = continuation_state_count(&self.rules);
         self.cache.clear();
     }
 
@@ -206,55 +196,17 @@ impl RewriteWfst {
             TropicalWeight::zero()
         };
 
-        // For simplicity, we implement a character-by-character transducer
-        // where each rule is expanded into explicit transitions
-
         // Sort rules by priority (descending)
-        let mut sorted_rules: Vec<_> = self.rules.iter().collect();
-        sorted_rules.sort_by_key(|r| std::cmp::Reverse(r.priority));
+        let mut sorted_rules: Vec<(usize, &RewriteRule)> = self.rules.iter().enumerate().collect();
+        sorted_rules.sort_by_key(|(_, r)| std::cmp::Reverse(r.priority));
 
-        // Generate transitions for matching rules
-        for rule in &sorted_rules {
-            let input_chars: Vec<char> = rule.input.chars().collect();
-            let output_chars: Vec<char> = rule.output.chars().collect();
-
-            if input_chars.is_empty() {
-                continue;
+        if state_id == 0 {
+            for (rule_index, rule) in &sorted_rules {
+                self.push_rule_step_transition(&mut transitions, *rule_index, rule, 0);
             }
-
-            // For single-character rules, add direct transitions
-            if input_chars.len() == 1 && state_id == 0 {
-                let input_char = input_chars[0];
-
-                // If output is also single character, simple transition
-                if output_chars.len() == 1 {
-                    transitions.push(WeightedTransition::new(
-                        state_id,
-                        Some(input_char),
-                        Some(output_chars[0]),
-                        0, // Back to initial state
-                        TropicalWeight::new(rule.cost),
-                    ));
-                } else if output_chars.is_empty() {
-                    // Deletion: consume input, output epsilon
-                    transitions.push(WeightedTransition::new(
-                        state_id,
-                        Some(input_char),
-                        None,
-                        0,
-                        TropicalWeight::new(rule.cost),
-                    ));
-                } else {
-                    // Multi-character output: we'd need intermediate states
-                    // For now, just output the first character
-                    transitions.push(WeightedTransition::new(
-                        state_id,
-                        Some(input_char),
-                        Some(output_chars[0]),
-                        0,
-                        TropicalWeight::new(rule.cost),
-                    ));
-                }
+        } else if let Some((rule_index, step)) = self.decode_continuation_state(state_id) {
+            if let Some(rule) = self.rules.get(rule_index) {
+                self.push_rule_step_transition(&mut transitions, rule_index, rule, step);
             }
         }
 
@@ -262,23 +214,80 @@ impl RewriteWfst {
         if self.allow_identity && state_id == 0 {
             // Add wildcard identity for any printable character
             for c in ('a'..='z').chain('A'..='Z').chain('0'..='9') {
-                // Check if this character is not already covered by a rule
-                let covered = transitions
-                    .iter()
-                    .any(|t: &WeightedTransition<char, TropicalWeight>| t.input == Some(c));
-                if !covered {
-                    transitions.push(WeightedTransition::new(
-                        state_id,
-                        Some(c),
-                        Some(c),
-                        0,
-                        TropicalWeight::one(), // Zero cost for identity
-                    ));
-                }
+                transitions.push(WeightedTransition::new(
+                    state_id,
+                    Some(c),
+                    Some(c),
+                    0,
+                    TropicalWeight::one(), // Zero cost for identity
+                ));
             }
         }
 
         (is_final, final_weight, transitions)
+    }
+
+    fn push_rule_step_transition(
+        &self,
+        transitions: &mut SmallVec<[WeightedTransition<char, TropicalWeight>; 4]>,
+        rule_index: usize,
+        rule: &RewriteRule,
+        step: usize,
+    ) {
+        let input_chars: Vec<char> = rule.input.chars().collect();
+        let output_chars: Vec<char> = rule.output.chars().collect();
+        let steps = input_chars.len().max(output_chars.len());
+
+        if steps == 0 || step >= steps {
+            return;
+        }
+
+        let from = if step == 0 {
+            0
+        } else {
+            self.continuation_state(rule_index, step)
+        };
+        let to = if step + 1 == steps {
+            0
+        } else {
+            self.continuation_state(rule_index, step + 1)
+        };
+        let input = input_chars.get(step).copied();
+        let output = output_chars.get(step).copied();
+        let weight = if step == 0 {
+            TropicalWeight::new(rule.cost)
+        } else {
+            TropicalWeight::one()
+        };
+
+        transitions.push(WeightedTransition::new(from, input, output, to, weight));
+    }
+
+    fn continuation_state(&self, rule_index: usize, step: usize) -> StateId {
+        debug_assert!(step > 0);
+        let prior: usize = self
+            .rules
+            .iter()
+            .take(rule_index)
+            .map(|rule| rule_steps(rule).saturating_sub(1))
+            .sum();
+        1 + (prior + step - 1) as StateId
+    }
+
+    fn decode_continuation_state(&self, state_id: StateId) -> Option<(usize, usize)> {
+        if state_id == 0 {
+            return None;
+        }
+
+        let mut remaining = (state_id - 1) as usize;
+        for (rule_index, rule) in self.rules.iter().enumerate() {
+            let states = rule_steps(rule).saturating_sub(1);
+            if remaining < states {
+                return Some((rule_index, remaining + 1));
+            }
+            remaining = remaining.saturating_sub(states);
+        }
+        None
     }
 
     /// Ensure a state is computed and cached.
@@ -354,7 +363,7 @@ impl Wfst<char, TropicalWeight> for RewriteWfst {
     }
 
     fn num_states(&self) -> usize {
-        self.cache.len().max(1) // At least the initial state
+        1 + self.continuation_states
     }
 
     #[inline]
@@ -364,7 +373,7 @@ impl Wfst<char, TropicalWeight> for RewriteWfst {
 
     #[inline]
     fn is_valid_state(&self, state: StateId) -> bool {
-        state <= self.max_input_len as StateId
+        (state as usize) < self.num_states()
     }
 }
 
@@ -415,8 +424,19 @@ impl StateSource<char, TropicalWeight> for RewriteWfst {
     }
 
     fn num_states_hint(&self) -> Option<usize> {
-        Some(self.max_input_len + 1)
+        Some(self.num_states())
     }
+}
+
+fn rule_steps(rule: &RewriteRule) -> usize {
+    rule.input.chars().count().max(rule.output.chars().count())
+}
+
+fn continuation_state_count(rules: &[RewriteRule]) -> usize {
+    rules
+        .iter()
+        .map(|rule| rule_steps(rule).saturating_sub(1))
+        .sum()
 }
 
 /// Builder for common phonetic rewrite rules.
@@ -522,6 +542,56 @@ mod tests {
             a_trans.expect("expected Some a_trans in test").output,
             Some('b')
         );
+    }
+
+    #[test]
+    fn test_rewrite_wfst_one_to_many_output_chain() {
+        let mut wfst = RewriteWfst::new();
+        wfst.set_allow_identity(false);
+        wfst.add_rule("f", "ph", 0.1);
+        wfst.expand(0);
+
+        let first = wfst
+            .transitions(0)
+            .iter()
+            .find(|t| t.input == Some('f') && t.output == Some('p'))
+            .expect("expected f -> p first transition")
+            .clone();
+        assert_ne!(first.to, 0);
+        assert_eq!(first.weight.value(), 0.1);
+
+        wfst.expand(first.to);
+        let continuation = wfst
+            .transitions(first.to)
+            .iter()
+            .find(|t| t.input.is_none() && t.output == Some('h'))
+            .expect("expected epsilon -> h continuation");
+        assert_eq!(continuation.to, 0);
+        assert_eq!(continuation.weight, TropicalWeight::one());
+    }
+
+    #[test]
+    fn test_rewrite_wfst_many_to_one_input_chain() {
+        let mut wfst = RewriteWfst::new();
+        wfst.set_allow_identity(false);
+        wfst.add_rule("ph", "f", 0.1);
+        wfst.expand(0);
+
+        let first = wfst
+            .transitions(0)
+            .iter()
+            .find(|t| t.input == Some('p') && t.output == Some('f'))
+            .expect("expected p -> f first transition")
+            .clone();
+        assert_ne!(first.to, 0);
+
+        wfst.expand(first.to);
+        let continuation = wfst
+            .transitions(first.to)
+            .iter()
+            .find(|t| t.input == Some('h') && t.output.is_none())
+            .expect("expected h -> epsilon continuation");
+        assert_eq!(continuation.to, 0);
     }
 
     #[test]

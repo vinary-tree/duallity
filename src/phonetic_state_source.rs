@@ -21,9 +21,9 @@ use lling_llang::prelude::{
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 
+use libdictenstein::{Dictionary, DictionaryNode};
 #[cfg(feature = "phonetic-rules")]
 use liblevenshtein::phonetic::nfa::{NFAChar, ProductAutomatonChar, ProductStateChar};
-use libdictenstein::{Dictionary, DictionaryNode};
 
 use crate::state_encoding;
 
@@ -42,8 +42,8 @@ use crate::state_encoding;
 /// # Example
 ///
 /// ```rust,ignore
-/// use liblevenshtein::wfst::PhoneticStateSource;
-/// use liblevenshtein::dictionary::dynamic_dawg_char::DynamicDawgChar;
+/// use duallity::PhoneticStateSource;
+/// use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 /// use liblevenshtein::phonetic::nfa::compile;
 /// use liblevenshtein::phonetic::regex::parse;
 /// use lling_llang::prelude::*;
@@ -75,7 +75,7 @@ where
     max_product_states: u32,
     /// Node registry: maps path hash to node ID
     node_registry: Arc<std::sync::RwLock<NodeRegistry<D::Node>>>,
-    /// Product state registry: maps product state to ID
+    /// Product frontier registry: maps product-state frontiers to IDs.
     product_state_registry: Arc<std::sync::RwLock<ProductStateRegistry>>,
 }
 
@@ -116,10 +116,10 @@ impl<N: DictionaryNode> NodeRegistry<N> {
 /// Registry for assigning stable IDs to product states.
 #[cfg(feature = "phonetic-rules")]
 struct ProductStateRegistry {
-    /// Map from product state to assigned ID
+    /// Map from product frontier to assigned ID
     state_to_id: FxHashMap<ProductStateKey, u32>,
-    /// Map from ID back to state
-    id_to_state: Vec<ProductStateChar>,
+    /// Map from ID back to frontier
+    id_to_state: Vec<Vec<ProductStateChar>>,
 }
 
 /// Key for hashing ProductStateChar.
@@ -129,37 +129,48 @@ struct ProductStateKey(Vec<u8>);
 
 #[cfg(feature = "phonetic-rules")]
 impl ProductStateRegistry {
-    fn new(initial_state: ProductStateChar) -> Self {
+    fn new(initial_frontier: Vec<ProductStateChar>) -> Self {
         let mut registry = Self {
             state_to_id: FxHashMap::default(),
             id_to_state: Vec::new(),
         };
-        registry.register_state(initial_state);
+        registry.register_state(initial_frontier);
         registry
     }
 
-    fn register_state(&mut self, state: ProductStateChar) -> u32 {
-        let key = Self::state_to_key(&state);
+    fn register_state(&mut self, frontier: Vec<ProductStateChar>) -> u32 {
+        let key = Self::state_to_key(&frontier);
         if let Some(&id) = self.state_to_id.get(&key) {
             return id;
         }
 
         let id = self.id_to_state.len() as u32;
         self.state_to_id.insert(key, id);
-        self.id_to_state.push(state);
+        self.id_to_state.push(frontier);
         id
     }
 
-    fn get_state(&self, id: u32) -> Option<&ProductStateChar> {
-        self.id_to_state.get(id as usize)
+    fn get_state(&self, id: u32) -> Option<&[ProductStateChar]> {
+        self.id_to_state.get(id as usize).map(Vec::as_slice)
     }
 
-    fn state_to_key(state: &ProductStateChar) -> ProductStateKey {
-        let mut bytes = Vec::with_capacity(state.nfa_states.len() * 4 + 1);
-        for &s in &state.nfa_states {
-            bytes.extend_from_slice(&s.to_le_bytes());
+    fn state_to_key(frontier: &[ProductStateChar]) -> ProductStateKey {
+        let mut states = frontier.to_vec();
+        states.sort_by(|a, b| {
+            a.accumulated_cost
+                .total_cmp(&b.accumulated_cost)
+                .then_with(|| a.nfa_states.cmp(&b.nfa_states))
+        });
+
+        let mut bytes = Vec::new();
+        for state in states {
+            bytes.extend_from_slice(&(state.nfa_states.len() as u32).to_le_bytes());
+            for &s in &state.nfa_states {
+                bytes.extend_from_slice(&s.to_le_bytes());
+            }
+            let cost_bits = (state.accumulated_cost * 1_000_000.0).round() as i64;
+            bytes.extend_from_slice(&cost_bits.to_le_bytes());
         }
-        bytes.push(state.edit_distance());
         ProductStateKey(bytes)
     }
 
@@ -202,14 +213,14 @@ where
     ) -> Self {
         let product =
             ProductAutomatonChar::with_phonetic_weight(nfa, max_distance, phonetic_weight);
-        let initial_state = product.initial_state();
+        let initial_frontier = product.initial_frontier();
 
         // Estimate max product states based on NFA size and max distance
         let max_product_states = ((max_distance as u32 + 1) * 1000).max(10_000);
 
         let root = dictionary.root();
         let node_registry = NodeRegistry::new(root);
-        let product_state_registry = ProductStateRegistry::new(initial_state);
+        let product_state_registry = ProductStateRegistry::new(initial_frontier);
 
         Self {
             dictionary: dictionary.clone(),
@@ -252,8 +263,8 @@ where
             }
         };
 
-        let product_state = match product_registry.get_state(product_state_id) {
-            Some(state) => state.clone(),
+        let product_frontier = match product_registry.get_state(product_state_id) {
+            Some(frontier) => frontier.to_vec(),
             None => {
                 return (false, TropicalWeight::zero(), SmallVec::new());
             }
@@ -275,23 +286,18 @@ where
                 registry.register_node(child_node.clone(), path_hash)
             };
 
-            // Compute product automaton successors for this character
-            let successors = self.product.transition(&product_state, dict_char);
+            // Compute product automaton successors for this character using the same
+            // deletion-closed frontier semantics as native ProductAutomatonChar trie
+            // traversal. A single ProductStateChar misses deletion-closure states.
+            let successors = self
+                .product
+                .transition_frontier(&product_frontier, dict_char);
 
-            for successor in successors {
-                // Register the successor product state
+            if !successors.is_empty() {
+                // Register the successor frontier.
                 let successor_id = {
                     let mut registry = self.product_state_registry.write().expect("Lock poisoned");
-                    registry.register_state(successor.clone())
-                };
-
-                // Compute transition cost
-                let cost = if successor.edit_distance() > product_state.edit_distance() {
-                    // Edit operation was used
-                    1.0
-                } else {
-                    // Exact match (may include phonetic transformation)
-                    self.phonetic_weight
+                    registry.register_state(successors)
                 };
 
                 let from_state =
@@ -305,16 +311,16 @@ where
                     Some(dict_char),
                     Some(dict_char),
                     target_state,
-                    TropicalWeight::new(cost),
+                    TropicalWeight::one(),
                 ));
             }
         }
 
         // Check if this is a final state
-        let is_final = dict_node.is_final() && self.product.is_accepting(&product_state);
-        let final_weight = if is_final {
-            // Final weight is the edit distance consumed
-            TropicalWeight::new(product_state.edit_distance() as f64)
+        let min_distance = self.product.min_accepting_distance(&product_frontier);
+        let is_final = dict_node.is_final() && min_distance.is_some();
+        let final_weight = if let Some(distance) = min_distance {
+            TropicalWeight::new(distance as f64)
         } else {
             TropicalWeight::zero()
         };
@@ -371,9 +377,9 @@ fn compute_path_hash(parent_id: u32, edge_label: char) -> u64 {
 #[cfg(feature = "phonetic-rules")]
 mod tests {
     use super::*;
+    use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
     use liblevenshtein::phonetic::nfa::compiler::compile;
     use liblevenshtein::phonetic::regex::parse;
-    use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 
     #[test]
     fn test_phonetic_state_source_creation() {

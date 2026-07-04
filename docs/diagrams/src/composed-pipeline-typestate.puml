@@ -1,0 +1,44 @@
+@startuml composed-pipeline-typestate
+' D12 — PhoneticPipelineBuilder type-state and the composed pipeline.
+' Depicts: the builder advances from PhoneticPipelineBuilder<()> to <D> via .dictionary(); it has
+' three exits; the resulting WFST stages are composed downstream by the CALLER via lling-llang.
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam state {
+  BorderColor #34495E
+  FontName "DejaVu Sans"
+}
+title D12 · PhoneticPipelineBuilder type-state + downstream composition
+
+state "PhoneticPipelineBuilder<()>\n(no dictionary yet)" as B0 #D6EAF8
+state "PhoneticPipelineBuilder<D>\n(dictionary attached)" as BD #D6EAF8
+
+[*] --> B0 : new()
+B0 --> B0 : phonetic_pattern / phonetic_weight /\nedit_weight / add_rewrite_rule /\nallow_identity
+B0 --> BD : .dictionary(&dict)
+
+state "RewriteWfst" as RW #D6EAF8
+state "PhoneticNfaWfst\n(feature phonetic-rules)" as NFA #D6EAF8
+state "PhoneticWfst<D>\n(feature phonetic-rules)" as PW #D6EAF8
+
+B0 --> RW  : build_rewrite_wfst()
+B0 --> NFA : build_phonetic_nfa()
+BD --> PW  : build()
+
+state "lling-llang compose / LazyWfstWrapper\n(caller-owned)" as CMP #FCF3CF
+state "ranked PhoneticMatch\n{ term, total = phonetic ⊕ edit }" as OUT #E8DAEF
+
+RW  --> CMP
+NFA --> CMP
+PW  --> CMP
+CMP --> OUT : shortest-path search
+
+note right of CMP
+  Honest limitations:
+  • The builder emits WFST stages; it does not
+    compose or search them — the caller does.
+  • PhoneticMatch is the result type but is not
+    emitted by the builder itself.
+end note
+@enduml

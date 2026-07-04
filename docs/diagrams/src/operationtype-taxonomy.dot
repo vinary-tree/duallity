@@ -1,0 +1,54 @@
+// D13 — OperationType taxonomy.
+// Depicts: the generalized-Levenshtein operation landscape an OperationSet can hold, each tagged
+// with ⟨consume_x, consume_y, weight⟩ (dict chars consumed, query chars consumed, cost). Standard
+// ops vs. transposition / merge-split vs. phonetic digraphs.
+digraph OperationTaxonomy {
+  rankdir=LR;
+  bgcolor="#FFFFFF";
+  fontname="DejaVu Sans";
+  labelloc="t";
+  label="D13 · OperationType taxonomy   ⟨consume_x, consume_y, weight⟩\nx = dictionary chars consumed · y = query chars consumed · weight = cost";
+  node [shape=box, style="rounded,filled", fontname="DejaVu Sans", fontsize=10, color="#34495E"];
+  edge [color="#34495E", arrowsize=0.6];
+
+  root [label="OperationType\n⟨consume_x, consume_y, weight, restriction⟩", fillcolor="#D6EAF8", shape=box, style="filled"];
+
+  // families
+  fam_std  [label="Standard\n(Algorithm::Standard)", fillcolor="#FADBD8"];
+  fam_dl   [label="Transposition\n(Damerau–Levenshtein)", fillcolor="#FADBD8"];
+  fam_ms   [label="Merge / Split\n(OCR)", fillcolor="#FADBD8"];
+  fam_ph   [label="Phonetic digraphs\n(consonant_digraphs)", fillcolor="#D5F5E3"];
+
+  root -> fam_std;
+  root -> fam_dl;
+  root -> fam_ms;
+  root -> fam_ph;
+
+  // standard ops
+  op_match [label="match  ⟨1,1,0⟩", fillcolor="#D5F5E3"];
+  op_sub   [label="substitute  ⟨1,1,1⟩", fillcolor="#FCF3CF"];
+  op_ins   [label="insert  ⟨0,1,1⟩", fillcolor="#FCF3CF"];
+  op_del   [label="delete  ⟨1,0,1⟩", fillcolor="#FCF3CF"];
+  fam_std -> op_match;
+  fam_std -> op_sub;
+  fam_std -> op_ins;
+  fam_std -> op_del;
+
+  // transposition
+  op_tr [label="transpose  ⟨2,2,1⟩\n\"ab\"→\"ba\"", fillcolor="#FCF3CF"];
+  fam_dl -> op_tr;
+
+  // merge/split
+  op_merge [label="merge  ⟨2,1,1⟩", fillcolor="#FCF3CF"];
+  op_split [label="split  ⟨1,2,1⟩", fillcolor="#FCF3CF"];
+  fam_ms -> op_merge;
+  fam_ms -> op_split;
+
+  // phonetic digraphs (restricted)
+  op_2to1 [label="2→1  ⟨2,1,0.15⟩\nch→k, sh→s, ph→f, th→t", fillcolor="#D1F2EB"];
+  op_1to2 [label="1→2  ⟨1,2,0.15⟩\nk→ch, s→sh, f→ph, t→th", fillcolor="#D1F2EB"];
+  op_2to2 [label="2→2  ⟨2,2,0.15⟩\nqu↔kw", fillcolor="#D1F2EB"];
+  fam_ph -> op_2to1;
+  fam_ph -> op_1to2;
+  fam_ph -> op_2to2;
+}

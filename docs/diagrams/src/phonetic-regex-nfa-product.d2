@@ -1,0 +1,27 @@
+# D11 — Phonetic regex → NFA → product automaton.
+# Depicts: how PhoneticWfstBuilder::build_from_pattern compiles a phonetic regex into an NFA and
+# fuses it with a Levenshtein automaton over the dictionary.
+direction: right
+
+title: |md
+  # D11 · Phonetic regex → NFA → (NFA × Levenshtein × Dictionary) product
+| { near: top-center }
+
+pat: "\"(ph|f)one\"" { style.fill: "#FDEBD0"; style.stroke: "#34495E" }
+ast: "regex::parse\n→ AST" { style.fill: "#FADBD8"; style.stroke: "#34495E" }
+nfa: "nfa::compile\n→ NFAChar\n(Thompson construction)" { style.fill: "#FADBD8"; style.stroke: "#34495E" }
+
+prod: "ProductAutomatonChar\nNFA × Levenshtein × Dictionary\n(driven by PhoneticStateSource)" {
+  style.fill: "#D6EAF8"; style.stroke: "#34495E"
+}
+dict: "Dictionary D\n(DAWG / SCDAWG)" { style.fill: "#D5F5E3"; style.stroke: "#34495E" }
+out: "PhoneticWfst<D>\nWfst<char, TropicalWeight>" { style.fill: "#D6EAF8"; style.stroke: "#34495E" }
+
+pat -> ast -> nfa -> prod -> out { style.stroke: "#34495E" }
+dict -> prod: "edges" { style.stroke: "#2ECC71"; style.stroke-dash: 3 }
+
+alt: "The compiled NFA accepts both branches of the alternation (ph or f) before 'o','n','e'.\nPhoneticNfaWfst exposes the bare NFA (lazy subset construction); PhoneticWfst fuses it with\nthe dictionary and a Levenshtein bound. Exact alternation matches cost phonetic_weight; edits cost 1." {
+  near: bottom-center
+  style.fill: "#FCF3CF"
+  style.stroke: "#34495E"
+}

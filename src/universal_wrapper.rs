@@ -11,15 +11,15 @@
 //! - **Variant Support**: Supports Standard, Transposition, and MergeAndSplit variants
 
 use lling_llang::prelude::{
-    LazyState, LazyWfst, Semiring, StateId, StateSource, TropicalWeight, WeightedTransition, Wfst,
+    LazyWfst, Semiring, StateId, StateSource, TropicalWeight, WeightedTransition, Wfst,
 };
-use rustc_hash::FxHashMap;
-use smallvec::SmallVec;
 
-use liblevenshtein::transducer::universal::PositionVariant;
 use libdictenstein::{Dictionary, DictionaryNode};
+use liblevenshtein::transducer::universal::PositionVariant;
 
-use crate::state_encoding;
+use crate::lazy_cache::{
+    empty_char_transitions, ensure_cached_char_state, CachedCharState, LazyStateCache,
+};
 use crate::universal_state_source::UniversalLevenshteinStateSource;
 
 /// A Universal Levenshtein transducer exposed as a lling-llang WFST.
@@ -37,13 +37,13 @@ use crate::universal_state_source::UniversalLevenshteinStateSource;
 ///
 /// # Example
 ///
-/// ```rust,ignore
-/// use liblevenshtein::wfst::UniversalLevenshteinWfst;
-/// use liblevenshtein::dictionary::dynamic_dawg_char::DynamicDawgChar;
+/// ```rust,no_run
+/// use duallity::UniversalLevenshteinWfst;
+/// use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 /// use liblevenshtein::transducer::universal::Standard;
 /// use lling_llang::prelude::*;
 ///
-/// let dict = DynamicDawgChar::from_terms(vec!["hello", "help", "world"]);
+/// let dict = DynamicDawgChar::<()>::from_terms(vec!["hello", "help", "world"]);
 /// let lev_wfst = UniversalLevenshteinWfst::<Standard, _>::new(&dict, "helo", 2);
 ///
 /// // Use with lling-llang's composition
@@ -61,23 +61,9 @@ where
     /// The state source for computing transitions
     state_source: UniversalLevenshteinStateSource<V, D>,
     /// Cached states (state_id -> computed state info)
-    cache: FxHashMap<StateId, CachedState>,
+    cache: LazyStateCache<CachedCharState>,
     /// Maximum edit distance
     max_distance: u8,
-    /// Maximum automaton states for state encoding
-    max_automaton_states: u32,
-    /// Cache policy
-    cache_policy: lling_llang::wfst::CachePolicy,
-    /// Maximum cache size for LRU policy
-    max_cache_size: usize,
-}
-
-/// Cached state information for a single WFST state.
-#[derive(Clone)]
-struct CachedState {
-    is_final: bool,
-    final_weight: TropicalWeight,
-    transitions: SmallVec<[WeightedTransition<char, TropicalWeight>; 4]>,
 }
 
 /// Default maximum cache size for LRU policy (100,000 states)
@@ -105,17 +91,10 @@ where
     pub fn new(dictionary: &D, query: &str, max_distance: u8) -> Self {
         let state_source = UniversalLevenshteinStateSource::new(dictionary, query, max_distance);
 
-        let query_len = query.chars().count();
-        let max_automaton_states =
-            state_encoding::estimate_automaton_states(query_len, max_distance as usize);
-
         Self {
             state_source,
-            cache: FxHashMap::default(),
+            cache: LazyStateCache::new(DEFAULT_MAX_CACHE_SIZE),
             max_distance,
-            max_automaton_states,
-            cache_policy: lling_llang::wfst::CachePolicy::CacheAll,
-            max_cache_size: DEFAULT_MAX_CACHE_SIZE,
         }
     }
 
@@ -125,59 +104,27 @@ where
     }
 
     /// Get the query string.
-    pub fn query(&self) -> String {
-        self.state_source.query()
+    pub fn query(&self) -> &str {
+        self.state_source.query_str()
     }
 
     /// Set the maximum cache size for LRU eviction.
     pub fn set_max_cache_size(&mut self, size: usize) {
-        self.max_cache_size = size;
+        self.cache.set_max_lru_states(size);
+    }
+
+    fn computed_state(&self, state: StateId) -> Option<&CachedCharState> {
+        self.cache.get(state)
     }
 
     /// Ensure a state is computed and cached.
     fn ensure_state(&mut self, state: StateId) {
-        if self.cache.contains_key(&state) {
-            return;
-        }
-
-        // Use the state source to compute the state
-        let lazy_state = self.state_source.compute_state(state);
-
-        // Convert LazyState to CachedState via pattern matching
-        let cached = match lazy_state {
-            LazyState::Computed {
-                is_final,
-                final_weight,
-                transitions,
-            } => CachedState {
-                is_final,
-                final_weight,
-                transitions,
-            },
-            LazyState::Pending => CachedState {
-                is_final: false,
-                final_weight: TropicalWeight::zero(),
-                transitions: SmallVec::new(),
-            },
-        };
-
-        // Apply cache eviction if using LRU and over limit
-        if let lling_llang::wfst::CachePolicy::Lru { max_states } = self.cache_policy {
-            let limit = if max_states > 0 {
-                max_states
-            } else {
-                self.max_cache_size
-            };
-            if self.cache.len() >= limit {
-                let to_remove = (self.cache.len() / 10).max(1);
-                let keys: Vec<_> = self.cache.keys().take(to_remove).copied().collect();
-                for key in keys {
-                    self.cache.remove(&key);
-                }
-            }
-        }
-
-        self.cache.insert(state, cached);
+        ensure_cached_char_state(
+            &mut self.cache,
+            &self.state_source,
+            state,
+            UniversalLevenshteinStateSource::is_valid_product_state,
+        );
     }
 }
 
@@ -194,26 +141,37 @@ where
     }
 
     fn is_final(&self, state: StateId) -> bool {
-        self.cache.get(&state).map(|s| s.is_final).unwrap_or(false)
+        self.computed_state(state)
+            .map(|s| s.is_final)
+            .unwrap_or_else(|| self.state_source.final_weight_for_state(state).is_some())
     }
 
     fn final_weight(&self, state: StateId) -> TropicalWeight {
-        self.cache
-            .get(&state)
+        self.computed_state(state)
             .map(|s| s.final_weight)
-            .unwrap_or_else(TropicalWeight::zero)
+            .unwrap_or_else(|| {
+                self.state_source
+                    .final_weight_for_state(state)
+                    .unwrap_or_else(TropicalWeight::zero)
+            })
     }
 
     fn transitions(&self, state: StateId) -> &[WeightedTransition<char, TropicalWeight>] {
-        static EMPTY: &[WeightedTransition<char, TropicalWeight>] = &[];
-        self.cache
-            .get(&state)
-            .map(|s| s.transitions.as_slice())
-            .unwrap_or(EMPTY)
+        match self.computed_state(state) {
+            Some(cached) => cached.transitions.as_slice(),
+            None => empty_char_transitions(),
+        }
+    }
+
+    fn total_transitions(&self) -> usize {
+        self.cache.total_cached_transitions()
     }
 
     fn num_states(&self) -> usize {
-        self.cache.len()
+        self.state_source
+            .num_states_hint()
+            .unwrap_or(0)
+            .max(self.state_source.registered_state_id_span())
     }
 
     #[inline]
@@ -223,8 +181,7 @@ where
 
     #[inline]
     fn is_valid_state(&self, state: StateId) -> bool {
-        let (dict_node, automaton_state) = state_encoding::decode(state, self.max_automaton_states);
-        automaton_state < self.max_automaton_states || dict_node == 0
+        self.state_source.is_valid_product_state(state)
     }
 }
 
@@ -237,7 +194,7 @@ where
     <D::Node as DictionaryNode>::Unit: Into<char> + TryFrom<char> + Copy + Send + Sync,
 {
     fn is_expanded(&self, state: StateId) -> bool {
-        self.cache.contains_key(&state)
+        self.cache.is_expanded(state)
     }
 
     fn expand(&mut self, state: StateId) {
@@ -250,11 +207,11 @@ where
     }
 
     fn cache_policy(&self) -> lling_llang::wfst::CachePolicy {
-        self.cache_policy
+        self.cache.policy()
     }
 
     fn set_cache_policy(&mut self, policy: lling_llang::wfst::CachePolicy) {
-        self.cache_policy = policy;
+        self.cache.set_policy(policy);
     }
 
     fn computed_states(&self) -> usize {
@@ -331,8 +288,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use liblevenshtein::transducer::universal::Standard;
     use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
+    use liblevenshtein::transducer::universal::Standard;
 
     #[test]
     fn test_universal_levenshtein_wfst_creation() {
@@ -341,6 +298,9 @@ mod tests {
 
         assert_eq!(wfst.max_distance(), 2);
         assert_eq!(wfst.query(), "helo");
+        let first = wfst.query();
+        let second = wfst.query();
+        assert!(std::ptr::eq(first.as_ptr(), second.as_ptr()));
     }
 
     #[test]
@@ -349,9 +309,7 @@ mod tests {
         let wfst = UniversalLevenshteinWfst::<Standard, _>::new(&dict, "helo", 2);
 
         let start = wfst.start();
-        let (dict_node, auto_state) = state_encoding::decode(start, wfst.max_automaton_states);
-        assert_eq!(dict_node, 0);
-        assert_eq!(auto_state, 0);
+        assert_eq!(start, 0);
     }
 
     #[test]
@@ -365,6 +323,38 @@ mod tests {
         wfst.expand(start);
         assert!(wfst.is_expanded(start));
         assert!(wfst.computed_states() >= 1);
+    }
+
+    #[test]
+    fn test_universal_levenshtein_wfst_tracks_exact_query_position() {
+        let dict = DynamicDawgChar::<()>::from_terms(vec!["ab"]);
+        let mut wfst = UniversalLevenshteinWfst::<Standard, _>::new(&dict, "xy", 2);
+
+        let start = wfst.start();
+        let first_target = wfst
+            .transitions_lazy(start)
+            .iter()
+            .find(|transition| {
+                transition.input == Some('x')
+                    && transition.output == Some('a')
+                    && transition.weight.value() == 0.0
+            })
+            .map(|transition| transition.to)
+            .expect("expected first substitution transition");
+
+        let second_transitions = wfst.transitions_lazy(first_target);
+        assert!(
+            second_transitions.iter().any(|transition| {
+                transition.input == Some('y') && transition.output == Some('b')
+            }),
+            "second dictionary edge must consume the second query character"
+        );
+        assert!(
+            !second_transitions.iter().any(|transition| {
+                transition.input == Some('x') && transition.output == Some('b')
+            }),
+            "query position must not be recovered from abstract offsets"
+        );
     }
 
     #[test]
@@ -395,6 +385,59 @@ mod tests {
             wfst.cache_policy(),
             lling_llang::wfst::CachePolicy::Lru { .. }
         ));
+    }
+
+    #[test]
+    fn test_universal_levenshtein_wfst_rejects_invalid_state_without_caching() {
+        let dict = DynamicDawgChar::<()>::from_terms(vec!["test"]);
+        let mut wfst = UniversalLevenshteinWfst::<Standard, _>::new(&dict, "test", 1);
+        let invalid_state = u32::MAX;
+
+        assert!(!wfst.is_valid_state(invalid_state));
+        wfst.expand(invalid_state);
+
+        assert_eq!(wfst.computed_states(), 0);
+        assert!(wfst.transitions_lazy(invalid_state).is_empty());
+        assert_eq!(wfst.computed_states(), 0);
+    }
+
+    #[test]
+    fn test_universal_levenshtein_wfst_no_cache_policy_uses_scratch_only() {
+        let dict = DynamicDawgChar::<()>::from_terms(vec!["test"]);
+        let mut wfst = UniversalLevenshteinWfst::<Standard, _>::new(&dict, "test", 1);
+        wfst.set_cache_policy(lling_llang::wfst::CachePolicy::NoCache);
+
+        let start = wfst.start();
+        let transition_count = wfst.transitions_lazy(start).len();
+
+        assert!(transition_count > 0);
+        assert_eq!(wfst.computed_states(), 0);
+        assert!(!wfst.is_expanded(start));
+        assert_eq!(wfst.transitions(start).len(), transition_count);
+        assert_eq!(wfst.total_transitions(), transition_count);
+    }
+
+    #[test]
+    fn test_universal_levenshtein_wfst_lru_policy_evicts_least_recently_used_state() {
+        let dict = DynamicDawgChar::<()>::from_terms(vec!["test"]);
+        let mut wfst = UniversalLevenshteinWfst::<Standard, _>::new(&dict, "test", 1);
+        wfst.set_cache_policy(lling_llang::wfst::CachePolicy::Lru { max_states: 1 });
+
+        let start = wfst.start();
+        let next = wfst
+            .transitions_lazy(start)
+            .first()
+            .expect("expected start transition")
+            .to;
+
+        assert!(wfst.is_expanded(start));
+        assert_eq!(wfst.computed_states(), 1);
+
+        wfst.expand(next);
+
+        assert_eq!(wfst.computed_states(), 1);
+        assert!(!wfst.is_expanded(start));
+        assert!(wfst.is_expanded(next));
     }
 
     #[test]

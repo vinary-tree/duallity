@@ -17,19 +17,22 @@
 //!
 //! # Example
 //!
-//! ```rust,ignore
-//! use liblevenshtein::wfst::PhoneticPipelineBuilder;
-//! use liblevenshtein::dictionary::dynamic_dawg_char::DynamicDawgChar;
+//! ```rust,no_run
+//! use duallity::PhoneticPipelineBuilder;
+//! use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 //!
-//! let dict = DynamicDawgChar::from_terms(vec!["phone", "fone", "help"]);
+//! let dict = DynamicDawgChar::<()>::from_terms(vec!["phone", "fone", "help"]);
 //!
 //! // Build a phonetic pipeline
-//! let pipeline = PhoneticPipelineBuilder::new()
-//!     .phonetic_pattern("(ph|f)one")
-//!     .max_edit_distance(2)
-//!     .dictionary(&dict)
-//!     .build()
-//!     .expect("failed to build pipeline");
+//! #[cfg(feature = "phonetic-rules")]
+//! {
+//!     let pipeline = PhoneticPipelineBuilder::new()
+//!         .phonetic_pattern("(ph|f)one")
+//!         .max_edit_distance(2)
+//!         .dictionary(&dict)
+//!         .build()
+//!         .expect("failed to build pipeline");
+//! }
 //! ```
 
 use libdictenstein::{Dictionary, DictionaryNode};
@@ -72,37 +75,51 @@ impl Default for PhoneticPipelineConfig {
 /// Builder for phonetic matching pipelines.
 ///
 /// This provides a fluent API for configuring and constructing phonetic
-/// WFST pipelines. The builder supports multiple configuration modes:
+/// WFST pipelines. The builder supports two explicit construction modes:
 ///
 /// 1. **Pattern mode**: Use a phonetic regex pattern (e.g., "(ph|f)one")
-/// 2. **Rule mode**: Use explicit rewrite rules (e.g., "ph -> f")
-/// 3. **Combined mode**: Use both patterns and rules
+///    with `build_phonetic_nfa` or dictionary-backed `build` when the
+///    `phonetic-rules` feature is enabled.
+/// 2. **Rule mode**: Use explicit rewrite rules (e.g., "ph -> f") with
+///    [`Self::build_rewrite_wfst`].
+///
+/// Pattern and rewrite-rule configurations are intentionally mutually
+/// exclusive for build methods that return a single WFST. This avoids silently
+/// dropping rewrite rules from dictionary-backed phonetic builds.
 ///
 /// # Example
 ///
-/// ```rust,ignore
-/// use liblevenshtein::wfst::PhoneticPipelineBuilder;
-/// use liblevenshtein::dictionary::dynamic_dawg_char::DynamicDawgChar;
+/// ```rust,no_run
+/// use duallity::PhoneticPipelineBuilder;
+/// use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 ///
-/// let dict = DynamicDawgChar::from_terms(vec!["phone", "fone"]);
+/// let dict = DynamicDawgChar::<()>::from_terms(vec!["phone", "fone"]);
 ///
 /// // Pattern-based pipeline
-/// let pattern_pipeline = PhoneticPipelineBuilder::new()
-///     .phonetic_pattern("(ph|f)one")
-///     .max_edit_distance(2)
-///     .dictionary(&dict)
-///     .build();
+/// #[cfg(feature = "phonetic-rules")]
+/// {
+///     let pattern_pipeline = PhoneticPipelineBuilder::new()
+///         .phonetic_pattern("(ph|f)one")
+///         .max_edit_distance(2)
+///         .dictionary(&dict)
+///         .build();
+/// }
 ///
 /// // Rule-based pipeline
 /// let rule_pipeline = PhoneticPipelineBuilder::new()
 ///     .add_rewrite_rule("ph", "f", 0.1)
+///     .expect("valid rewrite rule")
 ///     .add_rewrite_rule("c", "k", 0.2)
+///     .expect("valid rewrite rule")
 ///     .max_edit_distance(1)
-///     .dictionary(&dict)
-///     .build();
+///     .build_rewrite_wfst();
 /// ```
 pub struct PhoneticPipelineBuilder<D = ()> {
     config: PhoneticPipelineConfig,
+    /// Consumed only by the dictionary-integrated phonetic builds, which require
+    /// the `phonetic-rules` feature; without that feature no build method reads it,
+    /// so the field is deliberately inert there (the type parameter `D` still binds it).
+    #[cfg_attr(not(feature = "phonetic-rules"), allow(dead_code))]
     dictionary: Option<D>,
 }
 
@@ -124,6 +141,14 @@ impl Default for PhoneticPipelineBuilder<()> {
 
 // Configuration methods that don't require Dictionary bounds
 impl<D> PhoneticPipelineBuilder<D> {
+    #[cfg(feature = "phonetic-rules")]
+    fn configured_pattern(&self) -> Result<&str, String> {
+        self.config
+            .pattern
+            .as_deref()
+            .ok_or_else(|| "No phonetic pattern specified".to_string())
+    }
+
     /// Set the phonetic pattern (regex syntax).
     ///
     /// The pattern uses phonetic regex syntax:
@@ -144,29 +169,46 @@ impl<D> PhoneticPipelineBuilder<D> {
     }
 
     /// Set the phonetic weight (cost for phonetic transformations).
-    pub fn phonetic_weight(mut self, weight: f64) -> Self {
+    pub fn phonetic_weight(mut self, weight: f64) -> Result<Self, crate::InvalidWeightError> {
+        let weight = crate::validate_finite_nonnegative_weight("phonetic_weight", weight)?;
+
         self.config.phonetic_weight = weight;
-        self
+        Ok(self)
     }
 
     /// Set the edit distance weight multiplier.
-    pub fn edit_weight(mut self, weight: f64) -> Self {
+    pub fn edit_weight(mut self, weight: f64) -> Result<Self, crate::InvalidWeightError> {
+        let weight = crate::validate_finite_nonnegative_weight("edit_weight", weight)?;
+
         self.config.edit_weight = weight;
-        self
+        Ok(self)
     }
 
     /// Add a rewrite rule.
-    pub fn add_rewrite_rule(mut self, input: &str, output: &str, cost: f64) -> Self {
+    pub fn add_rewrite_rule(
+        mut self,
+        input: &str,
+        output: &str,
+        cost: f64,
+    ) -> Result<Self, crate::InvalidWeightError> {
         self.config
             .rewrite_rules
-            .push(RewriteRule::with_cost(input, output, cost));
-        self
+            .push(RewriteRule::with_cost(input, output, cost)?);
+        Ok(self)
     }
 
     /// Add multiple rewrite rules.
-    pub fn add_rewrite_rules(mut self, rules: Vec<RewriteRule>) -> Self {
+    pub fn add_rewrite_rules(
+        mut self,
+        rules: Vec<RewriteRule>,
+    ) -> Result<Self, crate::InvalidWeightError> {
+        for rule in &rules {
+            crate::validate_finite_nonnegative_weight("rewrite rule cost", rule.cost)?;
+        }
+
+        self.config.rewrite_rules.reserve(rules.len());
         self.config.rewrite_rules.extend(rules);
-        self
+        Ok(self)
     }
 
     /// Set whether to allow identity (passthrough) transitions.
@@ -191,38 +233,49 @@ impl<D> PhoneticPipelineBuilder<D> {
     /// Build a rewrite WFST from the configured rules.
     ///
     /// This creates a standalone rewrite WFST without dictionary integration.
-    pub fn build_rewrite_wfst(&self) -> RewriteWfst {
-        let mut wfst = RewriteWfst::with_rules(self.config.rewrite_rules.clone());
+    pub fn build_rewrite_wfst(&self) -> Result<RewriteWfst, crate::InvalidWeightError> {
+        let mut wfst = RewriteWfst::with_rules(self.config.rewrite_rules.clone())?;
         wfst.set_allow_identity(self.config.allow_identity);
-        wfst
+        Ok(wfst)
+    }
+
+    #[cfg(feature = "phonetic-rules")]
+    fn ensure_pattern_mode_only(&self, build_name: &str) -> Result<(), String> {
+        if self.config.rewrite_rules.is_empty() {
+            return Ok(());
+        }
+
+        Err(format!(
+            "{build_name} accepts only phonetic-pattern configuration; use build_rewrite_wfst() for rewrite-rule configuration"
+        ))
     }
 }
 
 // Phonetic NFA building (doesn't require dictionary)
 #[cfg(feature = "phonetic-rules")]
 impl<D> PhoneticPipelineBuilder<D> {
-    /// Build a phonetic WFST from the configured pattern.
-    ///
-    /// This creates a phonetic NFA WFST from the pattern.
-    pub fn build_phonetic_nfa(&self) -> Result<crate::phonetic_nfa_wfst::PhoneticNfaWfst, String> {
-        let pattern = self
-            .config
-            .pattern
-            .as_ref()
-            .ok_or_else(|| "No phonetic pattern specified".to_string())?;
+    fn compile_configured_pattern(&self) -> Result<liblevenshtein::phonetic::nfa::NFAChar, String> {
+        let pattern = self.configured_pattern()?;
 
         use liblevenshtein::phonetic::nfa::compiler::compile;
         use liblevenshtein::phonetic::regex::parse;
 
         let ast = parse(pattern).map_err(|e| format!("Parse error: {:?}", e))?;
-        let nfa = compile(&ast).map_err(|e| format!("Compile error: {:?}", e))?;
+        compile(&ast).map_err(|e| format!("Compile error: {:?}", e))
+    }
 
-        Ok(
-            crate::phonetic_nfa_wfst::PhoneticNfaWfst::with_phonetic_weight(
-                nfa,
-                self.config.phonetic_weight,
-            ),
+    /// Build a phonetic WFST from the configured pattern.
+    ///
+    /// This creates a phonetic NFA WFST from the pattern.
+    pub fn build_phonetic_nfa(&self) -> Result<crate::phonetic_nfa_wfst::PhoneticNfaWfst, String> {
+        self.ensure_pattern_mode_only("build_phonetic_nfa()")?;
+        let nfa = self.compile_configured_pattern()?;
+
+        crate::phonetic_nfa_wfst::PhoneticNfaWfst::with_phonetic_weight(
+            nfa,
+            self.config.phonetic_weight,
         )
+        .map_err(|error| error.to_string())
     }
 }
 
@@ -239,29 +292,22 @@ where
     /// This creates a PhoneticWfst that integrates the phonetic NFA,
     /// Levenshtein automaton, and dictionary.
     pub fn build(&self) -> Result<crate::phonetic_wfst::PhoneticWfst<D>, String> {
+        self.ensure_pattern_mode_only("build()")?;
+
         let dictionary = self
             .dictionary
             .as_ref()
             .ok_or_else(|| "No dictionary specified".to_string())?;
+        let nfa = self.compile_configured_pattern()?;
 
-        let pattern = self
-            .config
-            .pattern
-            .as_ref()
-            .ok_or_else(|| "No phonetic pattern specified".to_string())?;
-
-        use liblevenshtein::phonetic::nfa::compiler::compile;
-        use liblevenshtein::phonetic::regex::parse;
-
-        let ast = parse(pattern).map_err(|e| format!("Parse error: {:?}", e))?;
-        let nfa = compile(&ast).map_err(|e| format!("Compile error: {:?}", e))?;
-
-        Ok(crate::phonetic_wfst::PhoneticWfst::with_phonetic_weight(
+        crate::phonetic_wfst::PhoneticWfst::with_weights(
             dictionary,
             nfa,
             self.config.max_distance,
             self.config.phonetic_weight,
-        ))
+            self.config.edit_weight,
+        )
+        .map_err(|error| error.to_string())
     }
 }
 
@@ -294,7 +340,7 @@ impl Eq for PhoneticMatch {}
 
 impl PartialEq for PhoneticMatch {
     fn eq(&self, other: &Self) -> bool {
-        self.term == other.term && self.total_cost == other.total_cost
+        self.cmp(other) == std::cmp::Ordering::Equal
     }
 }
 
@@ -306,10 +352,9 @@ impl PartialOrd for PhoneticMatch {
 
 impl Ord for PhoneticMatch {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match self.total_cost.partial_cmp(&other.total_cost) {
-            Some(std::cmp::Ordering::Equal) | None => self.term.cmp(&other.term),
-            Some(ord) => ord,
-        }
+        self.total_cost
+            .total_cmp(&other.total_cost)
+            .then_with(|| self.term.cmp(&other.term))
     }
 }
 
@@ -322,6 +367,7 @@ mod tests {
         let config = PhoneticPipelineConfig::default();
         assert_eq!(config.max_distance, 2);
         assert_eq!(config.phonetic_weight, 0.0);
+        assert_eq!(config.edit_weight, 1.0);
         assert!(config.allow_identity);
     }
 
@@ -336,29 +382,67 @@ mod tests {
         let builder = PhoneticPipelineBuilder::new()
             .phonetic_pattern("(ph|f)one")
             .max_edit_distance(3)
-            .phonetic_weight(0.5);
+            .phonetic_weight(0.5)
+            .expect("valid phonetic weight")
+            .edit_weight(1.5)
+            .expect("valid edit weight");
 
         assert_eq!(builder.config.pattern, Some("(ph|f)one".to_string()));
         assert_eq!(builder.config.max_distance, 3);
         assert_eq!(builder.config.phonetic_weight, 0.5);
+        assert_eq!(builder.config.edit_weight, 1.5);
     }
 
     #[test]
     fn test_pipeline_builder_rules() {
         let builder = PhoneticPipelineBuilder::new()
             .add_rewrite_rule("ph", "f", 0.1)
-            .add_rewrite_rule("c", "k", 0.2);
+            .expect("valid rewrite rule")
+            .add_rewrite_rule("c", "k", 0.2)
+            .expect("valid rewrite rule");
 
         assert_eq!(builder.config.rewrite_rules.len(), 2);
+    }
+
+    #[test]
+    fn test_pipeline_builder_rejects_negative_phonetic_weight() {
+        let error = match PhoneticPipelineBuilder::new().phonetic_weight(-0.1) {
+            Ok(_) => std::panic::panic_any("negative phonetic weight should be rejected"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error.name(), "phonetic_weight");
+        assert_eq!(error.value(), -0.1);
+    }
+
+    #[test]
+    fn test_pipeline_builder_rejects_invalid_bulk_rewrite_rule_cost() {
+        let rule = RewriteRule {
+            input: "ph".to_string(),
+            output: "f".to_string(),
+            cost: f64::NAN,
+            priority: 0,
+        };
+
+        let error = match PhoneticPipelineBuilder::new().add_rewrite_rules(vec![rule]) {
+            Ok(_) => std::panic::panic_any("NaN rewrite cost should be rejected"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error.name(), "rewrite rule cost");
+        assert!(error.value().is_nan());
     }
 
     #[test]
     fn test_pipeline_builder_rewrite_wfst() {
         let builder = PhoneticPipelineBuilder::new()
             .add_rewrite_rule("ph", "f", 0.1)
+            .expect("valid rewrite rule")
             .allow_identity(false);
 
-        let wfst = builder.build_rewrite_wfst();
+        let wfst = builder
+            .build_rewrite_wfst()
+            .expect("valid rewrite configuration");
         assert_eq!(wfst.num_rules(), 1);
     }
 
@@ -374,14 +458,54 @@ mod tests {
     }
 
     #[test]
+    fn test_phonetic_match_ordering_is_total_for_nonfinite_costs() {
+        let finite = PhoneticMatch::new("finite".to_string(), 1.0, 0.0);
+        let infinite = PhoneticMatch::new("infinite".to_string(), f64::INFINITY, 0.0);
+        let nan_a = PhoneticMatch::new("nan-a".to_string(), f64::NAN, 0.0);
+        let nan_b = PhoneticMatch::new("nan-b".to_string(), f64::NAN, 0.0);
+
+        let mut matches = [
+            nan_b.clone(),
+            finite.clone(),
+            nan_a.clone(),
+            infinite.clone(),
+        ];
+        matches.sort();
+
+        assert_eq!(matches[0].term, finite.term);
+        assert_eq!(matches[1].term, infinite.term);
+        assert_eq!(matches[2].term, nan_a.term);
+        assert_eq!(matches[3].term, nan_b.term);
+        assert_eq!(nan_a, nan_a.clone());
+    }
+
+    #[test]
     #[cfg(feature = "phonetic-rules")]
     fn test_pipeline_builder_build_nfa() {
         let builder = PhoneticPipelineBuilder::new()
             .phonetic_pattern("(a|b)c")
-            .phonetic_weight(0.1);
+            .phonetic_weight(0.1)
+            .expect("valid phonetic weight");
 
         let result = builder.build_phonetic_nfa();
         assert!(result.is_ok());
+    }
+
+    #[test]
+    #[cfg(feature = "phonetic-rules")]
+    fn test_pipeline_builder_build_nfa_rejects_mixed_pattern_and_rules() {
+        let builder = PhoneticPipelineBuilder::new()
+            .phonetic_pattern("(a|b)c")
+            .add_rewrite_rule("ph", "f", 0.1)
+            .expect("valid rewrite rule");
+
+        let error = match builder.build_phonetic_nfa() {
+            Ok(_) => std::panic::panic_any("mixed pattern/rule NFA build should be rejected"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("build_phonetic_nfa() accepts only phonetic-pattern"));
+        assert!(error.contains("build_rewrite_wfst()"));
     }
 
     #[test]
@@ -394,6 +518,10 @@ mod tests {
         let builder = PhoneticPipelineBuilder::new()
             .phonetic_pattern("(ph|f)one")
             .max_edit_distance(2)
+            .phonetic_weight(0.25)
+            .expect("valid phonetic weight")
+            .edit_weight(1.5)
+            .expect("valid edit weight")
             .dictionary(&dict);
 
         let result = builder.build();
@@ -401,5 +529,50 @@ mod tests {
 
         let wfst = result.expect("test fixture: build must be Ok");
         assert_eq!(wfst.max_distance(), 2);
+        assert_eq!(wfst.phonetic_weight(), 0.25);
+        assert_eq!(wfst.edit_weight(), 1.5);
+    }
+
+    #[test]
+    #[cfg(feature = "phonetic-rules")]
+    fn test_pipeline_builder_build_full_rejects_mixed_pattern_and_rules() {
+        use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
+
+        let dict = DynamicDawgChar::<()>::from_terms(vec!["phone", "fone", "help"]);
+        let builder = PhoneticPipelineBuilder::new()
+            .phonetic_pattern("(ph|f)one")
+            .add_rewrite_rule("ph", "f", 0.1)
+            .expect("valid rewrite rule")
+            .dictionary(&dict);
+
+        let error = match builder.build() {
+            Ok(_) => {
+                std::panic::panic_any("mixed pattern/rule dictionary build should be rejected")
+            }
+            Err(error) => error,
+        };
+
+        assert!(error.contains("build() accepts only phonetic-pattern"));
+        assert!(error.contains("build_rewrite_wfst()"));
+    }
+
+    #[test]
+    #[cfg(feature = "phonetic-rules")]
+    fn test_pipeline_builder_build_full_rejects_rule_only_configuration() {
+        use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
+
+        let dict = DynamicDawgChar::<()>::from_terms(vec!["phone", "fone", "help"]);
+        let builder = PhoneticPipelineBuilder::new()
+            .add_rewrite_rule("ph", "f", 0.1)
+            .expect("valid rewrite rule")
+            .dictionary(&dict);
+
+        let error = match builder.build() {
+            Ok(_) => std::panic::panic_any("rule-only dictionary build should be rejected"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("build() accepts only phonetic-pattern"));
+        assert!(error.contains("build_rewrite_wfst()"));
     }
 }

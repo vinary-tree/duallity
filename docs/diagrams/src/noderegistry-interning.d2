@@ -1,0 +1,30 @@
+# D15 — DictionaryNodeRegistry exact-key interning.
+# Depicts: how dictionary nodes (which lack inherent ids) get stable u32 ids via a compact exact
+# path-step key, plus the Arc<RwLock> concurrency boundary.
+direction: right
+
+title: |md
+  # D15 · DictionaryNodeRegistry — stable node ids by exact path-step key
+| { near: top-center }
+
+trie: "Dictionary trie traversal\n(parent node, edge label)" { style.fill: "#D5F5E3"; style.stroke: "#34495E" }
+key: "DictionaryNodeKey::child(parent_id, edge_label)\n(parent << 21) | char" { style.fill: "#EAECEE"; style.stroke: "#34495E" }
+
+registry: "DictionaryNodeRegistry  (Arc<RwLock<…>>)" {
+  style.fill: "#D6EAF8"; style.stroke: "#34495E"
+  fwd: "node_to_id:\nFxHashMap<DictionaryNodeKey, u32>" { style.fill: "#FFFFFF"; style.stroke: "#34495E" }
+  rev: "id_to_node:\nVec<Node>" { style.fill: "#FFFFFF"; style.stroke: "#34495E" }
+}
+
+id: "stable u32 node id\n(used in StateId = d·M + a)" { style.fill: "#D6EAF8"; style.stroke: "#34495E" }
+
+trie -> key -> registry.fwd: "intern" { style.stroke: "#2ECC71" }
+registry.fwd -> id { style.stroke: "#2ECC71" }
+id -> registry.rev: "id_to_node[id]" { style.stroke: "#E67E22"; style.stroke-dash: 3 }
+
+invariant: |md
+  **Exactness invariant:** child keys pack `u32 parent_id` plus the 21-bit Unicode scalar value of
+  `edge_label`; `u64::MAX` is reserved for the root. `FxHashMap` may collide internally, but equality
+  checks prevent node aliasing. Read/write access is guarded by `RwLock`; crate-local helpers recover
+  poisoned guards with `PoisonError::into_inner()`.
+| { near: bottom-center; style.fill: "#E8F8F5"; style.stroke: "#16A085" }

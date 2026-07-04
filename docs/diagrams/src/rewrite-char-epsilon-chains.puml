@@ -1,0 +1,41 @@
+@startuml rewrite-char-epsilon-chains
+' D10 — RewriteRule as char/ε transition chains (post-fix semantics, commit 314f285).
+' Depicts: a multi-symbol rewrite rule is encoded as a char/ε chain on BOTH tapes, with the rule
+' cost deposited on the first step; state 0 is the home/accepting state with identity self-loops.
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam state {
+  BackgroundColor #D6EAF8
+  BorderColor #34495E
+  FontName "DejaVu Sans"
+}
+title D10 · RewriteWfst — multi-symbol rules as char/ε chains\nstate 0 = home / accepting · cost on the first step · continuations are free (weight 0)
+
+state "0\nhome / accepting" as H0 #F9E79F
+
+state "many-to-one:  ph → f  (cost 0.1)" as G1 {
+  state "0" as A0 #F9E79F
+  state "s₁" as A1
+  A0 -[#E74C3C]-> A1 : <b>p : f</b> / 0.1
+  A1 -[#3498DB]-> A0 : <b>h : ε</b> / 0
+}
+
+state "one-to-many:  f → ph  (cost 0.1)" as G2 {
+  state "0" as B0 #F9E79F
+  state "s₁" as B1
+  B0 -[#E74C3C]-> B1 : <b>f : p</b> / 0.1
+  B1 -[#E67E22]-> B0 : <b>ε : h</b> / 0
+}
+
+H0 -[#2ECC71]-> H0 : <b>c : c</b> / 0   (identity self-loop,\nASCII alphanumerics)
+
+note bottom of G1
+  "ph→f": consume input 'p','h'; emit output 'f','ε'.
+  The h:ε step shortens the input tape.
+end note
+note bottom of G2
+  "f→ph": consume input 'f','ε'; emit output 'p','h'.
+  The ε:h step lengthens the output tape.
+end note
+@enduml

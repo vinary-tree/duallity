@@ -1,0 +1,33 @@
+# D7 — WallBreaker split → seed → extend → verify pipeline.
+# Depicts: the four-stage algorithm (upstream in liblevenshtein::wallbreaker) that WallBreakerWfst
+# runs eagerly at construction to defeat the "wall effect" at large k.
+direction: right
+
+title: |md
+  # D7 · WallBreaker pipeline — split → seed → extend → verify
+| { near: top-center }
+
+q: "Query q,  bound k" { style.fill: "#FDEBD0"; style.stroke: "#34495E" }
+
+split: "1 · Pigeonhole split\nk+1 pieces (Standard)\n2k+1 (Transposition / Merge-Split)\n→ ≥1 piece is uncorrupted" {
+  style.fill: "#FADBD8"; style.stroke: "#34495E"
+}
+seed: "2 · Exact-substring seeds\nSubstringDictionary::find_exact_substring\non the SCDAWG (length-linear, k-independent)" {
+  style.fill: "#D5F5E3"; style.stroke: "#34495E"
+}
+extend: "3 · Bidirectional extension\nleft → root via parent()\nright → leaves via edges()\n4-op Levenshtein DFS, ≤ k pruning" {
+  style.fill: "#FADBD8"; style.stroke: "#34495E"
+}
+verify: "4 · Verify + dedup\nrecompute exact edit distance\nHashSet<String> seen_terms" {
+  style.fill: "#FADBD8"; style.stroke: "#34495E"
+}
+out: "Vec<WallBreakerResult>\n{ term, distance }\n→ WFST state forest (see D9)" {
+  style.fill: "#E8DAEF"; style.stroke: "#34495E"
+}
+
+q -> split -> seed -> extend -> verify -> out { style.stroke: "#34495E" }
+
+wall: |md
+  **The wall:** a naïve automaton must explore *all* prefixes up to length k before any can
+  prune — a combinatorial wall. WallBreaker jumps past it by seeding on an exact, uncorrupted piece.
+| { near: bottom-center; style.fill: "#FCF3CF" }

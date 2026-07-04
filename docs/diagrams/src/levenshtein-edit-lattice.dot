@@ -1,0 +1,73 @@
+// D1 — Levenshtein edit lattice (Wagner–Fischer grid).
+// Depicts: the (query-position i, term-position j) lattice; the minimum-cost path = edit distance.
+// Example: query "ac" (rows, input tape) vs term "abc" (columns, output tape); edit distance = 1.
+// Colors follow docs/diagrams/README.md: match=green, substitute=red, insert=blue, delete=orange.
+digraph EditLattice {
+  layout=neato;
+  splines=true;
+  overlap=false;
+  bgcolor="#FFFFFF";
+  fontname="DejaVu Sans";
+  labelloc="t";
+  label="D1 · Edit lattice for query \"ac\" → term \"abc\"   (min-cost path = edit distance = 1)\nrows i = query position (input)   ·   columns j = term position (output)";
+  node  [shape=circle, width=0.46, fixedsize=true, style=filled, fillcolor="#FFFFFF",
+         color="#34495E", fontname="DejaVu Sans", fontsize=10];
+  edge  [fontname="DejaVu Sans", fontsize=9, arrowsize=0.55, color="#34495E"];
+
+  // --- axis annotations ---
+  th [pos="1.7,0.95!", shape=plaintext, style="", label="a"];
+  tb [pos="3.4,0.95!", shape=plaintext, style="", label="b"];
+  tc [pos="5.1,0.95!", shape=plaintext, style="", label="c"];
+  qa [pos="-1.05,-1.3!", shape=plaintext, style="", label="a"];
+  qc [pos="-1.05,-2.6!", shape=plaintext, style="", label="c"];
+
+  // --- grid nodes: n{i}{j}, i=0..2 (down), j=0..3 (right) ---
+  n00 [pos="0,0!",     label="0,0", fillcolor="#FDEBD0"];
+  n01 [pos="1.7,0!",   label="0,1"];
+  n02 [pos="3.4,0!",   label="0,2"];
+  n03 [pos="5.1,0!",   label="0,3"];
+  n10 [pos="0,-1.3!",  label="1,0"];
+  n11 [pos="1.7,-1.3!",label="1,1"];
+  n12 [pos="3.4,-1.3!",label="1,2"];
+  n13 [pos="5.1,-1.3!",label="1,3"];
+  n20 [pos="0,-2.6!",  label="2,0"];
+  n21 [pos="1.7,-2.6!",label="2,1"];
+  n22 [pos="3.4,-2.6!",label="2,2"];
+  n23 [pos="5.1,-2.6!",label="2,3", fillcolor="#F9E79F", penwidth=2.4, color="#B7950B"];
+
+  // --- diagonal edges: match (green) / substitute (red) ---
+  n00 -> n11 [color="#2ECC71", penwidth=3.0, label="a:a / 0", fontcolor="#1E8449"];
+  n01 -> n12 [color="#E74C3C"];
+  n02 -> n13 [color="#E74C3C"];
+  n10 -> n21 [color="#E74C3C"];
+  n11 -> n22 [color="#E74C3C"];
+  n12 -> n23 [color="#2ECC71", penwidth=3.0, label="c:c / 0", fontcolor="#1E8449"];
+
+  // --- horizontal edges: insert dictionary char (blue, ε on input tape) ---
+  n00 -> n01 [color="#3498DB"];
+  n01 -> n02 [color="#3498DB"];
+  n02 -> n03 [color="#3498DB"];
+  n11 -> n12 [color="#3498DB", penwidth=3.0, label="ε:b / 1", fontcolor="#21618C"];
+  n10 -> n11 [color="#3498DB"];
+  n12 -> n13 [color="#3498DB"];
+  n20 -> n21 [color="#3498DB"];
+  n21 -> n22 [color="#3498DB"];
+  n22 -> n23 [color="#3498DB"];
+
+  // --- vertical edges: delete (orange, ε on output tape) ---
+  n00 -> n10 [color="#E67E22"];
+  n10 -> n20 [color="#E67E22"];
+  n01 -> n11 [color="#E67E22"];
+  n11 -> n21 [color="#E67E22"];
+  n02 -> n12 [color="#E67E22"];
+  n12 -> n22 [color="#E67E22"];
+  n03 -> n13 [color="#E67E22"];
+  n13 -> n23 [color="#E67E22"];
+
+  // --- legend ---
+  subgraph cluster_legend {
+    label="operation : weight";
+    fontname="DejaVu Sans"; fontsize=10; color="#AAB7B8"; style="rounded";
+    lm [pos="1.7,-3.9!", shape=plaintext, style="", label=<<font color="#1E8449">━ match&nbsp;0</font> &nbsp; <font color="#C0392B">━ substitute&nbsp;1</font> &nbsp; <font color="#21618C">━ insert&nbsp;1</font> &nbsp; <font color="#BA4A00">━ delete&nbsp;1</font>>];
+  }
+}

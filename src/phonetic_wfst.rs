@@ -11,15 +11,14 @@
 //! - **WFST composition**: Can be composed with language models
 
 use lling_llang::prelude::{
-    LazyState, LazyWfst, Semiring, StateId, StateSource, TropicalWeight, WeightedTransition, Wfst,
+    LazyWfst, Semiring, StateId, StateSource, TropicalWeight, WeightedTransition, Wfst,
 };
-use rustc_hash::FxHashMap;
-use smallvec::SmallVec;
 
 use libdictenstein::{Dictionary, DictionaryNode};
 
-use crate::state_encoding;
-
+use crate::lazy_cache::{
+    empty_char_transitions, ensure_cached_char_state, CachedCharState, LazyStateCache,
+};
 #[cfg(feature = "phonetic-rules")]
 use crate::phonetic_state_source::PhoneticStateSource;
 #[cfg(feature = "phonetic-rules")]
@@ -39,15 +38,15 @@ use liblevenshtein::phonetic::nfa::NFAChar;
 ///
 /// # Example
 ///
-/// ```rust,ignore
-/// use liblevenshtein::wfst::PhoneticWfst;
-/// use liblevenshtein::dictionary::dynamic_dawg_char::DynamicDawgChar;
+/// ```rust,no_run
+/// use duallity::PhoneticWfst;
+/// use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 /// use liblevenshtein::phonetic::nfa::compile;
 /// use liblevenshtein::phonetic::regex::parse;
 /// use lling_llang::prelude::*;
 ///
-/// let dict = DynamicDawgChar::from_terms(vec!["phone", "fone", "bone"]);
-/// let nfa = compile(&parse("(ph|f)one").unwrap()).unwrap();
+/// let dict = DynamicDawgChar::<()>::from_terms(vec!["phone", "fone", "bone"]);
+/// let nfa = compile(&parse("(ph|f)one").expect("valid pattern")).expect("compiles");
 /// let wfst = PhoneticWfst::new(&dict, nfa, 2);
 ///
 /// // Use with lling-llang's composition
@@ -64,25 +63,13 @@ where
     /// The state source for computing transitions
     state_source: PhoneticStateSource<D>,
     /// Cached states (state_id -> computed state info)
-    cache: FxHashMap<StateId, CachedState>,
+    cache: LazyStateCache<CachedCharState>,
     /// Maximum edit distance
     max_distance: u8,
     /// Phonetic weight
     phonetic_weight: f64,
-    /// Maximum product states for state encoding
-    max_product_states: u32,
-    /// Cache policy
-    cache_policy: lling_llang::wfst::CachePolicy,
-    /// Maximum cache size for LRU policy
-    max_cache_size: usize,
-}
-
-/// Cached state information for a single WFST state.
-#[derive(Clone)]
-struct CachedState {
-    is_final: bool,
-    final_weight: TropicalWeight,
-    transitions: SmallVec<[WeightedTransition<char, TropicalWeight>; 4]>,
+    /// Edit distance weight multiplier
+    edit_weight: f64,
 }
 
 /// Default maximum cache size for LRU policy (100,000 states)
@@ -107,7 +94,8 @@ where
     ///
     /// A new `PhoneticWfst` ready for composition or traversal.
     pub fn new(dictionary: &D, nfa: NFAChar, max_distance: u8) -> Self {
-        Self::with_phonetic_weight(dictionary, nfa, max_distance, 0.0)
+        let state_source = PhoneticStateSource::new(dictionary, nfa, max_distance);
+        Self::from_state_source(state_source, max_distance, 0.0, 1.0)
     }
 
     /// Create a new phonetic WFST with a custom phonetic weight.
@@ -123,25 +111,57 @@ where
         nfa: NFAChar,
         max_distance: u8,
         phonetic_weight: f64,
-    ) -> Self {
-        let state_source = PhoneticStateSource::with_phonetic_weight(
+    ) -> Result<Self, crate::InvalidWeightError> {
+        Self::with_weights(dictionary, nfa, max_distance, phonetic_weight, 1.0)
+    }
+
+    /// Create a new phonetic WFST with custom phonetic and edit weights.
+    ///
+    /// `phonetic_weight` is charged on each consumed dictionary/NFA edge. `edit_weight`
+    /// scales the edit-distance component contributed by accepting final weights.
+    ///
+    /// # Arguments
+    ///
+    /// - `dictionary`: The dictionary to search
+    /// - `nfa`: The phonetic NFA pattern
+    /// - `max_distance`: Maximum edit distance for matches, before weighting
+    /// - `phonetic_weight`: Cost added for consumed phonetic transitions
+    /// - `edit_weight`: Multiplier applied to accepted edit distance
+    pub fn with_weights(
+        dictionary: &D,
+        nfa: NFAChar,
+        max_distance: u8,
+        phonetic_weight: f64,
+        edit_weight: f64,
+    ) -> Result<Self, crate::InvalidWeightError> {
+        let state_source = PhoneticStateSource::with_weights(
             dictionary,
             nfa,
             max_distance,
             phonetic_weight,
-        );
+            edit_weight,
+        )?;
 
-        // Estimate max product states
-        let max_product_states = ((max_distance as u32 + 1) * 1000).max(10_000);
-
-        Self {
+        Ok(Self::from_state_source(
             state_source,
-            cache: FxHashMap::default(),
             max_distance,
             phonetic_weight,
-            max_product_states,
-            cache_policy: lling_llang::wfst::CachePolicy::CacheAll,
-            max_cache_size: DEFAULT_MAX_CACHE_SIZE,
+            edit_weight,
+        ))
+    }
+
+    fn from_state_source(
+        state_source: PhoneticStateSource<D>,
+        max_distance: u8,
+        phonetic_weight: f64,
+        edit_weight: f64,
+    ) -> Self {
+        Self {
+            state_source,
+            cache: LazyStateCache::new(DEFAULT_MAX_CACHE_SIZE),
+            max_distance,
+            phonetic_weight,
+            edit_weight,
         }
     }
 
@@ -155,55 +175,28 @@ where
         self.phonetic_weight
     }
 
+    /// Get the edit distance weight multiplier.
+    pub fn edit_weight(&self) -> f64 {
+        self.edit_weight
+    }
+
     /// Set the maximum cache size for LRU eviction.
     pub fn set_max_cache_size(&mut self, size: usize) {
-        self.max_cache_size = size;
+        self.cache.set_max_lru_states(size);
+    }
+
+    fn computed_state(&self, state: StateId) -> Option<&CachedCharState> {
+        self.cache.get(state)
     }
 
     /// Ensure a state is computed and cached.
     fn ensure_state(&mut self, state: StateId) {
-        if self.cache.contains_key(&state) {
-            return;
-        }
-
-        // Use the state source to compute the state
-        let lazy_state = self.state_source.compute_state(state);
-
-        // Convert LazyState to CachedState via pattern matching
-        let cached = match lazy_state {
-            LazyState::Computed {
-                is_final,
-                final_weight,
-                transitions,
-            } => CachedState {
-                is_final,
-                final_weight,
-                transitions,
-            },
-            LazyState::Pending => CachedState {
-                is_final: false,
-                final_weight: TropicalWeight::zero(),
-                transitions: SmallVec::new(),
-            },
-        };
-
-        // Apply cache eviction if using LRU and over limit
-        if let lling_llang::wfst::CachePolicy::Lru { max_states } = self.cache_policy {
-            let limit = if max_states > 0 {
-                max_states
-            } else {
-                self.max_cache_size
-            };
-            if self.cache.len() >= limit {
-                let to_remove = (self.cache.len() / 10).max(1);
-                let keys: Vec<_> = self.cache.keys().take(to_remove).copied().collect();
-                for key in keys {
-                    self.cache.remove(&key);
-                }
-            }
-        }
-
-        self.cache.insert(state, cached);
+        ensure_cached_char_state(
+            &mut self.cache,
+            &self.state_source,
+            state,
+            PhoneticStateSource::is_valid_product_state,
+        );
     }
 }
 
@@ -219,26 +212,37 @@ where
     }
 
     fn is_final(&self, state: StateId) -> bool {
-        self.cache.get(&state).map(|s| s.is_final).unwrap_or(false)
+        self.computed_state(state)
+            .map(|s| s.is_final)
+            .unwrap_or_else(|| self.state_source.final_weight_for_state(state).is_some())
     }
 
     fn final_weight(&self, state: StateId) -> TropicalWeight {
-        self.cache
-            .get(&state)
+        self.computed_state(state)
             .map(|s| s.final_weight)
-            .unwrap_or_else(TropicalWeight::zero)
+            .unwrap_or_else(|| {
+                self.state_source
+                    .final_weight_for_state(state)
+                    .unwrap_or_else(TropicalWeight::zero)
+            })
     }
 
     fn transitions(&self, state: StateId) -> &[WeightedTransition<char, TropicalWeight>] {
-        static EMPTY: &[WeightedTransition<char, TropicalWeight>] = &[];
-        self.cache
-            .get(&state)
-            .map(|s| s.transitions.as_slice())
-            .unwrap_or(EMPTY)
+        match self.computed_state(state) {
+            Some(cached) => cached.transitions.as_slice(),
+            None => empty_char_transitions(),
+        }
+    }
+
+    fn total_transitions(&self) -> usize {
+        self.cache.total_cached_transitions()
     }
 
     fn num_states(&self) -> usize {
-        self.cache.len()
+        self.state_source
+            .num_states_hint()
+            .unwrap_or(0)
+            .max(self.state_source.registered_state_id_span())
     }
 
     #[inline]
@@ -248,8 +252,7 @@ where
 
     #[inline]
     fn is_valid_state(&self, state: StateId) -> bool {
-        let (dict_node, product_state) = state_encoding::decode(state, self.max_product_states);
-        product_state < self.max_product_states || dict_node == 0
+        self.state_source.is_valid_product_state(state)
     }
 }
 
@@ -261,7 +264,7 @@ where
     <D::Node as DictionaryNode>::Unit: Into<char> + TryFrom<char> + Copy + Send + Sync,
 {
     fn is_expanded(&self, state: StateId) -> bool {
-        self.cache.contains_key(&state)
+        self.cache.is_expanded(state)
     }
 
     fn expand(&mut self, state: StateId) {
@@ -274,11 +277,11 @@ where
     }
 
     fn cache_policy(&self) -> lling_llang::wfst::CachePolicy {
-        self.cache_policy
+        self.cache.policy()
     }
 
     fn set_cache_policy(&mut self, policy: lling_llang::wfst::CachePolicy) {
-        self.cache_policy = policy;
+        self.cache.set_policy(policy);
     }
 
     fn computed_states(&self) -> usize {
@@ -304,6 +307,7 @@ where
     dictionary: D,
     max_distance: u8,
     phonetic_weight: f64,
+    edit_weight: f64,
 }
 
 #[cfg(feature = "phonetic-rules")]
@@ -319,13 +323,24 @@ where
             dictionary,
             max_distance,
             phonetic_weight: 0.0,
+            edit_weight: 1.0,
         }
     }
 
     /// Set the phonetic weight.
-    pub fn phonetic_weight(mut self, weight: f64) -> Self {
+    pub fn phonetic_weight(mut self, weight: f64) -> Result<Self, crate::InvalidWeightError> {
+        let weight = crate::validate_finite_nonnegative_weight("phonetic_weight", weight)?;
+
         self.phonetic_weight = weight;
-        self
+        Ok(self)
+    }
+
+    /// Set the edit distance weight multiplier.
+    pub fn edit_weight(mut self, weight: f64) -> Result<Self, crate::InvalidWeightError> {
+        let weight = crate::validate_finite_nonnegative_weight("edit_weight", weight)?;
+
+        self.edit_weight = weight;
+        Ok(self)
     }
 
     /// Build a PhoneticWfst from a pattern string.
@@ -344,12 +359,14 @@ where
         let ast = parse(pattern).map_err(|e| format!("Parse error: {:?}", e))?;
         let nfa = compile(&ast).map_err(|e| format!("Compile error: {:?}", e))?;
 
-        Ok(PhoneticWfst::with_phonetic_weight(
+        PhoneticWfst::with_weights(
             &self.dictionary,
             nfa,
             self.max_distance,
             self.phonetic_weight,
-        ))
+            self.edit_weight,
+        )
+        .map_err(|error| error.to_string())
     }
 }
 
@@ -357,9 +374,9 @@ where
 #[cfg(feature = "phonetic-rules")]
 mod tests {
     use super::*;
+    use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
     use liblevenshtein::phonetic::nfa::compiler::compile;
     use liblevenshtein::phonetic::regex::parse;
-    use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 
     #[test]
     fn test_phonetic_wfst_creation() {
@@ -369,6 +386,7 @@ mod tests {
 
         assert_eq!(wfst.max_distance(), 2);
         assert_eq!(wfst.phonetic_weight(), 0.0);
+        assert_eq!(wfst.edit_weight(), 1.0);
     }
 
     #[test]
@@ -378,9 +396,7 @@ mod tests {
         let wfst = PhoneticWfst::new(&dict, nfa, 2);
 
         let start = wfst.start();
-        let (dict_node, product_state) = state_encoding::decode(start, wfst.max_product_states);
-        assert_eq!(dict_node, 0);
-        assert_eq!(product_state, 0);
+        assert_eq!(start, 0);
     }
 
     #[test]
@@ -401,9 +417,47 @@ mod tests {
     fn test_phonetic_wfst_with_weight() {
         let dict = DynamicDawgChar::<()>::from_terms(vec!["phone"]);
         let nfa = compile(&parse("phone").expect("parse")).expect("compile");
-        let wfst = PhoneticWfst::with_phonetic_weight(&dict, nfa, 2, 0.5);
+        let wfst =
+            PhoneticWfst::with_phonetic_weight(&dict, nfa, 2, 0.5).expect("valid phonetic weight");
 
         assert_eq!(wfst.phonetic_weight(), 0.5);
+        assert_eq!(wfst.edit_weight(), 1.0);
+    }
+
+    #[test]
+    fn test_phonetic_wfst_with_weights() {
+        let dict = DynamicDawgChar::<()>::from_terms(vec!["phone"]);
+        let nfa = compile(&parse("phone").expect("parse")).expect("compile");
+        let wfst =
+            PhoneticWfst::with_weights(&dict, nfa, 2, 0.25, 1.5).expect("valid phonetic weights");
+
+        assert_eq!(wfst.phonetic_weight(), 0.25);
+        assert_eq!(wfst.edit_weight(), 1.5);
+    }
+
+    #[test]
+    fn test_phonetic_wfst_rejects_negative_edit_weight() {
+        let dict = DynamicDawgChar::<()>::from_terms(vec!["phone"]);
+        let nfa = compile(&parse("phone").expect("parse")).expect("compile");
+        let error = match PhoneticWfst::with_weights(&dict, nfa, 2, 0.25, -1.0) {
+            Ok(_) => std::panic::panic_any("negative edit weight should be rejected"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error.name(), "edit_weight");
+        assert_eq!(error.value(), -1.0);
+    }
+
+    #[test]
+    fn test_phonetic_wfst_builder_rejects_infinite_phonetic_weight() {
+        let dict = DynamicDawgChar::<()>::from_terms(vec!["phone"]);
+        let error = match PhoneticWfstBuilder::new(dict, 2).phonetic_weight(f64::INFINITY) {
+            Ok(_) => std::panic::panic_any("infinite phonetic weight should be rejected"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error.name(), "phonetic_weight");
+        assert!(error.value().is_infinite());
     }
 
     #[test]
@@ -425,12 +479,73 @@ mod tests {
     }
 
     #[test]
+    fn test_phonetic_wfst_rejects_invalid_state_without_caching() {
+        let dict = DynamicDawgChar::<()>::from_terms(vec!["test"]);
+        let nfa = compile(&parse("test").expect("parse")).expect("compile");
+        let mut wfst = PhoneticWfst::new(&dict, nfa, 1);
+        let invalid_state = u32::MAX;
+
+        assert!(!wfst.is_valid_state(invalid_state));
+        wfst.expand(invalid_state);
+
+        assert_eq!(wfst.computed_states(), 0);
+        assert!(wfst.transitions_lazy(invalid_state).is_empty());
+        assert_eq!(wfst.computed_states(), 0);
+    }
+
+    #[test]
+    fn test_phonetic_wfst_no_cache_policy_uses_scratch_only() {
+        let dict = DynamicDawgChar::<()>::from_terms(vec!["test"]);
+        let nfa = compile(&parse("test").expect("parse")).expect("compile");
+        let mut wfst = PhoneticWfst::new(&dict, nfa, 1);
+        wfst.set_cache_policy(lling_llang::wfst::CachePolicy::NoCache);
+
+        let start = wfst.start();
+        let transition_count = wfst.transitions_lazy(start).len();
+
+        assert!(transition_count > 0);
+        assert_eq!(wfst.computed_states(), 0);
+        assert!(!wfst.is_expanded(start));
+        assert_eq!(wfst.transitions(start).len(), transition_count);
+        assert_eq!(wfst.total_transitions(), transition_count);
+    }
+
+    #[test]
+    fn test_phonetic_wfst_lru_policy_evicts_least_recently_used_state() {
+        let dict = DynamicDawgChar::<()>::from_terms(vec!["test"]);
+        let nfa = compile(&parse("test").expect("parse")).expect("compile");
+        let mut wfst = PhoneticWfst::new(&dict, nfa, 1);
+        wfst.set_cache_policy(lling_llang::wfst::CachePolicy::Lru { max_states: 1 });
+
+        let start = wfst.start();
+        let next = wfst
+            .transitions_lazy(start)
+            .first()
+            .expect("expected start transition")
+            .to;
+
+        assert!(wfst.is_expanded(start));
+        assert_eq!(wfst.computed_states(), 1);
+
+        wfst.expand(next);
+
+        assert_eq!(wfst.computed_states(), 1);
+        assert!(!wfst.is_expanded(start));
+        assert!(wfst.is_expanded(next));
+    }
+
+    #[test]
     fn test_phonetic_wfst_builder() {
         let dict = DynamicDawgChar::<()>::from_terms(vec!["phone", "fone"]);
-        let builder = PhoneticWfstBuilder::new(dict, 2).phonetic_weight(0.1);
+        let builder = PhoneticWfstBuilder::new(dict, 2)
+            .phonetic_weight(0.1)
+            .expect("valid phonetic weight")
+            .edit_weight(1.5)
+            .expect("valid edit weight");
 
         let wfst = builder.build_from_pattern("(ph|f)one").expect("build");
         assert_eq!(wfst.max_distance(), 2);
         assert_eq!(wfst.phonetic_weight(), 0.1);
+        assert_eq!(wfst.edit_weight(), 1.5);
     }
 }

@@ -1,19 +1,22 @@
 //! Rule-based Phonetic Rewrite WFST.
 //!
 //! This module provides [`RewriteWfst`], a WFST that applies phonetic rewrite
-//! rules with optional context conditions. Unlike the NFA-based phonetic WFST,
-//! this provides explicit control over individual rewrite rules.
+//! rules as explicit character/epsilon transition chains. Unlike the
+//! NFA-based phonetic WFST, this provides direct control over individual
+//! unconditional rewrite rules.
 //!
 //! # Rewrite Rules
 //!
-//! Phonetic rewrite rules follow the format:
-//! - `input -> output` (unconditional)
-//! - `input -> output / left_context _ right_context` (contextual)
+//! Phonetic rewrite rules follow the unconditional format:
+//! - `input -> output`
 //!
 //! Examples:
 //! - `ph -> f` (ph always becomes f)
-//! - `c -> s / _[ei]` (c becomes s before e or i)
-//! - `e -> / _#` (e is deleted at word end)
+//! - `gh -> f` (as in rough -> ruff)
+//! - `e -> ` (e is deleted)
+//!
+//! Left/right context or word-boundary conditioning should be expanded into
+//! explicit unconditional rules before constructing [`RewriteWfst`].
 //!
 //! # Integration with WFST Pipelines
 //!
@@ -26,8 +29,13 @@
 use lling_llang::prelude::{
     LazyState, LazyWfst, Semiring, StateId, StateSource, TropicalWeight, WeightedTransition, Wfst,
 };
-use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
+
+use crate::lazy_cache::{empty_char_transitions, CachedCharState, LazyStateCache};
+use crate::phonetic_rewrite_support::{
+    prune_dominated_transitions, rewrite_state_count, usize_from_state_id, validate_rewrite_rule,
+    validate_rewrite_rules, ContinuationState, PreparedRewriteRule, PreparedRuleMetadata,
+};
 
 /// A phonetic rewrite rule.
 #[derive(Debug, Clone)]
@@ -54,7 +62,17 @@ impl RewriteRule {
     }
 
     /// Create a rewrite rule with cost.
-    pub fn with_cost(input: &str, output: &str, cost: f64) -> Self {
+    pub fn with_cost(
+        input: &str,
+        output: &str,
+        cost: f64,
+    ) -> Result<Self, crate::InvalidWeightError> {
+        let cost = crate::validate_finite_nonnegative_weight("rewrite rule cost", cost)?;
+
+        Ok(Self::from_validated_cost(input, output, cost))
+    }
+
+    fn from_validated_cost(input: &str, output: &str, cost: f64) -> Self {
         Self {
             input: input.to_string(),
             output: output.to_string(),
@@ -72,22 +90,23 @@ impl RewriteRule {
 
 /// A rule-based phonetic rewrite WFST.
 ///
-/// This WFST applies a set of rewrite rules to transform input strings.
-/// Rules are applied greedily, with higher priority rules matched first.
+/// This WFST exposes transitions for the configured rewrite rules. Higher
+/// priority rules are enumerated first; equal-priority rules keep insertion
+/// order.
 ///
 /// # State Encoding
 ///
-/// States encode the current position in the input buffer plus any
-/// partial rule matches in progress.
+/// State 0 is the home state. Non-zero states encode continuation positions in
+/// multi-symbol rewrite chains.
 ///
 /// # Example
 ///
-/// ```rust,ignore
-/// use liblevenshtein::wfst::RewriteWfst;
+/// ```rust,no_run
+/// use duallity::RewriteWfst;
 ///
 /// let mut wfst = RewriteWfst::new();
-/// wfst.add_rule("ph", "f", 0.1);  // ph -> f with cost 0.1
-/// wfst.add_rule("c", "s", 0.2);   // c -> s with cost 0.2
+/// wfst.add_rule("ph", "f", 0.1).expect("valid rewrite rule"); // ph -> f
+/// wfst.add_rule("c", "s", 0.2).expect("valid rewrite rule");  // c -> s
 ///
 /// // Compose with Levenshtein WFST
 /// // let pipeline = compose(wfst, levenshtein_wfst);
@@ -96,67 +115,82 @@ impl RewriteRule {
 pub struct RewriteWfst {
     /// Rewrite rules
     rules: Vec<RewriteRule>,
+    /// Pre-tokenized rule input/output strings, aligned with `rules`.
+    prepared_rules: Vec<PreparedRewriteRule>,
+    /// Rule indices ordered by descending priority, with insertion order as a tie-breaker.
+    priority_order: Vec<usize>,
+    /// Exclusive cumulative continuation-state count after each rule.
+    continuation_end_offsets: Vec<usize>,
+    /// Dense continuation-state lookup indexed by `state_id - 1`.
+    continuation_lookup: Vec<ContinuationState>,
     /// Number of continuation states used to emit multi-symbol rewrites.
     continuation_states: usize,
     /// State cache
-    cache: FxHashMap<StateId, CachedRewriteState>,
-    /// Cache policy
-    cache_policy: lling_llang::wfst::CachePolicy,
-    /// Maximum cache size
-    max_cache_size: usize,
+    cache: LazyStateCache<CachedCharState>,
     /// Allow identity transitions (passthrough without rewrite)
     allow_identity: bool,
 }
 
-/// Cached state information.
-#[derive(Clone)]
-struct CachedRewriteState {
-    is_final: bool,
-    final_weight: TropicalWeight,
-    transitions: SmallVec<[WeightedTransition<char, TropicalWeight>; 4]>,
-}
-
 /// Default maximum cache size
 const DEFAULT_MAX_CACHE_SIZE: usize = 10_000;
+const PRINTABLE_ASCII_IDENTITY_TRANSITIONS: usize = (b'~' - b' ' + 1) as usize;
 
 impl RewriteWfst {
     /// Create a new empty rewrite WFST.
     pub fn new() -> Self {
         Self {
             rules: Vec::new(),
+            prepared_rules: Vec::new(),
+            priority_order: Vec::new(),
+            continuation_end_offsets: Vec::new(),
+            continuation_lookup: Vec::new(),
             continuation_states: 0,
-            cache: FxHashMap::default(),
-            cache_policy: lling_llang::wfst::CachePolicy::CacheAll,
-            max_cache_size: DEFAULT_MAX_CACHE_SIZE,
+            cache: LazyStateCache::new(DEFAULT_MAX_CACHE_SIZE),
             allow_identity: true,
         }
     }
 
     /// Create a rewrite WFST with the given rules.
-    pub fn with_rules(rules: Vec<RewriteRule>) -> Self {
-        let continuation_states = continuation_state_count(&rules);
+    pub fn with_rules(rules: Vec<RewriteRule>) -> Result<Self, crate::InvalidWeightError> {
+        validate_rewrite_rules(&rules)?;
+
+        Ok(Self::from_validated_rules(rules))
+    }
+
+    fn from_validated_rules(rules: Vec<RewriteRule>) -> Self {
+        let metadata = PreparedRuleMetadata::from_rules(&rules);
         Self {
             rules,
-            continuation_states,
-            cache: FxHashMap::default(),
-            cache_policy: lling_llang::wfst::CachePolicy::CacheAll,
-            max_cache_size: DEFAULT_MAX_CACHE_SIZE,
+            prepared_rules: metadata.prepared_rules,
+            priority_order: metadata.priority_order,
+            continuation_end_offsets: metadata.continuation_end_offsets,
+            continuation_lookup: metadata.continuation_lookup,
+            continuation_states: metadata.continuation_states,
+            cache: LazyStateCache::new(DEFAULT_MAX_CACHE_SIZE),
             allow_identity: true,
         }
     }
 
     /// Add a rewrite rule.
-    pub fn add_rule(&mut self, input: &str, output: &str, cost: f64) {
-        self.rules.push(RewriteRule::with_cost(input, output, cost));
-        self.continuation_states = continuation_state_count(&self.rules);
-        self.cache.clear(); // Invalidate cache
+    pub fn add_rule(
+        &mut self,
+        input: &str,
+        output: &str,
+        cost: f64,
+    ) -> Result<(), crate::InvalidWeightError> {
+        let rule = RewriteRule::with_cost(input, output, cost)?;
+        self.append_validated_rule(rule);
+        self.clear_cache();
+        Ok(())
     }
 
     /// Add a pre-built rewrite rule.
-    pub fn add_rewrite_rule(&mut self, rule: RewriteRule) {
-        self.rules.push(rule);
-        self.continuation_states = continuation_state_count(&self.rules);
-        self.cache.clear();
+    pub fn add_rewrite_rule(&mut self, rule: RewriteRule) -> Result<(), crate::InvalidWeightError> {
+        validate_rewrite_rule(&rule)?;
+
+        self.append_validated_rule(rule);
+        self.clear_cache();
+        Ok(())
     }
 
     /// Set whether identity transitions are allowed.
@@ -165,7 +199,7 @@ impl RewriteWfst {
     /// When false, characters must match a rule to be accepted.
     pub fn set_allow_identity(&mut self, allow: bool) {
         self.allow_identity = allow;
-        self.cache.clear();
+        self.clear_cache();
     }
 
     /// Get the number of rules.
@@ -186,7 +220,21 @@ impl RewriteWfst {
         TropicalWeight,
         SmallVec<[WeightedTransition<char, TropicalWeight>; 4]>,
     ) {
-        let mut transitions = SmallVec::new();
+        if !self.is_known_state(state_id) {
+            return (false, TropicalWeight::zero(), SmallVec::new());
+        }
+
+        let transition_capacity = if state_id == 0 {
+            let identity_capacity = if self.allow_identity {
+                PRINTABLE_ASCII_IDENTITY_TRANSITIONS
+            } else {
+                0
+            };
+            self.priority_order.len().saturating_add(identity_capacity)
+        } else {
+            1
+        };
+        let mut transitions = SmallVec::with_capacity(transition_capacity);
 
         // State 0 is the initial/accepting state
         let is_final = state_id == 0;
@@ -196,24 +244,19 @@ impl RewriteWfst {
             TropicalWeight::zero()
         };
 
-        // Sort rules by priority (descending)
-        let mut sorted_rules: Vec<(usize, &RewriteRule)> = self.rules.iter().enumerate().collect();
-        sorted_rules.sort_by_key(|(_, r)| std::cmp::Reverse(r.priority));
-
         if state_id == 0 {
-            for (rule_index, rule) in &sorted_rules {
-                self.push_rule_step_transition(&mut transitions, *rule_index, rule, 0);
+            for &rule_index in &self.priority_order {
+                self.push_rule_step_transition(&mut transitions, rule_index, 0);
             }
         } else if let Some((rule_index, step)) = self.decode_continuation_state(state_id) {
-            if let Some(rule) = self.rules.get(rule_index) {
-                self.push_rule_step_transition(&mut transitions, rule_index, rule, step);
-            }
+            self.push_rule_step_transition(&mut transitions, rule_index, step);
         }
 
         // Add identity transitions if allowed
         if self.allow_identity && state_id == 0 {
-            // Add wildcard identity for any printable character
-            for c in ('a'..='z').chain('A'..='Z').chain('0'..='9') {
+            // The fixed rewrite alphabet is printable ASCII; regex-backed phonetic
+            // WFSTs handle alphabet-aware NFA expansion separately.
+            for c in ' '..='~' {
                 transitions.push(WeightedTransition::new(
                     state_id,
                     Some(c),
@@ -224,6 +267,8 @@ impl RewriteWfst {
             }
         }
 
+        prune_dominated_transitions(&mut transitions);
+
         (is_final, final_weight, transitions)
     }
 
@@ -231,31 +276,35 @@ impl RewriteWfst {
         &self,
         transitions: &mut SmallVec<[WeightedTransition<char, TropicalWeight>; 4]>,
         rule_index: usize,
-        rule: &RewriteRule,
         step: usize,
     ) {
-        let input_chars: Vec<char> = rule.input.chars().collect();
-        let output_chars: Vec<char> = rule.output.chars().collect();
-        let steps = input_chars.len().max(output_chars.len());
+        let Some(prepared) = self.prepared_rules.get(rule_index) else {
+            return;
+        };
+        let steps = prepared.steps;
 
         if steps == 0 || step >= steps {
             return;
         }
 
-        let from = if step == 0 {
-            0
+        let Some(from) = (if step == 0 {
+            Some(0)
         } else {
             self.continuation_state(rule_index, step)
+        }) else {
+            return;
         };
-        let to = if step + 1 == steps {
-            0
+        let Some(to) = (if step + 1 == steps {
+            Some(0)
         } else {
             self.continuation_state(rule_index, step + 1)
+        }) else {
+            return;
         };
-        let input = input_chars.get(step).copied();
-        let output = output_chars.get(step).copied();
+        let input = prepared.input.get(step).copied();
+        let output = prepared.output.get(step).copied();
         let weight = if step == 0 {
-            TropicalWeight::new(rule.cost)
+            prepared.cost_weight
         } else {
             TropicalWeight::one()
         };
@@ -263,15 +312,10 @@ impl RewriteWfst {
         transitions.push(WeightedTransition::new(from, input, output, to, weight));
     }
 
-    fn continuation_state(&self, rule_index: usize, step: usize) -> StateId {
+    fn continuation_state(&self, rule_index: usize, step: usize) -> Option<StateId> {
         debug_assert!(step > 0);
-        let prior: usize = self
-            .rules
-            .iter()
-            .take(rule_index)
-            .map(|rule| rule_steps(rule).saturating_sub(1))
-            .sum();
-        1 + (prior + step - 1) as StateId
+        let raw_state = self.continuation_start(rule_index).saturating_add(step);
+        raw_state.try_into().ok()
     }
 
     fn decode_continuation_state(&self, state_id: StateId) -> Option<(usize, usize)> {
@@ -279,47 +323,66 @@ impl RewriteWfst {
             return None;
         }
 
-        let mut remaining = (state_id - 1) as usize;
-        for (rule_index, rule) in self.rules.iter().enumerate() {
-            let states = rule_steps(rule).saturating_sub(1);
-            if remaining < states {
-                return Some((rule_index, remaining + 1));
-            }
-            remaining = remaining.saturating_sub(states);
+        let zero_based = usize_from_state_id(state_id.checked_sub(1)?);
+        let continuation = self.continuation_lookup.get(zero_based)?;
+        let prepared = self.prepared_rules.get(continuation.rule_index)?;
+
+        (continuation.step < prepared.steps).then_some((continuation.rule_index, continuation.step))
+    }
+
+    fn continuation_start(&self, rule_index: usize) -> usize {
+        rule_index
+            .checked_sub(1)
+            .and_then(|previous| self.continuation_end_offsets.get(previous))
+            .copied()
+            .unwrap_or(0)
+    }
+
+    fn append_validated_rule(&mut self, rule: RewriteRule) {
+        let rule_index = self.rules.len();
+        let prepared = PreparedRewriteRule::new(&rule);
+
+        for step in 1..prepared.steps {
+            self.continuation_lookup
+                .push(ContinuationState { rule_index, step });
         }
-        None
+        self.continuation_states = self.continuation_lookup.len();
+        self.continuation_end_offsets.push(self.continuation_states);
+        self.prepared_rules.push(prepared);
+
+        let insertion_index = self.priority_order.partition_point(|&existing_index| {
+            let existing_priority = self.rules[existing_index].priority;
+            existing_priority > rule.priority
+                || (existing_priority == rule.priority && existing_index < rule_index)
+        });
+        self.priority_order.insert(insertion_index, rule_index);
+        self.rules.push(rule);
+    }
+
+    fn computed_state(&self, state: StateId) -> Option<&CachedCharState> {
+        self.cache.get(state)
     }
 
     /// Ensure a state is computed and cached.
     fn ensure_state(&mut self, state: StateId) {
-        if self.cache.contains_key(&state) {
+        if self.cache.touch_if_cached(state) {
+            return;
+        }
+
+        if !self.is_known_state(state) {
             return;
         }
 
         let (is_final, final_weight, transitions) = self.compute_transitions(state);
 
-        let cached = CachedRewriteState {
-            is_final,
-            final_weight,
-            transitions,
-        };
+        self.cache.insert(
+            state,
+            CachedCharState::new(is_final, final_weight, transitions),
+        );
+    }
 
-        if let lling_llang::wfst::CachePolicy::Lru { max_states } = self.cache_policy {
-            let limit = if max_states > 0 {
-                max_states
-            } else {
-                self.max_cache_size
-            };
-            if self.cache.len() >= limit {
-                let to_remove = (self.cache.len() / 10).max(1);
-                let keys: Vec<_> = self.cache.keys().take(to_remove).copied().collect();
-                for key in keys {
-                    self.cache.remove(&key);
-                }
-            }
-        }
-
-        self.cache.insert(state, cached);
+    fn is_known_state(&self, state: StateId) -> bool {
+        usize_from_state_id(state) < self.num_states()
     }
 }
 
@@ -335,15 +398,13 @@ impl Wfst<char, TropicalWeight> for RewriteWfst {
     }
 
     fn is_final(&self, state: StateId) -> bool {
-        self.cache
-            .get(&state)
+        self.computed_state(state)
             .map(|s| s.is_final)
             .unwrap_or(state == 0)
     }
 
     fn final_weight(&self, state: StateId) -> TropicalWeight {
-        self.cache
-            .get(&state)
+        self.computed_state(state)
             .map(|s| s.final_weight)
             .unwrap_or_else(|| {
                 if state == 0 {
@@ -355,31 +416,34 @@ impl Wfst<char, TropicalWeight> for RewriteWfst {
     }
 
     fn transitions(&self, state: StateId) -> &[WeightedTransition<char, TropicalWeight>] {
-        static EMPTY: &[WeightedTransition<char, TropicalWeight>] = &[];
-        self.cache
-            .get(&state)
-            .map(|s| s.transitions.as_slice())
-            .unwrap_or(EMPTY)
+        match self.computed_state(state) {
+            Some(cached) => cached.transitions.as_slice(),
+            None => empty_char_transitions(),
+        }
+    }
+
+    fn total_transitions(&self) -> usize {
+        self.cache.total_cached_transitions()
     }
 
     fn num_states(&self) -> usize {
-        1 + self.continuation_states
+        rewrite_state_count(self.continuation_states)
     }
 
     #[inline]
     fn is_empty(&self) -> bool {
-        self.rules.is_empty() && !self.allow_identity
+        self.num_states() == 0
     }
 
     #[inline]
     fn is_valid_state(&self, state: StateId) -> bool {
-        (state as usize) < self.num_states()
+        self.is_known_state(state)
     }
 }
 
 impl LazyWfst<char, TropicalWeight> for RewriteWfst {
     fn is_expanded(&self, state: StateId) -> bool {
-        self.cache.contains_key(&state)
+        self.cache.is_expanded(state)
     }
 
     fn expand(&mut self, state: StateId) {
@@ -392,11 +456,11 @@ impl LazyWfst<char, TropicalWeight> for RewriteWfst {
     }
 
     fn cache_policy(&self) -> lling_llang::wfst::CachePolicy {
-        self.cache_policy
+        self.cache.policy()
     }
 
     fn set_cache_policy(&mut self, policy: lling_llang::wfst::CachePolicy) {
-        self.cache_policy = policy;
+        self.cache.set_policy(policy);
     }
 
     fn computed_states(&self) -> usize {
@@ -428,17 +492,6 @@ impl StateSource<char, TropicalWeight> for RewriteWfst {
     }
 }
 
-fn rule_steps(rule: &RewriteRule) -> usize {
-    rule.input.chars().count().max(rule.output.chars().count())
-}
-
-fn continuation_state_count(rules: &[RewriteRule]) -> usize {
-    rules
-        .iter()
-        .map(|rule| rule_steps(rule).saturating_sub(1))
-        .sum()
-}
-
 /// Builder for common phonetic rewrite rules.
 pub struct CommonPhoneticRules;
 
@@ -446,36 +499,36 @@ impl CommonPhoneticRules {
     /// English phonetic rules.
     pub fn english() -> Vec<RewriteRule> {
         vec![
-            RewriteRule::with_cost("ph", "f", 0.1),
-            RewriteRule::with_cost("gh", "f", 0.2), // rough -> ruff
-            RewriteRule::with_cost("ck", "k", 0.1),
-            RewriteRule::with_cost("qu", "kw", 0.1),
-            RewriteRule::with_cost("x", "ks", 0.1),
-            RewriteRule::with_cost("c", "k", 0.2), // Before a, o, u
-            RewriteRule::with_cost("c", "s", 0.2), // Before e, i
+            RewriteRule::from_validated_cost("ph", "f", 0.1),
+            RewriteRule::from_validated_cost("gh", "f", 0.2), // rough -> ruff
+            RewriteRule::from_validated_cost("ck", "k", 0.1),
+            RewriteRule::from_validated_cost("qu", "kw", 0.1),
+            RewriteRule::from_validated_cost("x", "ks", 0.1),
+            RewriteRule::from_validated_cost("c", "k", 0.2), // coarse hard-c alternative
+            RewriteRule::from_validated_cost("c", "s", 0.2), // coarse soft-c alternative
         ]
     }
 
     /// German phonetic rules.
     pub fn german() -> Vec<RewriteRule> {
         vec![
-            RewriteRule::with_cost("sch", "sh", 0.1),
-            RewriteRule::with_cost("ch", "x", 0.1), // IPA [x] or [ç]
-            RewriteRule::with_cost("ß", "ss", 0.1),
-            RewriteRule::with_cost("ä", "ae", 0.1),
-            RewriteRule::with_cost("ö", "oe", 0.1),
-            RewriteRule::with_cost("ü", "ue", 0.1),
+            RewriteRule::from_validated_cost("sch", "sh", 0.1),
+            RewriteRule::from_validated_cost("ch", "x", 0.1), // IPA [x] or [ç]
+            RewriteRule::from_validated_cost("ß", "ss", 0.1),
+            RewriteRule::from_validated_cost("ä", "ae", 0.1),
+            RewriteRule::from_validated_cost("ö", "oe", 0.1),
+            RewriteRule::from_validated_cost("ü", "ue", 0.1),
         ]
     }
 
     /// French phonetic rules.
     pub fn french() -> Vec<RewriteRule> {
         vec![
-            RewriteRule::with_cost("eau", "o", 0.1),
-            RewriteRule::with_cost("aux", "o", 0.1),
-            RewriteRule::with_cost("ai", "e", 0.1),
-            RewriteRule::with_cost("ph", "f", 0.1),
-            RewriteRule::with_cost("qu", "k", 0.1),
+            RewriteRule::from_validated_cost("eau", "o", 0.1),
+            RewriteRule::from_validated_cost("aux", "o", 0.1),
+            RewriteRule::from_validated_cost("ai", "e", 0.1),
+            RewriteRule::from_validated_cost("ph", "f", 0.1),
+            RewriteRule::from_validated_cost("qu", "k", 0.1),
         ]
     }
 }
@@ -483,159 +536,166 @@ impl CommonPhoneticRules {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::phonetic_rewrite_support::HASH_PRUNE_THRESHOLD;
 
     #[test]
-    fn test_rewrite_wfst_creation() {
-        let wfst = RewriteWfst::new();
-        assert_eq!(wfst.num_rules(), 0);
-    }
-
-    #[test]
-    fn test_rewrite_wfst_add_rule() {
-        let mut wfst = RewriteWfst::new();
-        wfst.add_rule("ph", "f", 0.1);
-        wfst.add_rule("c", "s", 0.2);
-
-        assert_eq!(wfst.num_rules(), 2);
-    }
-
-    #[test]
-    fn test_rewrite_wfst_with_rules() {
+    fn test_rewrite_wfst_incremental_metadata_matches_bulk_rules() {
         let rules = vec![
-            RewriteRule::with_cost("ph", "f", 0.1),
-            RewriteRule::with_cost("ck", "k", 0.1),
+            RewriteRule::with_cost("ab", "x", 0.1).expect("valid rewrite rule"),
+            RewriteRule::with_cost("c", "de", 0.2)
+                .expect("valid rewrite rule")
+                .with_priority(10),
+            RewriteRule::with_cost("pq", "rs", 0.3).expect("valid rewrite rule"),
         ];
-        let wfst = RewriteWfst::with_rules(rules);
 
-        assert_eq!(wfst.num_rules(), 2);
-    }
+        let mut bulk = RewriteWfst::with_rules(rules.clone()).expect("valid rewrite rules");
+        let mut incremental = RewriteWfst::new();
+        for rule in rules {
+            incremental
+                .add_rewrite_rule(rule)
+                .expect("valid rewrite rule");
+        }
 
-    #[test]
-    fn test_rewrite_wfst_start_state() {
-        let wfst = RewriteWfst::new();
-        assert_eq!(Wfst::start(&wfst), 0);
-    }
+        bulk.set_allow_identity(false);
+        incremental.set_allow_identity(false);
+        bulk.expand(0);
+        incremental.expand(0);
 
-    #[test]
-    fn test_rewrite_wfst_expand() {
-        let mut wfst = RewriteWfst::new();
-        wfst.add_rule("a", "b", 0.1);
-
-        assert!(!wfst.is_expanded(0));
-        wfst.expand(0);
-        assert!(wfst.is_expanded(0));
-    }
-
-    #[test]
-    fn test_rewrite_wfst_transitions() {
-        let mut wfst = RewriteWfst::new();
-        wfst.add_rule("a", "b", 0.1);
-        wfst.expand(0);
-
-        let transitions = wfst.transitions(0);
-        assert!(!transitions.is_empty());
-
-        // Should have transition for 'a' -> 'b'
-        let a_trans = transitions.iter().find(|t| t.input == Some('a'));
-        assert!(a_trans.is_some());
+        assert_eq!(incremental.prepared_rules.len(), bulk.prepared_rules.len());
         assert_eq!(
-            a_trans.expect("expected Some a_trans in test").output,
-            Some('b')
+            incremental.continuation_end_offsets,
+            bulk.continuation_end_offsets
         );
-    }
+        assert_eq!(incremental.continuation_lookup, bulk.continuation_lookup);
+        assert_eq!(incremental.priority_order, bulk.priority_order);
+        assert_eq!(incremental.num_states(), bulk.num_states());
 
-    #[test]
-    fn test_rewrite_wfst_one_to_many_output_chain() {
-        let mut wfst = RewriteWfst::new();
-        wfst.set_allow_identity(false);
-        wfst.add_rule("f", "ph", 0.1);
-        wfst.expand(0);
-
-        let first = wfst
+        let bulk_start = bulk
             .transitions(0)
             .iter()
-            .find(|t| t.input == Some('f') && t.output == Some('p'))
-            .expect("expected f -> p first transition")
-            .clone();
-        assert_ne!(first.to, 0);
-        assert_eq!(first.weight.value(), 0.1);
-
-        wfst.expand(first.to);
-        let continuation = wfst
-            .transitions(first.to)
-            .iter()
-            .find(|t| t.input.is_none() && t.output == Some('h'))
-            .expect("expected epsilon -> h continuation");
-        assert_eq!(continuation.to, 0);
-        assert_eq!(continuation.weight, TropicalWeight::one());
-    }
-
-    #[test]
-    fn test_rewrite_wfst_many_to_one_input_chain() {
-        let mut wfst = RewriteWfst::new();
-        wfst.set_allow_identity(false);
-        wfst.add_rule("ph", "f", 0.1);
-        wfst.expand(0);
-
-        let first = wfst
+            .map(|transition| (transition.input, transition.output, transition.to))
+            .collect::<Vec<_>>();
+        let incremental_start = incremental
             .transitions(0)
             .iter()
-            .find(|t| t.input == Some('p') && t.output == Some('f'))
-            .expect("expected p -> f first transition")
-            .clone();
-        assert_ne!(first.to, 0);
+            .map(|transition| (transition.input, transition.output, transition.to))
+            .collect::<Vec<_>>();
+        assert_eq!(incremental_start, bulk_start);
 
-        wfst.expand(first.to);
-        let continuation = wfst
-            .transitions(first.to)
-            .iter()
-            .find(|t| t.input == Some('h') && t.output.is_none())
-            .expect("expected h -> epsilon continuation");
-        assert_eq!(continuation.to, 0);
+        assert_eq!(bulk.decode_continuation_state(1), Some((0, 1)));
+        assert_eq!(bulk.decode_continuation_state(2), Some((1, 1)));
+        assert_eq!(bulk.decode_continuation_state(3), Some((2, 1)));
+        assert_eq!(bulk.decode_continuation_state(4), None);
     }
 
     #[test]
-    fn test_rewrite_wfst_identity() {
+    fn test_rewrite_metadata_preallocates_exact_continuation_lookup_capacity() {
+        let rules = vec![
+            RewriteRule::with_cost("abcd", "x", 0.1).expect("valid rewrite rule"),
+            RewriteRule::with_cost("e", "fghi", 0.2).expect("valid rewrite rule"),
+            RewriteRule::with_cost("", "", 0.3).expect("valid rewrite rule"),
+        ];
+
+        let metadata = PreparedRuleMetadata::from_rules(&rules);
+
+        assert_eq!(metadata.continuation_states, 6);
+        assert_eq!(metadata.continuation_lookup.len(), 6);
+        assert_eq!(metadata.continuation_lookup.capacity(), 6);
+        assert_eq!(metadata.continuation_end_offsets, vec![3, 6, 6]);
+        assert_eq!(
+            metadata
+                .prepared_rules
+                .iter()
+                .map(PreparedRewriteRule::continuation_steps)
+                .sum::<usize>(),
+            metadata.continuation_states
+        );
+    }
+
+    #[test]
+    fn test_rewrite_num_states_caps_to_representable_state_ids() {
+        assert_eq!(rewrite_state_count(0), 1);
+
+        let Ok(max_state_id) = usize::try_from(StateId::MAX) else {
+            return;
+        };
+        let Some(addressable_states) = max_state_id.checked_add(1) else {
+            assert_eq!(rewrite_state_count(usize::MAX), usize::MAX);
+            return;
+        };
+
+        assert_eq!(
+            rewrite_state_count(addressable_states - 1),
+            addressable_states
+        );
+        assert_eq!(rewrite_state_count(addressable_states), addressable_states);
+
+        let Some(unaddressable_continuations) = addressable_states.checked_add(10) else {
+            return;
+        };
+
         let mut wfst = RewriteWfst::new();
-        wfst.set_allow_identity(true);
-        wfst.expand(0);
+        wfst.continuation_states = unaddressable_continuations;
 
-        let transitions = wfst.transitions(0);
-        // Should have identity transitions for unrewritten characters
-        let z_trans = transitions.iter().find(|t| t.input == Some('z'));
-        assert!(z_trans.is_some());
-        assert_eq!(
-            z_trans.expect("expected Some z_trans in test").output,
-            Some('z')
-        );
+        assert_eq!(wfst.num_states(), addressable_states);
     }
 
     #[test]
-    fn test_common_english_rules() {
-        let rules = CommonPhoneticRules::english();
-        assert!(!rules.is_empty());
+    fn test_rewrite_transition_pruning_keeps_singleton_unchanged() {
+        let mut transitions = SmallVec::<[WeightedTransition<char, TropicalWeight>; 4]>::new();
+        transitions.push(WeightedTransition::new(
+            0,
+            Some('a'),
+            Some('b'),
+            0,
+            TropicalWeight::new(0.25),
+        ));
 
-        let ph_rule = rules.iter().find(|r| r.input == "ph");
-        assert!(ph_rule.is_some());
-        assert_eq!(ph_rule.expect("expected Some ph_rule in test").output, "f");
+        prune_dominated_transitions(&mut transitions);
+
+        assert_eq!(transitions.len(), 1);
+        assert_eq!(transitions[0].input, Some('a'));
+        assert_eq!(transitions[0].output, Some('b'));
+        assert_eq!(transitions[0].weight.value(), 0.25);
     }
 
     #[test]
-    fn test_common_german_rules() {
-        let rules = CommonPhoneticRules::german();
-        assert!(!rules.is_empty());
+    fn test_rewrite_transition_pruning_hash_path_keeps_best_weight_in_first_position() {
+        let mut transitions = SmallVec::<[WeightedTransition<char, TropicalWeight>; 4]>::new();
+        transitions.push(WeightedTransition::new(
+            0,
+            Some('a'),
+            Some('a'),
+            0,
+            TropicalWeight::new(0.7),
+        ));
 
-        let sch_rule = rules.iter().find(|r| r.input == "sch");
-        assert!(sch_rule.is_some());
-        assert_eq!(
-            sch_rule.expect("expected Some sch_rule in test").output,
-            "sh"
-        );
-    }
+        for offset in 0..HASH_PRUNE_THRESHOLD {
+            let label = char::from(b'b' + u8::try_from(offset).unwrap_or(0));
+            transitions.push(WeightedTransition::new(
+                0,
+                Some(label),
+                Some(label),
+                0,
+                TropicalWeight::one(),
+            ));
+        }
 
-    #[test]
-    fn test_rewrite_rule_priority() {
-        let rule = RewriteRule::new("ph", "f").with_priority(10);
-        assert_eq!(rule.priority, 10);
+        transitions.push(WeightedTransition::new(
+            0,
+            Some('a'),
+            Some('a'),
+            0,
+            TropicalWeight::new(0.1),
+        ));
+
+        assert!(transitions.len() > HASH_PRUNE_THRESHOLD);
+
+        prune_dominated_transitions(&mut transitions);
+
+        assert_eq!(transitions.len(), HASH_PRUNE_THRESHOLD + 1);
+        assert_eq!(transitions[0].input, Some('a'));
+        assert_eq!(transitions[0].weight.value(), 0.1);
+        assert_eq!(transitions[1].input, Some('b'));
     }
 }

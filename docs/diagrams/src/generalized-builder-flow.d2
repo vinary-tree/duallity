@@ -1,0 +1,32 @@
+# D14 — GeneralizedWfstBuilder configuration flow.
+# Depicts: the fluent builder chain, the runtime-selectable OperationSet, and the lazy product graph.
+direction: right
+
+title: |md
+  # D14 · GeneralizedWfstBuilder configuration flow
+| { near: top-center }
+
+new: "new(&dict)" { style.fill: "#D6EAF8"; style.stroke: "#34495E" }
+cfg: ".query(q)\n.max_distance(k)" { style.fill: "#D6EAF8"; style.stroke: "#34495E" }
+
+ops: "choose an OperationSet" {
+  style.fill: "#EAECEE"; style.stroke: "#34495E"
+  std: "with_standard_ops()" { style.fill: "#FCF3CF" }
+  tr:  "with_transposition()" { style.fill: "#FCF3CF" }
+  ms:  "with_merge_split()" { style.fill: "#FCF3CF" }
+  ph:  "with_phonetic_digraphs()" { style.fill: "#D5F5E3" }
+  custom: "with_operations(set)" { style.fill: "#FCF3CF" }
+}
+
+build: "build()\n→ Result<GeneralizedWfst<D>, String>" { style.fill: "#D6EAF8"; style.stroke: "#34495E" }
+wfst: "GeneralizedWfst<D>\nwraps GeneralizedAutomaton::with_operations(k, ops)" {
+  style.fill: "#D6EAF8"; style.stroke: "#34495E"
+}
+
+new -> cfg -> ops -> build -> wfst { style.stroke: "#34495E" }
+
+product: |md
+  **Lazy product graph:** `GeneralizedWfst` registers product states
+  `(dict_node, query_byte_offset, accumulated_cost)` and continuation states for multi-symbol
+  operations such as `ph : f / 0.15`. `StateSource::compute_state` returns computed states.
+| { near: bottom-center; style.fill: "#D5F5E3"; style.stroke: "#229954" }

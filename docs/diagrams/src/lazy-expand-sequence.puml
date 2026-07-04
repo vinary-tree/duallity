@@ -1,0 +1,52 @@
+@startuml lazy-expand-sequence
+' D4 — Lazy expand → compute → cache sequence.
+' Depicts: the first touch of a product state flows Caller → LazyWfst wrapper → StateSource →
+' Registry, materializes a CachedState, and is memoized; the second touch is a cache hit.
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam sequence {
+  ArrowColor #34495E
+  LifeLineBorderColor #AAB7B8
+  ParticipantBorderColor #34495E
+}
+title D4 · Lazy state expansion and caching
+
+actor Caller
+participant "LazyWfst\nwrapper" as W #D6EAF8
+participant "StateSource\ncompute_state" as S #D6EAF8
+participant "Cache\nFxHashMap<StateId,\nSmallVec<[Transition;4]>>" as C #EAECEE
+participant "DictionaryNodeRegistry\nor DepthDictionaryNodeRegistry\nArc<RwLock<…>>" as R #D5F5E3
+
+== first touch of state s (cache miss) ==
+Caller -> W : transitions_lazy(s)
+activate W
+W -> C : get(s)
+C --> W : None  (miss)
+W -> S : compute_state(s)
+activate S
+S -> R : read-lock → resolve dict node
+R --> S : node
+S -> R : write-lock → register children
+R --> S : child ids
+S --> W : LazyState::Computed{ is_final,\nfinal_weight, transitions }
+deactivate S
+W -> C : insert(s, CachedState)
+W --> Caller : &[WeightedTransition]
+deactivate W
+
+== second touch of state s (cache hit) ==
+Caller -> W : transitions_lazy(s)
+activate W
+W -> C : get(s)
+C --> W : Some(CachedState)  (hit)
+W --> Caller : &[WeightedTransition]
+deactivate W
+
+note over C
+  CachePolicy::CacheAll keeps every state.
+  CachePolicy::Lru{max_states} evicts the
+  least recently touched cached state when full.
+  CachePolicy::NoCache keeps one scratch state.
+end note
+@enduml

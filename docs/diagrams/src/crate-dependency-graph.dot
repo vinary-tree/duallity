@@ -1,0 +1,33 @@
+// D16 — Crate dependency graph.
+// Depicts: duallity sits above all three siblings and is the only place where liblevenshtein and
+// lling-llang meet — which is exactly why extracting the adapters here keeps the graph acyclic.
+// The dashed red edge is the dependency that WOULD have closed a cycle had the adapters stayed in
+// liblevenshtein (behind a `wfst` feature pulling lling-llang back in).
+digraph CrateDeps {
+  rankdir=TB;
+  bgcolor="#FFFFFF";
+  fontname="DejaVu Sans";
+  labelloc="t";
+  label="D16 · The duallity crate family (acyclic)\nduallity depends on all three; the dashed red edge is the cycle it avoids";
+  node [shape=box, style="rounded,filled", fontname="DejaVu Sans", fontsize=11,
+        color="#34495E", margin="0.18,0.10"];
+  edge [fontname="DejaVu Sans", fontsize=9, color="#34495E"];
+
+  duallity       [label="duallity\nWFST adapters\n(this crate)", fillcolor="#D6EAF8"];
+  liblevenshtein [label="liblevenshtein\nfuzzy matching / automata", fillcolor="#FADBD8"];
+  llinglang      [label="lling-llang\nWfst trait · semirings · compose", fillcolor="#FCF3CF"];
+  libdictenstein [label="libdictenstein\ndictionary containers (DAWG, SCDAWG)", fillcolor="#D5F5E3"];
+
+  // real dependencies (solid)
+  duallity       -> liblevenshtein [label="depends on"];
+  duallity       -> llinglang      [label="depends on"];
+  duallity       -> libdictenstein [label="depends on"];
+  liblevenshtein -> libdictenstein [label="uses dictionaries"];
+  llinglang      -> liblevenshtein [label="depends on"];
+
+  // the avoided cycle (dashed red): if the adapters lived in liblevenshtein, it would need lling-llang
+  liblevenshtein -> llinglang [label="✗ would close a cycle\n(adapters extracted to duallity)",
+                               style=dashed, color="#E74C3C", fontcolor="#C0392B", constraint=false];
+
+  { rank=same; liblevenshtein; llinglang; }
+}

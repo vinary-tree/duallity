@@ -25,9 +25,9 @@
 //!
 //! # Example
 //!
-//! ```rust,ignore
-//! use liblevenshtein::wfst::wallbreaker_wfst::WallBreakerWfst;
-//! use liblevenshtein::dictionary::scdawg::Scdawg;
+//! ```rust,no_run
+//! use duallity::WallBreakerWfst;
+//! use libdictenstein::scdawg::Scdawg;
 //!
 //! let dict = Scdawg::<()>::from_terms(vec!["cathedral", "category", "catering"]);
 //! let wfst = WallBreakerWfst::new(&dict, "cathedrel", 2);
@@ -47,36 +47,56 @@ use std::marker::PhantomData;
 use lling_llang::prelude::{
     LazyState, LazyWfst, StateId, StateSource, TropicalWeight, WeightedTransition, Wfst,
 };
-use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 
-use liblevenshtein::transducer::Algorithm;
-use liblevenshtein::wallbreaker::{WallBreaker, WallBreakerResult};
 use libdictenstein::substring::{BidirectionalDictionaryNode, SubstringDictionary};
 use libdictenstein::{Dictionary, DictionaryNode};
+use liblevenshtein::transducer::Algorithm;
+use liblevenshtein::wallbreaker::WallBreaker;
 
-/// Cached state for WallBreaker WFST.
-#[derive(Clone)]
-struct CachedWallBreakerState {
-    /// Whether this is a final (accepting) state.
-    is_final: bool,
-    /// Final weight if final.
-    final_weight: TropicalWeight,
-    /// Outgoing transitions.
-    transitions: SmallVec<[WeightedTransition<char, TropicalWeight>; 4]>,
-}
+use crate::lazy_cache::{empty_char_transitions, CachedCharState, LazyStateCache};
+use crate::wallbreaker_results::{
+    empty_wallbreaker_result_final_weight, next_wallbreaker_char_position,
+    next_wallbreaker_result_index, next_wallbreaker_state_id, normalize_wallbreaker_results,
+    usize_from_state_id, usize_from_u32, wallbreaker_result_final_weights, ResultCharArena,
+    WallBreakerStateKey, SUPER_START_RESULT_INDEX,
+};
 
-/// Composite state key for WallBreaker.
-///
-/// States encode:
-/// - `result_index`: Index into the result set
-/// - `char_position`: Position within the result term
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-struct WallBreakerStateKey {
-    /// Index into the results list.
-    result_index: u32,
-    /// Character position within the result term.
-    char_position: u32,
+/// Default maximum cache size used when LRU policy delegates to the wrapper default.
+const DEFAULT_MAX_CACHE_SIZE: usize = 100_000;
+
+fn build_wallbreaker_state_index(result_chars: &ResultCharArena) -> Vec<WallBreakerStateKey> {
+    let mut id_to_state = Vec::with_capacity(result_chars.state_count());
+    id_to_state.push(WallBreakerStateKey {
+        result_index: SUPER_START_RESULT_INDEX,
+        char_position: 0,
+    });
+
+    for result_idx in 0..result_chars.len() {
+        let Some(result_index) = next_wallbreaker_result_index(result_idx) else {
+            break;
+        };
+        let Some(term_len) = result_chars.term_len(result_idx) else {
+            break;
+        };
+
+        for pos in 1..=term_len {
+            if next_wallbreaker_state_id(id_to_state.len()).is_none() {
+                return id_to_state;
+            }
+
+            let Some(char_position) = next_wallbreaker_char_position(pos) else {
+                return id_to_state;
+            };
+
+            id_to_state.push(WallBreakerStateKey {
+                result_index,
+                char_position,
+            });
+        }
+    }
+
+    id_to_state
 }
 
 /// WallBreaker WFST wrapper.
@@ -114,23 +134,23 @@ where
     /// Algorithm type.
     algorithm: Algorithm,
 
-    /// Cached query results.
-    results: Vec<WallBreakerResult>,
+    /// Number of normalized query results.
+    result_count: usize,
 
-    /// State ID to state key mapping.
-    state_map: FxHashMap<StateId, WallBreakerStateKey>,
+    /// Flat UTF-8 character arena for all result terms.
+    result_chars: ResultCharArena,
 
-    /// State key to state ID mapping (reverse).
-    reverse_map: FxHashMap<WallBreakerStateKey, StateId>,
+    /// Precomputed representable final weights for each result.
+    result_final_weights: Vec<Option<TropicalWeight>>,
+
+    /// Precomputed final weight for the super-start state when the empty term matches.
+    empty_result_final_weight: Option<TropicalWeight>,
+
+    /// Dense state ID to state key mapping.
+    id_to_state: Vec<WallBreakerStateKey>,
 
     /// Cached state computations.
-    cache: FxHashMap<StateId, CachedWallBreakerState>,
-
-    /// Next available state ID.
-    next_state_id: StateId,
-
-    /// Cache policy.
-    cache_policy: lling_llang::wfst::CachePolicy,
+    cache: LazyStateCache<CachedCharState>,
 }
 
 impl<'a, D> WallBreakerWfst<'a, D>
@@ -155,42 +175,40 @@ where
     ) -> Self {
         // Run WallBreaker query to get results
         let wb = WallBreaker::with_algorithm(dictionary, max_distance, algorithm);
-        let results: Vec<_> = wb.query(query).collect();
+        let results = normalize_wallbreaker_results(wb.query(query), max_distance);
+        let result_count = results.len();
+        let result_chars = ResultCharArena::from_results(&results);
+        let result_final_weights = wallbreaker_result_final_weights(&results);
+        let empty_result_final_weight =
+            empty_wallbreaker_result_final_weight(&results, max_distance);
+        let id_to_state = build_wallbreaker_state_index(&result_chars);
 
-        let mut wfst = Self {
+        Self {
             _dictionary: PhantomData,
             query: query.to_string(),
             max_distance,
             algorithm,
-            results,
-            state_map: FxHashMap::default(),
-            reverse_map: FxHashMap::default(),
-            cache: FxHashMap::default(),
-            next_state_id: 0,
-            cache_policy: lling_llang::wfst::CachePolicy::CacheAll,
-        };
-
-        // Register start state
-        let start_key = WallBreakerStateKey {
-            result_index: u32::MAX, // Special "super-start" state
-            char_position: 0,
-        };
-        wfst.register_state(start_key);
-
-        wfst
+            result_count,
+            result_chars,
+            result_final_weights,
+            empty_result_final_weight,
+            id_to_state,
+            cache: LazyStateCache::new(DEFAULT_MAX_CACHE_SIZE),
+        }
     }
 
-    /// Register a state and return its ID.
-    fn register_state(&mut self, key: WallBreakerStateKey) -> StateId {
-        if let Some(&id) = self.reverse_map.get(&key) {
-            return id;
-        }
+    #[inline]
+    fn lookup_state(&self, key: WallBreakerStateKey) -> Option<StateId> {
+        let id = if key.result_index == SUPER_START_RESULT_INDEX {
+            (key.char_position == 0).then_some(0)
+        } else {
+            self.result_chars.state_id_for_position(
+                usize_from_u32(key.result_index),
+                usize_from_u32(key.char_position),
+            )
+        }?;
 
-        let id = self.next_state_id;
-        self.next_state_id += 1;
-        self.state_map.insert(id, key);
-        self.reverse_map.insert(key, id);
-        id
+        (self.id_to_state.get(usize_from_state_id(id)).copied() == Some(key)).then_some(id)
     }
 
     /// Get the query string.
@@ -214,78 +232,87 @@ where
     /// Get the number of results found.
     #[inline]
     pub fn num_results(&self) -> usize {
-        self.results.len()
+        self.result_count
+    }
+
+    /// Set the maximum cache size used by `CachePolicy::Lru { max_states: 0 }`.
+    pub fn set_max_cache_size(&mut self, size: usize) {
+        self.cache.set_max_lru_states(size);
+    }
+
+    fn computed_state(&self, state: StateId) -> Option<&CachedCharState> {
+        self.cache.get(state)
+    }
+
+    fn final_weight_for_state(&self, state: StateId) -> Option<TropicalWeight> {
+        let key = self.id_to_state.get(usize_from_state_id(state))?;
+
+        if key.result_index == SUPER_START_RESULT_INDEX {
+            return self.empty_result_final_weight;
+        }
+
+        let result_index = usize_from_u32(key.result_index);
+        let term_len = self.result_chars.term_len(result_index)?;
+        let pos = usize_from_u32(key.char_position);
+        if pos < term_len {
+            return None;
+        }
+
+        self.result_final_weights
+            .get(result_index)
+            .copied()
+            .flatten()
     }
 
     /// Ensure a state is computed and cached.
     fn ensure_state(&mut self, state_id: StateId) {
-        if self.cache.contains_key(&state_id) {
+        if self.cache.touch_if_cached(state_id) {
             return;
         }
 
-        let key = match self.state_map.get(&state_id) {
-            Some(k) => *k,
+        let key = match self.id_to_state.get(usize_from_state_id(state_id)) {
+            Some(key) => *key,
             None => return,
         };
 
-        let (is_final, final_weight, transitions) = if key.result_index == u32::MAX {
+        let (is_final, final_weight, transitions) = if key.result_index == SUPER_START_RESULT_INDEX
+        {
             // Super-start state: transitions to start of each result
             self.compute_super_start_transitions()
         } else {
-            self.compute_result_state(&key)
+            self.compute_result_state(state_id, &key)
         };
 
         self.cache.insert(
             state_id,
-            CachedWallBreakerState {
-                is_final,
-                final_weight,
-                transitions,
-            },
+            CachedCharState::new(is_final, final_weight, transitions),
         );
     }
 
     /// Compute transitions from the super-start state.
     fn compute_super_start_transitions(
-        &mut self,
+        &self,
     ) -> (
         bool,
         TropicalWeight,
         SmallVec<[WeightedTransition<char, TropicalWeight>; 4]>,
     ) {
-        let mut transitions = SmallVec::new();
-
-        // Collect result info upfront to avoid borrow conflicts
-        let result_info: Vec<_> = self
-            .results
-            .iter()
-            .enumerate()
-            .filter(|(_, r)| !r.term.is_empty())
-            .map(|(idx, r)| {
-                let first_char = r
-                    .term
-                    .chars()
-                    .next()
-                    .expect("filtered out empty terms above");
-                let term_len = r.term.len();
-                let distance = r.distance;
-                (idx, first_char, term_len, distance)
-            })
-            .collect();
+        let mut transitions = SmallVec::with_capacity(self.result_chars.start_transition_count());
 
         // Create transitions to the start of each result
-        for (result_idx, first_char, term_len, distance) in result_info {
+        for result_idx in 0..self.result_chars.len() {
+            let Some(first_char) = self.result_chars.first_char(result_idx) else {
+                continue;
+            };
+            let Some(result_index) = next_wallbreaker_result_index(result_idx) else {
+                continue;
+            };
             let new_key = WallBreakerStateKey {
-                result_index: result_idx as u32,
+                result_index,
                 char_position: 1,
             };
-            let new_id = self.register_state(new_key);
-
-            // Transition consumes first character, weight is distance contribution
-            let weight = if term_len == 1 {
-                distance as f64
-            } else {
-                0.0 // Distance applied at final state
+            let Some(new_id) = self.lookup_state(new_key) else {
+                continue;
             };
 
             transitions.push(WeightedTransition::new(
@@ -293,90 +320,74 @@ where
                 Some(first_char),
                 Some(first_char),
                 new_id,
-                TropicalWeight::new(weight),
+                TropicalWeight::new(0.0),
             ));
         }
 
-        // Super-start is final only if we have empty results
-        let has_empty_result = self
-            .results
-            .iter()
-            .any(|r| r.term.is_empty() && r.distance <= self.max_distance);
-        let final_weight = if has_empty_result {
-            self.results
-                .iter()
-                .filter(|r| r.term.is_empty())
-                .map(|r| r.distance as f64)
-                .fold(f64::INFINITY, f64::min)
-        } else {
-            f64::INFINITY
+        let (is_final, final_weight) = match self.empty_result_final_weight {
+            Some(weight) => (true, weight),
+            None => (false, TropicalWeight::infinity()),
         };
 
-        (
-            has_empty_result,
-            TropicalWeight::new(final_weight),
-            transitions,
-        )
+        (is_final, final_weight, transitions)
     }
 
     /// Compute state for a result position.
     fn compute_result_state(
-        &mut self,
+        &self,
+        state_id: StateId,
         key: &WallBreakerStateKey,
     ) -> (
         bool,
         TropicalWeight,
         SmallVec<[WeightedTransition<char, TropicalWeight>; 4]>,
     ) {
-        let mut transitions = SmallVec::new();
-
         // Extract info upfront to avoid borrow conflicts
-        let result_info = match self.results.get(key.result_index as usize) {
-            Some(r) => {
-                let term_chars: Vec<char> = r.term.chars().collect();
-                let distance = r.distance;
-                Some((term_chars, distance))
-            }
-            None => None,
+        let result_index = usize_from_u32(key.result_index);
+        let Some(term_len) = self.result_chars.term_len(result_index) else {
+            return (false, TropicalWeight::infinity(), SmallVec::new());
+        };
+        let Some(final_result_weight) = self
+            .result_final_weights
+            .get(result_index)
+            .copied()
+            .flatten()
+        else {
+            return (false, TropicalWeight::infinity(), SmallVec::new());
         };
 
-        let (term_chars, distance) = match result_info {
-            Some(info) => info,
-            None => return (false, TropicalWeight::infinity(), transitions),
-        };
-
-        let pos = key.char_position as usize;
+        let pos = usize_from_u32(key.char_position);
+        let next_char = self.result_chars.char_at(result_index, pos);
 
         // Check if we're at the end of the term
-        let is_final = pos >= term_chars.len();
+        let is_final = pos >= term_len;
         let final_weight = if is_final {
-            TropicalWeight::new(distance as f64)
+            final_result_weight
         } else {
             TropicalWeight::infinity()
         };
 
+        let mut transitions = SmallVec::with_capacity(usize::from(!is_final));
+
         // Add transition to next character if not at end
-        if pos < term_chars.len() {
-            let next_char = term_chars[pos];
+        if let Some(next_char) = next_char {
+            let Some(char_position) = next_wallbreaker_char_position(pos.saturating_add(1)) else {
+                return (is_final, final_weight, transitions);
+            };
             let new_key = WallBreakerStateKey {
                 result_index: key.result_index,
-                char_position: (pos + 1) as u32,
+                char_position,
             };
-            let new_id = self.register_state(new_key);
-
-            // Weight is 0 for intermediate transitions, distance at final
-            let weight = if pos + 1 >= term_chars.len() {
-                distance as f64
-            } else {
-                0.0
+            let Some(new_id) = self.lookup_state(new_key) else {
+                return (is_final, final_weight, transitions);
             };
 
             transitions.push(WeightedTransition::new(
-                0,
+                state_id,
                 Some(next_char),
                 Some(next_char),
                 new_id,
-                TropicalWeight::new(weight),
+                TropicalWeight::new(0.0),
             ));
         }
 
@@ -395,36 +406,43 @@ where
     }
 
     fn is_final(&self, state: StateId) -> bool {
-        self.cache.get(&state).map(|s| s.is_final).unwrap_or(false)
+        self.computed_state(state)
+            .map(|s| s.is_final)
+            .unwrap_or_else(|| self.final_weight_for_state(state).is_some())
     }
 
     fn final_weight(&self, state: StateId) -> TropicalWeight {
-        self.cache
-            .get(&state)
+        self.computed_state(state)
             .map(|s| s.final_weight)
-            .unwrap_or_else(TropicalWeight::infinity)
+            .unwrap_or_else(|| {
+                self.final_weight_for_state(state)
+                    .unwrap_or_else(TropicalWeight::infinity)
+            })
     }
 
     fn transitions(&self, state: StateId) -> &[WeightedTransition<char, TropicalWeight>] {
-        static EMPTY: &[WeightedTransition<char, TropicalWeight>] = &[];
-        self.cache
-            .get(&state)
-            .map(|s| s.transitions.as_slice())
-            .unwrap_or(EMPTY)
+        match self.computed_state(state) {
+            Some(cached) => cached.transitions.as_slice(),
+            None => empty_char_transitions(),
+        }
+    }
+
+    fn total_transitions(&self) -> usize {
+        self.cache.total_cached_transitions()
     }
 
     fn num_states(&self) -> usize {
-        self.state_map.len()
+        self.id_to_state.len()
     }
 
     #[inline]
     fn is_empty(&self) -> bool {
-        self.results.is_empty()
+        self.id_to_state.is_empty()
     }
 
     #[inline]
     fn is_valid_state(&self, state: StateId) -> bool {
-        self.state_map.contains_key(&state)
+        self.id_to_state.get(usize_from_state_id(state)).is_some()
     }
 }
 
@@ -435,7 +453,7 @@ where
     <D::Node as DictionaryNode>::Unit: Into<u32>,
 {
     fn is_expanded(&self, state: StateId) -> bool {
-        self.cache.contains_key(&state)
+        self.cache.is_expanded(state)
     }
 
     fn expand(&mut self, state: StateId) {
@@ -448,11 +466,11 @@ where
     }
 
     fn cache_policy(&self) -> lling_llang::wfst::CachePolicy {
-        self.cache_policy
+        self.cache.policy()
     }
 
     fn set_cache_policy(&mut self, policy: lling_llang::wfst::CachePolicy) {
-        self.cache_policy = policy;
+        self.cache.set_policy(policy);
     }
 
     fn computed_states(&self) -> usize {
@@ -470,9 +488,23 @@ where
     D::Node: BidirectionalDictionaryNode,
     <D::Node as DictionaryNode>::Unit: Into<u32>,
 {
-    fn compute_state(&self, _state: StateId) -> LazyState<char, TropicalWeight> {
-        // Requires mutable access for state registration
-        LazyState::Pending
+    fn compute_state(&self, state: StateId) -> LazyState<char, TropicalWeight> {
+        let Some(key) = self.id_to_state.get(usize_from_state_id(state)).copied() else {
+            return LazyState::non_final(SmallVec::new());
+        };
+
+        let (is_final, final_weight, transitions) = if key.result_index == SUPER_START_RESULT_INDEX
+        {
+            self.compute_super_start_transitions()
+        } else {
+            self.compute_result_state(state, &key)
+        };
+
+        if is_final {
+            LazyState::final_state(final_weight, transitions)
+        } else {
+            LazyState::non_final(transitions)
+        }
     }
 
     fn start(&self) -> StateId {
@@ -480,86 +512,7 @@ where
     }
 
     fn num_states_hint(&self) -> Option<usize> {
-        // Estimate: each result contributes (term_len + 1) states
-        let total_chars: usize = self.results.iter().map(|r| r.term.len()).sum();
-        Some(1 + total_chars + self.results.len())
-    }
-}
-
-/// Builder for WallBreaker WFST.
-pub struct WallBreakerWfstBuilder<'a, D>
-where
-    D: Dictionary + SubstringDictionary + Clone + Send + Sync,
-    D::Node: BidirectionalDictionaryNode,
-    <D::Node as DictionaryNode>::Unit: Into<u32>,
-{
-    dictionary: &'a D,
-    query: Option<String>,
-    max_distance: usize,
-    algorithm: Algorithm,
-}
-
-impl<'a, D> WallBreakerWfstBuilder<'a, D>
-where
-    D: Dictionary + SubstringDictionary + Clone + Send + Sync,
-    D::Node: BidirectionalDictionaryNode,
-    <D::Node as DictionaryNode>::Unit: Into<u32>,
-{
-    /// Create a new builder.
-    pub fn new(dictionary: &'a D) -> Self {
-        Self {
-            dictionary,
-            query: None,
-            max_distance: 2,
-            algorithm: Algorithm::Standard,
-        }
-    }
-
-    /// Set the query string.
-    pub fn query(mut self, query: &str) -> Self {
-        self.query = Some(query.to_string());
-        self
-    }
-
-    /// Set the maximum distance.
-    pub fn max_distance(mut self, distance: usize) -> Self {
-        self.max_distance = distance;
-        self
-    }
-
-    /// Set the algorithm.
-    pub fn algorithm(mut self, algorithm: Algorithm) -> Self {
-        self.algorithm = algorithm;
-        self
-    }
-
-    /// Use standard Levenshtein algorithm.
-    pub fn standard(mut self) -> Self {
-        self.algorithm = Algorithm::Standard;
-        self
-    }
-
-    /// Use transposition (Damerau-Levenshtein) algorithm.
-    pub fn transposition(mut self) -> Self {
-        self.algorithm = Algorithm::Transposition;
-        self
-    }
-
-    /// Use merge-and-split algorithm.
-    pub fn merge_and_split(mut self) -> Self {
-        self.algorithm = Algorithm::MergeAndSplit;
-        self
-    }
-
-    /// Build the WFST.
-    pub fn build(self) -> Result<WallBreakerWfst<'a, D>, String> {
-        let query = self.query.ok_or_else(|| "Query not set".to_string())?;
-        Ok(WallBreakerWfst::with_algorithm(
-            self.dictionary,
-            &query,
-            self.max_distance,
-            self.algorithm,
-        ))
+        Some(self.id_to_state.len())
     }
 }
 
@@ -569,186 +522,78 @@ mod tests {
     use libdictenstein::scdawg::Scdawg;
 
     #[test]
-    fn test_wallbreaker_wfst_creation() {
-        let dict = Scdawg::<()>::from_terms(vec!["hello", "help", "world"]);
-        let wfst = WallBreakerWfst::new(&dict, "helo", 2);
+    fn test_wallbreaker_result_state_with_unrepresentable_weight_is_non_final() {
+        let dict = Scdawg::<()>::from_terms(vec!["a"]);
+        let mut wfst = WallBreakerWfst::new(&dict, "a", 0);
 
-        assert!(!wfst.is_empty());
-        assert_eq!(wfst.query(), "helo");
-        assert_eq!(wfst.max_distance(), 2);
-    }
-
-    #[test]
-    fn test_wallbreaker_wfst_results() {
-        let dict = Scdawg::<()>::from_terms(vec!["hello", "help", "world"]);
-        let wfst = WallBreakerWfst::new(&dict, "helo", 2);
-
-        // Should have found matches
-        assert!(wfst.num_results() > 0);
-    }
-
-    #[test]
-    fn test_wallbreaker_wfst_start_state() {
-        let dict = Scdawg::<()>::from_terms(vec!["test"]);
-        let wfst = WallBreakerWfst::new(&dict, "tset", 2);
-
-        let start = Wfst::start(&wfst);
-        assert!(wfst.is_valid_state(start));
-    }
-
-    #[test]
-    fn test_wallbreaker_wfst_lazy_expansion() {
-        let dict = Scdawg::<()>::from_terms(vec!["hello", "help"]);
-        let mut wfst = WallBreakerWfst::new(&dict, "helo", 2);
-
-        let start = Wfst::start(&wfst);
-        assert!(!wfst.is_expanded(start));
-
-        wfst.expand(start);
-        assert!(wfst.is_expanded(start));
-    }
-
-    #[test]
-    fn test_wallbreaker_wfst_transitions() {
-        let dict = Scdawg::<()>::from_terms(vec!["hello", "help"]);
-        let mut wfst = WallBreakerWfst::new(&dict, "helo", 2);
-
-        let start = Wfst::start(&wfst);
-        wfst.expand(start);
-
-        let transitions = wfst.transitions(start);
-        // Should have transitions to results
-        assert!(!transitions.is_empty() || wfst.num_results() == 0);
-    }
-
-    #[test]
-    fn test_wallbreaker_wfst_with_algorithm() {
-        let dict = Scdawg::<()>::from_terms(vec!["test", "tset"]);
-
-        let wfst_std = WallBreakerWfst::new(&dict, "tset", 1);
-        let wfst_trans =
-            WallBreakerWfst::with_algorithm(&dict, "tset", 1, Algorithm::Transposition);
-
-        assert!(matches!(wfst_std.algorithm(), Algorithm::Standard));
-        assert!(matches!(wfst_trans.algorithm(), Algorithm::Transposition));
-    }
-
-    #[test]
-    fn test_builder_creation() {
-        let dict = Scdawg::<()>::from_terms(vec!["test"]);
-        let result = WallBreakerWfstBuilder::new(&dict)
-            .query("tset")
-            .max_distance(2)
-            .build();
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_builder_no_query() {
-        let dict = Scdawg::<()>::from_terms(vec!["test"]);
-        let result = WallBreakerWfstBuilder::new(&dict).build();
-
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_builder_with_transposition() {
-        let dict = Scdawg::<()>::from_terms(vec!["test"]);
-        let result = WallBreakerWfstBuilder::new(&dict)
-            .query("tset")
-            .transposition()
-            .build();
-
-        assert!(result.is_ok());
-        assert!(matches!(
-            result.expect("test fixture: build must be Ok").algorithm(),
-            Algorithm::Transposition
-        ));
-    }
-
-    #[test]
-    fn test_builder_with_merge_and_split() {
-        let dict = Scdawg::<()>::from_terms(vec!["test"]);
-        let result = WallBreakerWfstBuilder::new(&dict)
-            .query("test")
-            .merge_and_split()
-            .build();
-
-        assert!(result.is_ok());
-        assert!(matches!(
-            result.expect("test fixture: build must be Ok").algorithm(),
-            Algorithm::MergeAndSplit
-        ));
-    }
-
-    #[test]
-    fn test_wfst_cache_operations() {
-        let dict = Scdawg::<()>::from_terms(vec!["test"]);
-        let mut wfst = WallBreakerWfst::new(&dict, "test", 1);
-
-        wfst.expand(0);
-        let before = wfst.computed_states();
-
-        wfst.clear_cache();
-        assert_eq!(wfst.computed_states(), 0);
-        assert!(before > 0);
-    }
-
-    #[test]
-    fn test_wfst_num_states_hint() {
-        let dict = Scdawg::<()>::from_terms(vec!["hello", "world"]);
-        let wfst = WallBreakerWfst::new(&dict, "helo", 2);
-
-        let hint = StateSource::<char, TropicalWeight>::num_states_hint(&wfst);
-        assert!(hint.is_some());
-        assert!(hint.expect("expected Some hint in test") > 0);
-    }
-
-    #[test]
-    fn test_wallbreaker_wfst_empty_results() {
-        let dict = Scdawg::<()>::from_terms(vec!["hello", "world"]);
-        let wfst = WallBreakerWfst::new(&dict, "zzzzz", 1);
-
-        // With max distance 1, "zzzzz" shouldn't match anything
-        assert!(wfst.is_empty() || wfst.num_results() == 0);
-    }
-
-    #[test]
-    fn test_wallbreaker_wfst_exact_match() {
-        let dict = Scdawg::<()>::from_terms(vec!["hello", "world"]);
-        let wfst = WallBreakerWfst::new(&dict, "hello", 0);
-
-        // Should find exact match
         assert_eq!(wfst.num_results(), 1);
+        wfst.result_final_weights[0] = None;
+
+        let terminal_state = wfst
+            .lookup_state(WallBreakerStateKey {
+                result_index: 0,
+                char_position: 1,
+            })
+            .expect("single-character result path should register terminal state");
+
+        wfst.expand(terminal_state);
+
+        assert!(!wfst.is_final(terminal_state));
+        assert!(wfst.final_weight(terminal_state).value().is_infinite());
     }
 
     #[test]
-    fn test_wallbreaker_wfst_trace_path() {
-        let dict = Scdawg::<()>::from_terms(vec!["cat"]);
-        let mut wfst = WallBreakerWfst::new(&dict, "cat", 0);
+    fn test_wallbreaker_caches_utf8_result_chars_for_state_hint() {
+        let dict = Scdawg::<()>::from_terms(vec!["é"]);
+        let wfst = WallBreakerWfst::new(&dict, "é", 0);
 
-        // Expand and trace through the WFST
-        let start = Wfst::start(&wfst);
-        wfst.expand(start);
+        assert_eq!(wfst.num_results(), 1);
+        assert_eq!(wfst.result_chars.chars, vec!['é']);
+        assert_eq!(wfst.result_chars.first_char(0), Some('é'));
+        assert_eq!(
+            StateSource::<char, TropicalWeight>::num_states_hint(&wfst),
+            Some(2)
+        );
+    }
 
-        // Start should have transitions
-        let trans = wfst.transitions(start);
-        if !trans.is_empty() {
-            // Follow first transition
-            let next = trans[0].to;
-            wfst.expand(next);
+    #[test]
+    fn test_wallbreaker_state_index_reserves_initial_state_space() {
+        let dict = Scdawg::<()>::from_terms(vec!["hello", "help"]);
+        let wfst = WallBreakerWfst::new(&dict, "helo", 2);
+        let expected_states = wfst.result_chars.state_count();
 
-            // Continue following until final
-            let mut current = next;
-            for _ in 0..10 {
-                let t = wfst.transitions(current);
-                if t.is_empty() || wfst.is_final(current) {
-                    break;
-                }
-                current = t[0].to;
-                wfst.expand(current);
-            }
-        }
+        assert_eq!(wfst.id_to_state.len(), expected_states);
+        assert!(wfst.id_to_state.capacity() >= expected_states);
+        assert_eq!(
+            wfst.lookup_state(WallBreakerStateKey {
+                result_index: 0,
+                char_position: 1,
+            }),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn test_wallbreaker_result_count_tracks_compiled_result_tables() {
+        let dict = Scdawg::<()>::from_terms(vec!["hello", "help"]);
+        let wfst = WallBreakerWfst::new(&dict, "helo", 2);
+
+        assert_eq!(wfst.num_results(), wfst.result_count);
+        assert_eq!(wfst.result_count, wfst.result_chars.len());
+        assert_eq!(wfst.result_final_weights.len(), wfst.result_count);
+    }
+
+    #[test]
+    fn test_wallbreaker_state_hint_uses_registered_states() {
+        let dict = Scdawg::<()>::from_terms(vec!["hello", "help"]);
+        let mut wfst = WallBreakerWfst::new(&dict, "helo", 2);
+        let registered_states = wfst.id_to_state.len();
+
+        wfst.result_chars.state_count = registered_states.saturating_add(10);
+
+        assert_eq!(
+            StateSource::<char, TropicalWeight>::num_states_hint(&wfst),
+            Some(registered_states)
+        );
     }
 }

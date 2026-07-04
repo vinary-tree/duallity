@@ -38,6 +38,19 @@ A query and a dictionary become a lazy Levenshtein WFST. `compose` lazily inters
 
 ---
 
+## Documentation
+
+This README is the overview. The full documentation lives in **[`docs/`](docs/README.md)** — a
+guideline-driven corpus with reading orders for newcomers, implementers, and researchers:
+
+- **[Theory](docs/theory/README.md)** — semirings, edit distance, Levenshtein automata, composition, universal automata, WallBreaker, regular-language limits.
+- **[Architecture](docs/architecture/README.md)** — the crate family, the WFST trait surface, state encoding, lazy evaluation, registries.
+- **[Design](docs/design/README.md)** — one page per WFST variant, with exact semantics and honest limitations.
+- **[Guides](docs/guides/README.md)** — quickstart, choosing a variant, composing pipelines, phonetic matching, performance.
+- **[Engineering](docs/engineering/README.md)** · **[Security](docs/security/README.md)** · **[References](docs/references/bibliography.md)** · **[Diagrams](docs/diagrams/README.md)**.
+
+---
+
 ## What is a WFST, and what is composition?
 
 A **Weighted Finite-State Transducer** is a finite automaton whose transitions carry an *input* label, an *output* label, and a *weight* drawn from a **semiring** `(𝕂, ⊕, ⊗, 0̄, 1̄)`:
@@ -102,7 +115,7 @@ Every wrapper below implements lling-llang's `Wfst<char, TropicalWeight>` (and `
 | **Generalized** | `GeneralizedWfst<D>`, `GeneralizedWfstBuilder` | A runtime-configurable automaton: mix standard, transposition, merge/split, and phonetic-digraph (`ph↔f`, `ck↔k`) operations via an `OperationSet`. |
 | **Phonetic** | `PhoneticWfst<D>` / `…Builder`, `PhoneticNfaWfst`, `RewriteWfst`, `PhoneticPipelineBuilder` | Sound-alike matching. `RewriteWfst` applies rule-based rewrites (`ph→f`); `PhoneticNfaWfst` / `PhoneticWfst` compile a phonetic regex (`(ph|f)one`) into an NFA-backed transducer (feature `phonetic-rules`). |
 
-Supporting types are public too: `DictionaryBackend` (adapts a dictionary to lling-llang's `LatticeBackend`), `LevenshteinStateSource` / `UniversalLevenshteinStateSource` (the lazy `StateSource` engines), and the `state_encoding` module (`encode` / `decode` / `estimate_automaton_states`).
+Supporting types are public too: `DictionaryBackend` (adapts a dictionary to lling-llang's `LatticeBackend`), `LevenshteinStateSource` / `UniversalLevenshteinStateSource` (the lazy `StateSource` engines), and the `state_encoding` module (`try_encode` / `decode` / `estimate_automaton_states`).
 
 ---
 
@@ -110,17 +123,17 @@ Supporting types are public too: `DictionaryBackend` (adapts a dictionary to lli
 
 ```toml
 [dependencies]
-duallity = "0.1"
+duallity = "0.2"
 liblevenshtein = "0.9"
-lling-llang = "0.1"
-libdictenstein = "0.1"
+lling-llang = "0.2"
+libdictenstein = "0.2"
 ```
 
 **Wrap a Levenshtein automaton, then compose it.** Examples are marked `ignore` because they pull in the sibling crates; the constructor signatures are exact.
 
 ```rust,ignore
 use duallity::LevenshteinWfst;
-use libdictenstein::dynamic_dawg_char::DynamicDawgChar;
+use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 use lling_llang::composition::compose;
 use lling_llang::prelude::*;
 
@@ -146,7 +159,7 @@ for path in composed.accepting_paths() {
 ```rust,ignore
 use duallity::LevenshteinWfst;
 use liblevenshtein::transducer::Algorithm;
-use libdictenstein::dynamic_dawg_char::DynamicDawgChar;
+use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 
 let dict = DynamicDawgChar::<()>::from_terms(vec!["test"]);
 // Adjacent-swap ("tset" → "test") costs 1, not 2.
@@ -157,13 +170,14 @@ let lev = LevenshteinWfst::with_algorithm(&dict, "tset", 2, Algorithm::Transposi
 
 ```rust,ignore
 use duallity::{LevenshteinWfst, RewriteWfst, CommonPhoneticRules};
-use libdictenstein::dynamic_dawg_char::DynamicDawgChar;
+use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 use lling_llang::composition::compose;
 
 let dict = DynamicDawgChar::<()>::from_terms(vec!["phone", "graph", "telephone"]);
 
 // "fone" → rewrite (f↔ph, cost 0.1) → Levenshtein(2) over the dictionary.
-let rewrite = RewriteWfst::with_rules(CommonPhoneticRules::english());
+let rewrite = RewriteWfst::with_rules(CommonPhoneticRules::english())
+    .expect("valid preset rules");
 let lev     = LevenshteinWfst::new(&dict, "fone", 2);
 let phonetic_fuzzy = compose(rewrite, lev);
 ```
@@ -171,15 +185,16 @@ let phonetic_fuzzy = compose(rewrite, lev);
 **Compile a phonetic regex into a transducer** — requires `features = ["phonetic-rules"]`:
 
 ```rust,ignore
-// Cargo.toml:  duallity = { version = "0.1", features = ["phonetic-rules"] }
+// Cargo.toml:  duallity = { version = "0.3", features = ["phonetic-rules"] }
 use duallity::PhoneticWfstBuilder;
-use libdictenstein::dynamic_dawg_char::DynamicDawgChar;
+use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 
 let dict = DynamicDawgChar::<()>::from_terms(vec!["phone", "fone", "bone"]);
 
 // "(ph|f)one" compiles to an NFA-backed phonetic WFST over the dictionary.
 let wfst = PhoneticWfstBuilder::new(dict, 2)
     .phonetic_weight(0.1)
+    .expect("valid phonetic weight")
     .build_from_pattern("(ph|f)one")
     .expect("valid phonetic pattern");
 ```
@@ -194,7 +209,7 @@ let wfst = PhoneticWfstBuilder::new(dict, 2)
 | `phonetic-rules` | NFA-backed phonetic variants: `PhoneticWfst` / `PhoneticWfstBuilder`, `PhoneticNfaWfst`, `PhoneticStateSource`, and `PhoneticPipelineBuilder::build` / `build_phonetic_nfa` | `liblevenshtein/phonetic-rules` |
 
 ```toml
-duallity = { version = "0.1", features = ["phonetic-rules"] }
+duallity = { version = "0.3", features = ["phonetic-rules"] }
 ```
 
 ---
@@ -219,7 +234,7 @@ duallity = { version = "0.1", features = ["phonetic-rules"] }
 └──────────────────┘
 ```
 
-`duallity` sits at the top and depends on **liblevenshtein 0.9**, **lling-llang 0.1**, and **libdictenstein 0.1** — the only place where all three meet, which is exactly why it can break the former liblevenshtein ⇄ lling-llang cycle.
+`duallity` sits at the top and depends on **liblevenshtein 0.9**, **lling-llang 0.2**, and **libdictenstein 0.2** — the only place where all three meet, which is exactly why it can break the former liblevenshtein ⇄ lling-llang cycle.
 
 **Migrating from liblevenshtein's old `wfst` module?** The types are unchanged; only the path moved:
 

@@ -1,0 +1,37 @@
+# D5 — Universal-automaton reuse via BoundUniversalWfst.
+# Depicts: the query-agnostic automaton is built once per (dictionary, variant V, max_distance);
+# BoundUniversalWfst::with_query mints many lazy WFSTs that all share it.
+direction: right
+
+title: |md
+  # D5 · `BoundUniversalWfst` — build the automaton once, reuse across queries
+| { near: top-center }
+
+factory: "BoundUniversalWfst<V, D>\nnew(dict, max_distance)\nholds (dictionary, variant V, k)" {
+  style.fill: "#D6EAF8"
+  style.stroke: "#34495E"
+}
+
+auto: "UniversalAutomaton<V>\nquery-agnostic\n(one per max_distance)" {
+  style.fill: "#FADBD8"
+  style.stroke: "#34495E"
+}
+
+q1: "with_query(\"helo\")\n→ lazy WFST" { style.fill: "#D6EAF8"; style.stroke: "#34495E" }
+q2: "with_query(\"wrld\")\n→ lazy WFST" { style.fill: "#D6EAF8"; style.stroke: "#34495E" }
+q3: "with_query(\"tset\")\n→ lazy WFST" { style.fill: "#D6EAF8"; style.stroke: "#34495E" }
+
+factory -> q1: "mint"
+factory -> q2: "mint"
+factory -> q3: "mint"
+
+q1 -> auto: "shares" { style.stroke: "#E67E22"; style.stroke-dash: 3 }
+q2 -> auto: "shares" { style.stroke: "#E67E22"; style.stroke-dash: 3 }
+q3 -> auto: "shares" { style.stroke: "#E67E22"; style.stroke-dash: 3 }
+
+note: |md
+  Contrast with `LevenshteinWfst`, which rebuilds a fresh
+  per-query automaton each time. The universal automaton
+  amortizes construction over many queries; a dictionary
+  term enters only via its characteristic vector.
+| { near: bottom-center; style.fill: "#FCF3CF" }

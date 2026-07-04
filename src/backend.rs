@@ -10,6 +10,26 @@ use rustc_hash::FxHashMap;
 
 use libdictenstein::Dictionary;
 
+use crate::fx_hash_map_with_capacity;
+
+const VOCAB_ID_EXHAUSTED: VocabId = VocabId::MAX;
+
+#[inline]
+fn next_vocab_id(len: usize) -> Option<VocabId> {
+    let id = VocabId::try_from(len).ok()?;
+    (id < VOCAB_ID_EXHAUSTED).then_some(id)
+}
+
+#[inline]
+fn usize_from_vocab_id(id: VocabId) -> usize {
+    usize::try_from(id).unwrap_or(usize::MAX)
+}
+
+#[inline]
+fn vocab_capacity_limit() -> usize {
+    usize_from_vocab_id(VOCAB_ID_EXHAUSTED)
+}
+
 /// Adapter that exposes a liblevenshtein dictionary as a lling-llang `LatticeBackend`.
 ///
 /// This allows liblevenshtein's efficient dictionary structures (DoubleArrayTrie,
@@ -25,13 +45,13 @@ use libdictenstein::Dictionary;
 ///
 /// # Example
 ///
-/// ```rust,ignore
-/// use liblevenshtein::wfst::DictionaryBackend;
-/// use liblevenshtein::dictionary::dynamic_dawg_char::DynamicDawgChar;
+/// ```rust,no_run
+/// use duallity::DictionaryBackend;
+/// use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 /// use lling_llang::prelude::*;
 ///
 /// // Create a dictionary
-/// let dict = DynamicDawgChar::from_terms(vec!["hello", "help", "world"]);
+/// let dict = DynamicDawgChar::<()>::from_terms(vec!["hello", "help", "world"]);
 ///
 /// // Wrap as LatticeBackend
 /// let backend = DictionaryBackend::new(dict);
@@ -58,15 +78,29 @@ where
     D: Dictionary + Clone + Send + Sync,
     D::Node: Send + Sync,
 {
+    /// `VocabId` returned by the infallible [`LatticeBackend::intern`] adapter
+    /// when the u32 vocabulary space is exhausted.
+    ///
+    /// The backend never assigns this value to a word, so
+    /// [`LatticeBackend::lookup`] returns `None` for it. Prefer
+    /// [`Self::try_intern`] when callers need to distinguish exhaustion from a
+    /// successfully interned term.
+    pub const VOCAB_ID_EXHAUSTED: VocabId = VOCAB_ID_EXHAUSTED;
+
     /// Create a new dictionary backend from an existing dictionary.
     ///
     /// The vocabulary is initially empty and will be populated lazily
     /// as terms are interned.
     pub fn new(dictionary: D) -> Self {
+        Self::with_vocabulary_capacity(dictionary, 0)
+    }
+
+    fn with_vocabulary_capacity(dictionary: D, capacity: usize) -> Self {
+        let capacity = capacity.min(vocab_capacity_limit());
         Self {
             dictionary,
-            word_to_id: FxHashMap::default(),
-            id_to_word: Vec::new(),
+            word_to_id: fx_hash_map_with_capacity(capacity),
+            id_to_word: Vec::with_capacity(capacity),
         }
     }
 
@@ -78,16 +112,41 @@ where
     /// # Note
     ///
     /// This requires iterating over the entire dictionary, which may be
-    /// expensive for large dictionaries. Use `new()` for lazy population.
+    /// expensive for large dictionaries. Use `new()` for lazy population. If
+    /// the vocabulary space is exhausted, population stops before assigning the
+    /// reserved [`Self::VOCAB_ID_EXHAUSTED`] sentinel.
     pub fn with_vocabulary<I>(dictionary: D, terms: I) -> Self
     where
         I: IntoIterator<Item = String>,
     {
-        let mut backend = Self::new(dictionary);
+        let terms = terms.into_iter();
+        let (lower_bound, upper_bound) = terms.size_hint();
+        let reserve_hint = crate::capped_size_hint_capacity(upper_bound.unwrap_or(lower_bound));
+        let mut backend = Self::with_vocabulary_capacity(dictionary, reserve_hint);
+
         for term in terms {
-            backend.intern(&term);
+            if backend.try_intern(&term).is_none() {
+                break;
+            }
         }
         backend
+    }
+
+    /// Create a dictionary backend with pre-populated vocabulary, reporting
+    /// exhaustion instead of silently returning the sentinel ID.
+    pub fn try_with_vocabulary<I>(dictionary: D, terms: I) -> Option<Self>
+    where
+        I: IntoIterator<Item = String>,
+    {
+        let terms = terms.into_iter();
+        let (lower_bound, upper_bound) = terms.size_hint();
+        let reserve_hint = crate::capped_size_hint_capacity(upper_bound.unwrap_or(lower_bound));
+        let mut backend = Self::with_vocabulary_capacity(dictionary, reserve_hint);
+
+        for term in terms {
+            backend.try_intern(&term)?;
+        }
+        Some(backend)
     }
 
     /// Get the underlying dictionary.
@@ -107,6 +166,27 @@ where
     pub fn into_dictionary(self) -> D {
         self.dictionary
     }
+
+    /// Intern a word, returning `None` if the backend has exhausted its
+    /// representable vocabulary IDs.
+    pub fn try_intern(&mut self, word: &str) -> Option<VocabId> {
+        if let Some(&id) = self.word_to_id.get(word) {
+            return Some(id);
+        }
+
+        let id = next_vocab_id(self.id_to_word.len())?;
+        let word_arc: Arc<str> = word.into();
+
+        self.word_to_id.insert(word_arc.clone(), id);
+        self.id_to_word.push(word_arc);
+
+        Some(id)
+    }
+
+    /// Return whether a new word can still receive a representable `VocabId`.
+    pub fn has_vocab_capacity(&self) -> bool {
+        next_vocab_id(self.id_to_word.len()).is_some()
+    }
 }
 
 impl<D> LatticeBackend for DictionaryBackend<D>
@@ -115,23 +195,13 @@ where
     D::Node: Send + Sync,
 {
     fn intern(&mut self, word: &str) -> VocabId {
-        // Check if already interned
-        if let Some(&id) = self.word_to_id.get(word) {
-            return id;
-        }
-
-        // Allocate new ID
-        let id = self.id_to_word.len() as VocabId;
-        let word_arc: Arc<str> = word.into();
-
-        self.word_to_id.insert(word_arc.clone(), id);
-        self.id_to_word.push(word_arc);
-
-        id
+        self.try_intern(word).unwrap_or(Self::VOCAB_ID_EXHAUSTED)
     }
 
     fn lookup(&self, id: VocabId) -> Option<&str> {
-        self.id_to_word.get(id as usize).map(|s| s.as_ref())
+        self.id_to_word
+            .get(usize_from_vocab_id(id))
+            .map(|s| s.as_ref())
     }
 
     fn vocab_size(&self) -> usize {
@@ -151,7 +221,7 @@ where
         self.id_to_word
             .iter()
             .enumerate()
-            .map(|(i, s)| (i as VocabId, s.as_ref()))
+            .filter_map(|(i, s)| next_vocab_id(i).map(|id| (id, s.as_ref())))
     }
 
     fn supports_sharing(&self) -> bool {
@@ -166,12 +236,51 @@ mod tests {
     use super::*;
     use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 
+    struct InflatedTermHint {
+        terms: std::vec::IntoIter<String>,
+    }
+
+    impl InflatedTermHint {
+        fn new(terms: Vec<String>) -> Self {
+            Self {
+                terms: terms.into_iter(),
+            }
+        }
+    }
+
+    impl Iterator for InflatedTermHint {
+        type Item = String;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            self.terms.next()
+        }
+
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            (usize::MAX, None)
+        }
+    }
+
+    #[test]
+    fn test_next_vocab_id_reserves_exhaustion_sentinel() {
+        assert_eq!(next_vocab_id(0), Some(0));
+
+        let Ok(max_vocab_id) = usize::try_from(VocabId::MAX) else {
+            return;
+        };
+        assert_eq!(next_vocab_id(max_vocab_id), None);
+
+        if let Some(last_assignable) = max_vocab_id.checked_sub(1) {
+            assert_eq!(next_vocab_id(last_assignable), Some(VocabId::MAX - 1));
+        }
+    }
+
     #[test]
     fn test_dictionary_backend_new() {
         let dict = DynamicDawgChar::<()>::from_terms(vec!["hello", "world"]);
         let backend = DictionaryBackend::new(dict);
 
         assert_eq!(backend.vocab_size(), 0); // Lazy - nothing interned yet
+        assert!(backend.has_vocab_capacity());
     }
 
     #[test]
@@ -186,6 +295,7 @@ mod tests {
         assert_eq!(id1, id3); // Same word, same ID
         assert_ne!(id1, id2); // Different words, different IDs
         assert_eq!(backend.vocab_size(), 2);
+        assert_eq!(backend.try_intern("hello"), Some(id1));
     }
 
     #[test]
@@ -244,6 +354,39 @@ mod tests {
         assert!(backend.get_id("hello").is_some());
         assert!(backend.get_id("world").is_some());
         assert_eq!(backend.get_id("test"), None); // Not pre-populated
+    }
+
+    #[test]
+    fn test_dictionary_backend_try_with_vocabulary() {
+        let dict = DynamicDawgChar::<()>::from_terms(vec!["hello", "world"]);
+        let terms = vec!["hello".to_string(), "world".to_string()];
+        let backend = DictionaryBackend::try_with_vocabulary(dict, terms)
+            .expect("small vocabulary should fit");
+
+        assert_eq!(backend.vocab_size(), 2);
+        assert_ne!(
+            backend.get_id("hello"),
+            Some(DictionaryBackend::<DynamicDawgChar<()>>::VOCAB_ID_EXHAUSTED)
+        );
+    }
+
+    #[test]
+    fn test_dictionary_backend_treats_size_hint_as_speculative() {
+        let dict = DynamicDawgChar::<()>::from_terms(vec!["hello", "world"]);
+        let terms = InflatedTermHint::new(vec!["hello".to_string(), "world".to_string()]);
+        let backend = DictionaryBackend::with_vocabulary(dict, terms);
+
+        assert_eq!(backend.vocab_size(), 2);
+        assert!(backend.get_id("hello").is_some());
+        assert!(backend.get_id("world").is_some());
+
+        let dict = DynamicDawgChar::<()>::from_terms(vec!["again"]);
+        let terms = InflatedTermHint::new(vec!["again".to_string()]);
+        let backend = DictionaryBackend::try_with_vocabulary(dict, terms)
+            .expect("inflated hint should not prevent a representable vocabulary");
+
+        assert_eq!(backend.vocab_size(), 1);
+        assert!(backend.get_id("again").is_some());
     }
 
     #[test]

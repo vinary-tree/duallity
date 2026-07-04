@@ -1,0 +1,35 @@
+# D3 — Composite state-encoding bijection.
+# Depicts: how a product state (dict_node, automaton_state) collapses to a single StateId and back.
+direction: right
+
+title: |md
+  # D3 · Composite state encoding  `(dict_node, automaton_state) ↔ StateId`
+| { near: top-center }
+
+pair: "(dict_node d, automaton_state a)" {
+  style.fill: "#D6EAF8"
+  style.stroke: "#34495E"
+}
+formula: "StateId  =  d · M + a\n\nM = max_automaton_states\n  = (n+1)·(k+1)·c" {
+  style.fill: "#EAECEE"
+  style.stroke: "#34495E"
+}
+id: "StateId   (u32)" {
+  style.fill: "#D6EAF8"
+  style.stroke: "#34495E"
+}
+
+pair -> formula: encode { style.stroke: "#2ECC71" }
+formula -> id { style.stroke: "#2ECC71" }
+id -> pair: "checked decode:  M > 0; d = id / M, a = id % M" {
+  style.stroke: "#E67E22"
+  style.stroke-dash: 3
+}
+
+example: |md
+  **Example** — query `"helo"` (n = 4), k = 2, c = 1 ⇒ M = 5·3·1 = **15**.
+  encode(d=3, a=2) = 3·15 + 2 = **47**.   decode(47) = Some((47/15, 47%15)) = **Some((3, 2))**. ✓
+| {
+  near: bottom-center
+  style.fill: "#FCF3CF"
+}

@@ -1,0 +1,40 @@
+// D9 — WallBreakerWfst state forest.
+// Depicts: the lazy WFST WallBreakerWfst exposes — a single super-start state fanning out one
+// identity-labeled linear chain per matched term; each chain's terminal carries final_weight =
+// edit distance. Example query "helo", k=2, results {"hello":1, "help":2}.
+digraph WallBreakerForest {
+  rankdir=LR;
+  bgcolor="#FFFFFF";
+  fontname="DejaVu Sans";
+  labelloc="t";
+  label="D9 · WallBreakerWfst state forest   (query \"helo\", k = 2)\nsuper-start → one identity chain per matched term · terminal weight = edit distance";
+  node [shape=circle, style=filled, fillcolor="#D6EAF8", color="#34495E",
+        fontname="DejaVu Sans", fontsize=10, width=0.4, fixedsize=true];
+  edge [fontname="DejaVu Sans", fontsize=9, color="#34495E", arrowsize=0.6];
+
+  // super-start (result_index = u32::MAX)
+  S [label="S", shape=doublecircle, fillcolor="#E8DAEF", width=0.5,
+     xlabel="super-start\n(result_index = u32::MAX)"];
+
+  // chain for "hello"  (distance 1)
+  h1 [label="h₁"]; h2 [label="e₁"]; h3 [label="l₁"]; h4 [label="l₁"];
+  h5 [label="o₁", shape=doublecircle, fillcolor="#F9E79F", color="#B7950B"];
+  S  -> h1 [label="h:h / 0"];
+  h1 -> h2 [label="e:e / 0"];
+  h2 -> h3 [label="l:l / 0"];
+  h3 -> h4 [label="l:l / 0"];
+  h4 -> h5 [label="o:o / 1", color="#B7950B", fontcolor="#B7950B", penwidth=2.0];
+
+  // chain for "help"  (distance 2)
+  p1 [label="h₂"]; p2 [label="e₂"]; p3 [label="l₂"];
+  p4 [label="p₂", shape=doublecircle, fillcolor="#F9E79F", color="#B7950B"];
+  S  -> p1 [label="h:h / 0"];
+  p1 -> p2 [label="e:e / 0"];
+  p2 -> p3 [label="l:l / 0"];
+  p3 -> p4 [label="p:p / 2", color="#B7950B", fontcolor="#B7950B", penwidth=2.0];
+
+  // legend
+  L [shape=note, fillcolor="#FCF3CF", style=filled, fontsize=10,
+     label="Labels are identity (input = output = term char).\nEdit distance is deposited on the edge into\nthe accepting (gold) terminal — an accepted path's\ntropical weight equals the term's edit distance."];
+  h5 -> L [style=invis];
+}

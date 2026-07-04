@@ -26,5 +26,12 @@ default = []
 # Phonetic Levenshtein WFST variants (require liblevenshtein's phonetic rules)
 phonetic-rules = ["liblevenshtein/phonetic-rules"]
 
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "wfst_expansion"
+harness = false
+
 [package.metadata.docs.rs]
 all-features = true

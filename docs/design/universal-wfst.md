@@ -46,7 +46,7 @@ The position variant `V` selects the metric:
 impl<V, D> UniversalLevenshteinWfst<V, D> {
     pub fn new(dictionary: &D, query: &str, max_distance: u8) -> Self;
     pub fn max_distance(&self) -> u8;
-    pub fn query(&self) -> String;
+    pub fn query(&self) -> &str;
     pub fn set_max_cache_size(&mut self, size: usize);
 }
 

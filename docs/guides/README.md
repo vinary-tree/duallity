@@ -18,7 +18,7 @@ duallity is built against liblevenshtein 0.9, lling-llang 0.2, and libdictenstei
 
 ```toml
 [dependencies]
-duallity = "0.2"
+duallity = "0.3"
 liblevenshtein = "0.9"
 lling-llang = "0.2"
 libdictenstein = "0.2"
@@ -32,7 +32,7 @@ libdictenstein = "0.2"
 | `phonetic-rules` | ✗ | the NFA-backed phonetic variants: `PhoneticWfst` / `PhoneticWfstBuilder`, `PhoneticNfaWfst`, `PhoneticStateSource`, and `PhoneticPipelineBuilder::{build, build_phonetic_nfa}` | `liblevenshtein/phonetic-rules` |
 
 ```toml
-duallity = { version = "0.2", features = ["phonetic-rules"] }
+duallity = { version = "0.3", features = ["phonetic-rules"] }
 ```
 
 > The rule-based `RewriteWfst` (and `PhoneticPipelineBuilder::build_rewrite_wfst`) need **no** feature

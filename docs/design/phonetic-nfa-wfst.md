@@ -79,7 +79,7 @@ because their mathematical denotation is otherwise unbounded.
 ## 5. Example
 
 ```rust,ignore
-// Cargo.toml:  duallity = { version = "0.2", features = ["phonetic-rules"] }
+// Cargo.toml:  duallity = { version = "0.3", features = ["phonetic-rules"] }
 use duallity::PhoneticNfaWfst;
 use liblevenshtein::phonetic::{nfa::compile, regex::parse};
 use lling_llang::prelude::*;

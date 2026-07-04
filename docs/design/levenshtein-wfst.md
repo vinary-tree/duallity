@@ -39,7 +39,7 @@ pub fn with_algorithm(dictionary: &D, query: &str, max_distance: usize, algorith
 
 pub fn max_distance(&self) -> usize;
 pub fn algorithm(&self) -> Algorithm;
-pub fn query(&self) -> String;
+pub fn query(&self) -> &str;
 pub fn set_max_cache_size(&mut self, size: usize);   // honoured under CachePolicy::Lru
 ```
 

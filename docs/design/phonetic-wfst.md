@@ -93,7 +93,7 @@ values before any `TropicalWeight` is emitted.
 ## 5. Example
 
 ```rust,ignore
-// Cargo.toml:  duallity = { version = "0.2", features = ["phonetic-rules"] }
+// Cargo.toml:  duallity = { version = "0.3", features = ["phonetic-rules"] }
 use duallity::PhoneticWfstBuilder;
 use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 use lling_llang::prelude::*;

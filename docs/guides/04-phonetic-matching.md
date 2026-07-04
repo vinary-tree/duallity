@@ -63,7 +63,7 @@ With `features = ["phonetic-rules"]`, compile a phonetic regular expression into
 fused with the dictionary ([design/phonetic-wfst](../design/phonetic-wfst.md)):
 
 ```rust,ignore
-// Cargo.toml:  duallity = { version = "0.2", features = ["phonetic-rules"] }
+// Cargo.toml:  duallity = { version = "0.3", features = ["phonetic-rules"] }
 use duallity::PhoneticWfstBuilder;
 use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 

@@ -110,7 +110,7 @@ These are stated so you do not expect the builder to return ranked matches by it
 ## 6. Example
 
 ```rust,ignore
-// Cargo.toml:  duallity = { version = "0.2", features = ["phonetic-rules"] }
+// Cargo.toml:  duallity = { version = "0.3", features = ["phonetic-rules"] }
 use duallity::{PhoneticPipelineBuilder, PhoneticMatch};
 use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 

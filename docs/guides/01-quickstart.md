@@ -76,7 +76,7 @@ let _phonetic_fuzzy = compose(rewrite, lev);     // "fone" → (f↔ph) → fuzz
 ## 5. Phonetic regex (needs `phonetic-rules`)
 
 ```rust,ignore
-// Cargo.toml:  duallity = { version = "0.2", features = ["phonetic-rules"] }
+// Cargo.toml:  duallity = { version = "0.3", features = ["phonetic-rules"] }
 use duallity::PhoneticWfstBuilder;
 use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 

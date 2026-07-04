@@ -70,7 +70,7 @@ use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 
 ## 4. Version matrix
 
-duallity **0.2** is built against:
+duallity **0.3** is built against:
 
 | Dependency | Version |
 |------------|---------|

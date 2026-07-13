@@ -23,7 +23,7 @@ package "duallity" #D6EAF8 {
 
 package "lling-llang" #FCF3CF {
   rectangle "Downstream WFST\nphonetic rewrite  /  n-gram LM\nWfst<char, TropicalWeight>" as Down #FCF3CF
-  rectangle "compose(lev, down)\n--\nlazy  T1 o T2\n(min over y) [ T1(x,y) + T2(y,z) ]" as Compose #FCF3CF
+  rectangle "compose(lev, down)\n--\nlazy  <latex>T_1 \circ T_2</latex>\n<latex>\min_y\,[\,T_1(x,y) + T_2(y,z)\,]</latex>" as Compose #FCF3CF
   rectangle "Shortest-path search\naccepting_paths()  /  best paths" as Search #FCF3CF
 }
 
@@ -31,14 +31,14 @@ rectangle "Ranked corrections\nlabels + total tropical weight\n(= edit distance 
 
 Query --> Lev
 Dict  --> Lev
-Lev   --> Compose : T1 (input: query chars,\noutput: dict chars)
-Down  --> Compose : T2
+Lev   --> Compose : <latex>T_1</latex> (input: query chars,\noutput: dict chars)
+Down  --> Compose : <latex>T_2</latex>
 Compose --> Search
 Search  --> Out
 
 note bottom of Compose
-  Tropical semiring (min, +):
-  paths combined by min (best wins),
+  Tropical semiring <latex>(\min, +)</latex>:
+  paths combined by <latex>\min</latex> (best wins),
   edge costs added along a path.
   Product states expanded lazily.
 end note

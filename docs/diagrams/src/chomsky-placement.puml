@@ -1,0 +1,36 @@
+@startuml chomsky-placement
+' D · Placement of duallity's WFSTs in the Chomsky hierarchy.
+' Strictly nested rings: Type 0 ⊋ Type 1 ⊋ Type 2 ⊋ Type 3. Levenshtein / phonetic WFSTs live
+' inside the innermost Type-3 (regular) box; {a^n b^n} sits in the Type-2 ring, OUTSIDE Type 3.
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam rectangle {
+  BorderColor #34495E
+  FontName "DejaVu Sans"
+}
+title Chomsky hierarchy — where duallity's automata sit\nnesting arrow <latex>\supseteq</latex> means "properly contains" (<latex>\subseteq</latex> strict)
+
+rectangle "Type 0 — Recursively enumerable (RE)\nunrestricted grammars · Turing machines" as T0 #FBFCFC {
+  rectangle "Type 1 — Context-sensitive (CS)\nnon-contracting grammars · linear-bounded automata" as T1 #F2F4F4 {
+    rectangle "Type 2 — Context-free (CF)\nCF grammars · pushdown automata" as T2 #E5E8E8 {
+
+      rectangle "<latex>\{\, a^{n} b^{n} : n \ge 0 \,\}</latex>\nnot regular  (pumping lemma)\nneeds a stack to count" as ANBN #E8DAEF
+
+      rectangle "Type 3 — Regular\nfinite automata · regular expressions" as T3 #D5D8DC {
+        rectangle "Levenshtein / phonetic WFSTs\n(duallity)\nfinite states · linear-time recognition" as WFST #D6EAF8
+      }
+    }
+  }
+}
+
+ANBN -[hidden]down- T3
+
+note bottom
+  duallity's Levenshtein and phonetic transducers are <b>weighted finite-state</b> machines:
+  finitely many states, no unbounded memory, so they recognize exactly the <b>Type-3 (regular)</b>
+  languages and run in time linear in the query length. The classic non-regular witness
+  <latex>\{a^{n} b^{n}\}</latex> lies one ring out, in <b>Type 2</b>: counting <latex>n</latex> unbounded <latex>a</latex>'s then matching
+  <latex>n</latex> <latex>b</latex>'s requires a stack, which a finite-state machine does not have.
+end note
+@enduml

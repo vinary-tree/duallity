@@ -27,7 +27,7 @@ B0 --> NFA : build_phonetic_nfa()
 BD --> PW  : build()
 
 state "lling-llang compose / LazyWfstWrapper\n(caller-owned)" as CMP #FCF3CF
-state "ranked PhoneticMatch\n{ term, total = phonetic ⊕ edit }" as OUT #E8DAEF
+state "ranked PhoneticMatch\n{ term, <latex>\text{total} = \text{phonetic} + \text{edit}</latex> }" as OUT #E8DAEF
 
 RW  --> CMP
 NFA --> CMP

@@ -1,0 +1,45 @@
+@startuml threat-surface-resource-bounds
+' Inputs -> DoS vectors (red) -> bounds/mitigations (green) -> bounded output.
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam rectangle {
+  BorderColor #34495E
+  FontColor #2C3E50
+}
+skinparam ArrowColor #34495E
+title Threat surface and resource bounds — DoS is the one real risk
+
+rectangle "Query q  (|q| = n)" as Q #FDEBD0
+rectangle "Dictionary D" as D #FDEBD0
+rectangle "Config\nmax_distance, CachePolicy, weights" as CFG #FDEBD0
+
+rectangle "Large <latex>k</latex>\nwide band <latex>2k+1</latex>" as V1 #E74C3C
+rectangle "Huge dictionary\ndeep product walk" as V2 #E74C3C
+rectangle "Unbounded cache\nCacheAll growth" as V3 #E74C3C
+
+rectangle "max_distance cap\nkeep <latex>k</latex> small (1-2)" as M1 #2ECC71
+rectangle "<latex>\mathrm{CachePolicy::Lru}</latex>\nbounded max_states" as M2 #2ECC71
+rectangle "num_results()\nWallBreaker budget check" as M3 #2ECC71
+rectangle "query-length limit\ncap n at the boundary" as M4 #2ECC71
+
+rectangle "Bounded pure compute\n-> ranked corrections\n(term, tropical weight)" as OUT #E8DAEF
+
+Q   --> V1
+CFG --> V1
+D   --> V2
+CFG --> V3
+
+V1 --> M1
+V1 --> M4
+V2 --> M3
+V2 --> M4
+V3 --> M2
+
+M1 --> OUT
+M2 --> OUT
+M3 --> OUT
+M4 --> OUT
+
+caption pure-compute: no I/O, no deserialization; DoS is the one real risk
+@enduml

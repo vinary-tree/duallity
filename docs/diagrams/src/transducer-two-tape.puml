@@ -2,7 +2,7 @@
 ' D2 — Transducer two-tape view.
 ' Depicts: a single Levenshtein-WFST transition reads an INPUT label (query side) and writes an
 ' OUTPUT label (dictionary side), carrying a tropical weight. The four edit operations map to the
-' four labelled arcs out of a product state (dict_node, query_pos).
+' four labelled arcs out of a product state (dict_node, query_pos). Math typeset with <latex>.
 skinparam backgroundColor #FFFFFF
 skinparam shadowing false
 skinparam defaultFontName "DejaVu Sans"
@@ -18,15 +18,15 @@ state "advance both\n(dict_node+1, query_pos+1)" as MS #D1F2EB
 state "advance dict only\n(dict_node+1, query_pos)" as INS #D1F2EB
 state "advance query only\n(dict_node, query_pos+1)" as DEL #D1F2EB
 
-S -[#2ECC71]-> MS : <b>match</b>   q[i]:w[j] / <b>0</b>   (q[i] = w[j])
-S -[#E74C3C]-> MS : <b>substitute</b>   q[i]:w[j] / <b>1</b>   (q[i] ≠ w[j])
-S -[#3498DB]-> INS : <b>insert</b>   ε:w[j] / <b>1</b>   (extra dict char)
-S -[#E67E22]-> DEL : <b>delete</b>   q[i]:ε / <b>1</b>   (missing dict char)
+S -[#2ECC71]-> MS : <b>match</b>   <latex>q[i]:w[j] / 0</latex>   <latex>(q[i] = w[j])</latex>
+S -[#E74C3C]-> MS : <b>substitute</b>   <latex>q[i]:w[j] / 1</latex>   <latex>(q[i] \neq w[j])</latex>
+S -[#3498DB]-> INS : <b>insert</b>   <latex>\varepsilon : w[j] / 1</latex>   (extra dict char)
+S -[#E67E22]-> DEL : <b>delete</b>   <latex>q[i] : \varepsilon / 1</latex>   (missing dict char)
 
 note bottom of S
-  Each arc is  <b>input : output / weight</b>.
-  • input  = query-side label  (None = ε)
-  • output = dict-side  label  (None = ε)
+  Each arc is  <latex>\text{input} : \text{output} / \text{weight}</latex>.
+  • input  = query-side label  (None = <latex>\varepsilon</latex>)
+  • output = dict-side  label  (None = <latex>\varepsilon</latex>)
   • weight = TropicalWeight (0 = free match, 1 = one edit)
   A path's total weight (⊗ = +) is its edit distance.
 end note

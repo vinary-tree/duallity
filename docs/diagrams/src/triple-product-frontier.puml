@@ -1,0 +1,37 @@
+@startuml triple-product-frontier
+' D — PhoneticWfst as a triple product NFA (X) Levenshtein (X) Dictionary.
+' Depicts: a product state (d, Phi) advancing on a dictionary edge c via an identity
+' arc c:c / w_ph; the three composed factor layers each feed one component of Phi.
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam rectangle {
+  BorderColor #34495E
+  FontName "DejaVu Sans"
+}
+title PhoneticWfst as a triple product   NFA ⊗ Levenshtein ⊗ Dictionary\n⊗ = tropical times (costs add along a path)
+
+rectangle "phonetic NFA — liblevenshtein\nThompson NFA of the phonetic regex\ncontributes an NFA state set" as NFA #FADBD8
+rectangle "Levenshtein band — duallity\npositions within edit distance <latex>\le k</latex>\ncontributes edit cost <latex>w_{\mathrm{edit}}</latex>" as LEV #D6EAF8
+rectangle "dictionary DAWG — libdictenstein\ncurrent node d + outgoing edges c\ncontributes <latex>\min\text{-dist}</latex>" as DICT #D5F5E3
+
+rectangle "product state  <latex>(d, \Phi)</latex>\nd = dictionary node,   Φ = product frontier\nΦ = (NFA state set, Levenshtein positions)" as S0 #D6EAF8
+rectangle "product state  <latex>(d', \Phi')</latex>" as S1 #D6EAF8
+rectangle "accepting state\nfinal weight = <latex>w_{\mathrm{edit}} \cdot \min\text{-dist}</latex>" as SF #F9E79F
+
+NFA -[hidden]right- LEV
+LEV -[hidden]right- DICT
+NFA --> S0
+LEV --> S0
+DICT --> S0 : supplies edge c
+S0 -[#2ECC71]-> S1 : identity arc  <latex>c : c \,/\, w_{\mathrm{ph}}</latex>
+S1 --> SF
+
+note bottom
+  One dictionary edge c drives all three factors at once: the NFA takes its
+  c-transition, the Levenshtein band advances, and the dict node moves d → d'.
+  The arc is an identity <latex>c : c</latex> (same char in and out) weighted by the
+  phonetic cost <latex>w_{\mathrm{ph}}</latex>; the accepting weight folds the edit
+  cost against the residual <latex>\min\text{-dist}</latex> to the nearest term.
+end note
+@enduml

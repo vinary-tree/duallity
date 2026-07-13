@@ -1,0 +1,32 @@
+@startuml semiring-axioms-panel
+' D · Semiring axioms — abstract law paired with its tropical (min, +) instance.
+' The multiplicative operator is written as PLAIN UNICODE <size:18>⊗</size> (JLaTeXMath \otimes renders blank).
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam rectangle {
+  BorderColor #34495E
+  FontName "DejaVu Sans"
+}
+title Semiring axioms — abstract law and its tropical instance\n<latex>\mathbb{K} = (\mathbb{R} \cup \{+\infty\},\ \min,\ +,\ +\infty,\ 0)</latex>
+
+rectangle "(A1)  additive commutative monoid\n<latex>(\mathbb{K},\ \oplus,\ \bar{0})</latex>\nassociative · commutative · identity <latex>\bar{0}</latex>\n────────────\ntropical:  <latex>(\mathbb{R} \cup \{+\infty\},\ \min,\ +\infty)</latex>" as A1 #D6EAF8
+
+rectangle "(A2)  multiplicative monoid\n<latex>(\mathbb{K},\ </latex> <size:18>⊗</size> <latex>,\ \bar{1})</latex>\nassociative · identity <latex>\bar{1}</latex>\n────────────\ntropical:  <latex>(\mathbb{R} \cup \{+\infty\},\ +,\ 0)</latex>" as A2 #D6EAF8
+
+rectangle "(A3)  distributivity\n<latex>a</latex> <size:18>⊗</size> <latex>(b \oplus c) = (a</latex> <size:18>⊗</size> <latex>b) \oplus (a</latex> <size:18>⊗</size> <latex>c)</latex>\n────────────\ntropical:  <latex>a + \min(b,c) = \min(a{+}b,\ a{+}c)</latex>" as A3 #D6EAF8
+
+rectangle "(A4)  annihilation by <latex>\bar{0}</latex>\n<latex>a</latex> <size:18>⊗</size> <latex>\bar{0} = \bar{0}</latex>\n────────────\ntropical:  <latex>a + (+\infty) = +\infty</latex>" as A4 #D6EAF8
+
+A1 -[hidden]right- A2
+A3 -[hidden]right- A4
+A1 -[hidden]down- A3
+A2 -[hidden]down- A4
+
+note bottom
+  A <b>semiring</b> keeps (A1)–(A4) but drops additive inverses — there is no
+  subtraction. That is exactly why the tropical algebra <latex>(\min, +)</latex> qualifies:
+  <latex>\min</latex> has no inverse, yet <latex>\oplus = \min</latex> and <size:18>⊗</size> <latex>\; = +</latex> still satisfy every axiom,
+  so a shortest path (an <latex>\oplus</latex>-sum of ⊗-products) is the best correction.
+end note
+@enduml

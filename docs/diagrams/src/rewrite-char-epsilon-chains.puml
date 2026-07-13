@@ -16,26 +16,26 @@ state "0\nhome / accepting" as H0 #F9E79F
 
 state "many-to-one:  ph → f  (cost 0.1)" as G1 {
   state "0" as A0 #F9E79F
-  state "s₁" as A1
-  A0 -[#E74C3C]-> A1 : <b>p : f</b> / 0.1
-  A1 -[#3498DB]-> A0 : <b>h : ε</b> / 0
+  state "<latex>s_1</latex>" as A1
+  A0 -[#E74C3C]-> A1 : <latex>p : f / 0.1</latex>
+  A1 -[#3498DB]-> A0 : <latex>h : \varepsilon / 0</latex>
 }
 
 state "one-to-many:  f → ph  (cost 0.1)" as G2 {
   state "0" as B0 #F9E79F
-  state "s₁" as B1
-  B0 -[#E74C3C]-> B1 : <b>f : p</b> / 0.1
-  B1 -[#E67E22]-> B0 : <b>ε : h</b> / 0
+  state "<latex>s_1</latex>" as B1
+  B0 -[#E74C3C]-> B1 : <latex>f : p / 0.1</latex>
+  B1 -[#E67E22]-> B0 : <latex>\varepsilon : h / 0</latex>
 }
 
-H0 -[#2ECC71]-> H0 : <b>c : c</b> / 0   (identity self-loop,\nASCII alphanumerics)
+H0 -[#2ECC71]-> H0 : <latex>c : c / 0</latex>   (identity self-loop,\nASCII alphanumerics)
 
 note bottom of G1
-  "ph→f": consume input 'p','h'; emit output 'f','ε'.
-  The h:ε step shortens the input tape.
+  "ph→f": consume input 'p','h'; emit output 'f', <latex>\varepsilon</latex>.
+  The <latex>h : \varepsilon</latex> step shortens the input tape.
 end note
 note bottom of G2
-  "f→ph": consume input 'f','ε'; emit output 'p','h'.
-  The ε:h step lengthens the output tape.
+  "f→ph": consume input 'f', <latex>\varepsilon</latex>; emit output 'p','h'.
+  The <latex>\varepsilon : h</latex> step lengthens the output tape.
 end note
 @enduml

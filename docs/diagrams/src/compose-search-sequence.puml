@@ -1,0 +1,48 @@
+@startuml compose-search-sequence
+' compose(T1,T2) returns a lazy product; ShortestPath expands product states on demand.
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam sequence {
+  ArrowColor #34495E
+  LifeLineBorderColor #AAB7B8
+  ParticipantBorderColor #34495E
+}
+title Compose then shortest-path search — lazy product expansion
+
+actor Caller
+participant "compose(T1, T2)" as Compose #FCF3CF
+participant "LazyComposition\n(product T1 . T2)" as Prod #FCF3CF
+participant "ShortestPath\nsearch" as SP #FCF3CF
+
+Caller -> Compose : compose(t1, t2)
+activate Compose
+Compose -> Prod : build lazy product\n(no states expanded yet)
+activate Prod
+Prod --> Compose : LazyComposition handle
+deactivate Prod
+Compose --> Caller : composed WFST (lazy)
+deactivate Compose
+
+note over Prod #FDEBD0
+  Lazy product <latex>T_1 \circ T_2</latex> :
+  <latex>\min_y\,[\,T_1(x,y) + T_2(y,z)\,]</latex>
+end note
+
+Caller -> SP : shortest_path(N) / accepting_paths()
+activate SP
+loop until N best paths finalized
+  SP -> Prod : compute_state(s)\nexpand next product state on demand
+  activate Prod
+  Prod --> SP : outgoing transitions + tropical weights
+  deactivate Prod
+end
+SP --> Caller : ranked best paths
+deactivate SP
+
+note over Caller, SP #E8DAEF
+  Output: ranked corrections —
+  labels + total tropical weight
+  (= edit distance + downstream cost)
+end note
+@enduml

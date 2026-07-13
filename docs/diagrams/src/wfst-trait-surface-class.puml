@@ -1,0 +1,92 @@
+@startuml wfst-trait-surface-class
+' D — The WFST trait surface as a class diagram.
+' Depicts: lling-llang traits (Wfst, LazyWfst, StateSource, LatticeBackend, Semiring)
+' and enum CachePolicy, realized by duallity's six WFST engines + DictionaryBackend.
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam class {
+  BorderColor #34495E
+  FontName "DejaVu Sans"
+}
+title Trait surface — every duallity WFST realizes lling-llang's Wfst + LazyWfst
+
+package "lling-llang traits (yellow)" as LLL #F8F9F9 {
+  interface "Wfst<L, W : Semiring>" as Wfst #FCF3CF {
+    +start() : StateId
+    +is_final(StateId) : bool
+    +final_weight(StateId) : W
+    +transitions(StateId) : &[WeightedTransition]
+    +num_states() : usize
+  }
+  interface "LazyWfst<L, W>" as LazyWfst #FCF3CF {
+    +is_expanded(StateId) : bool
+    +expand(&mut self, StateId)
+    +transitions_lazy(&mut self, StateId)
+    +cache_policy() : CachePolicy
+    +clear_cache()
+  }
+  interface "StateSource<L, W>" as StateSource #FCF3CF {
+    +compute_state(StateId) : LazyState
+    +start() : StateId
+  }
+  interface "LatticeBackend" as LatticeBackend #FCF3CF {
+    +intern(&str) : VocabId
+    +lookup(VocabId) : Option<&str>
+    +contains(&str) : bool
+  }
+  interface "Semiring" as Semiring #FCF3CF {
+    +zero() : W
+    +one() : W
+    +plus (⊕ = min),  times (⊗ = +)
+  }
+  enum "CachePolicy" as CachePolicy #FCF3CF {
+    CacheAll
+    Lru(max_states)
+    NoCache
+  }
+}
+
+class "TropicalWeight" as TW #EAECEE {
+  value : f64
+  ⊕ = min,   ⊗ = +
+}
+
+class "LevenshteinWfst" as LW #D6EAF8
+class "UniversalLevenshteinWfst" as ULW #D6EAF8
+class "WallBreakerWfst" as WBW #D6EAF8
+class "GeneralizedWfst" as GW #D6EAF8
+class "RewriteWfst" as RWW #D6EAF8
+class "PhoneticWfst<D>" as PW #D6EAF8
+class "DictionaryBackend<D>" as DB #D6EAF8
+
+LazyWfst --|> Wfst
+LazyWfst ..> CachePolicy : uses
+TW ..|> Semiring
+
+LW   ..|> LazyWfst
+ULW  ..|> LazyWfst
+WBW  ..|> LazyWfst
+GW   ..|> LazyWfst
+RWW  ..|> LazyWfst
+PW   ..|> LazyWfst
+
+LW   ..|> Wfst
+ULW  ..|> Wfst
+WBW  ..|> Wfst
+GW   ..|> Wfst
+RWW  ..|> Wfst
+PW   ..|> Wfst
+
+GW ..> StateSource : delegates compute_state
+DB ..|> LatticeBackend
+
+note bottom of StateSource
+  The pure &self kernel: each lazy WFST wraps a StateSource,
+  whose compute_state mints one product state on demand.
+end note
+note bottom of DB
+  DictionaryBackend realizes LatticeBackend — a vocabulary
+  adapter (interns terms to VocabId), not a transducer.
+end note
+@enduml

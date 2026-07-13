@@ -1,0 +1,36 @@
+@startuml pigeonhole-principle
+' D8 — Pigeonhole principle behind WallBreaker's split.
+' Depicts: <=k unit edits over k+1 contiguous pieces leave >=1 piece undamaged, an
+' exact substring seed; transposition / merge-split need 2k+1 (boundary-spanning edit).
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam rectangle {
+  BorderColor #34495E
+  FontName "DejaVu Sans"
+}
+title Pigeonhole principle behind WallBreaker's split\n<latex>\le k</latex> unit edits over <latex>k+1</latex> contiguous pieces  ⇒  <latex>\ge 1</latex> undamaged piece
+
+rectangle "query q split into <latex>k+1 = 3</latex> contiguous pieces   (k = 2)" as HDR #FDEBD0
+
+rectangle "piece 1\n✗ an edit lands here" as P1 #FADBD8
+rectangle "piece 2\n✗ an edit lands here" as P2 #FADBD8
+rectangle "piece 3\n✓ undamaged" as P3 #D5F5E3
+HDR -[hidden]down- P1
+P1 -[#E74C3C]-> P2
+P2 -[#AAB7B8]-> P3
+
+rectangle "at most k = 2 pieces can be damaged\n(each unit edit dirties ≤ 1 piece)" as MID #EAECEE
+rectangle "piece 3 is an EXACT substring of the target term\n⇒ seed the SCDAWG lookup here" as SEED #D5F5E3
+
+P1 -[hidden]down- MID
+P3 -[#2ECC71]-> SEED : undamaged
+
+note bottom
+  With <latex>\le k</latex> substitutions / insertions / deletions spread over <latex>k+1</latex> pieces,
+  the pigeonhole principle forces at least one piece to escape every edit — an exact
+  substring seed for the dictionary search. Transposition and Merge/Split need
+  <latex>2k+1</latex> pieces: one boundary-spanning edit can corrupt two adjacent pieces at
+  once, so k such edits may dirty up to 2k pieces. (Counts are Coq-verified upstream.)
+end note
+@enduml

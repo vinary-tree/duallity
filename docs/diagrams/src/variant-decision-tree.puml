@@ -1,0 +1,61 @@
+@startuml variant-decision-tree
+' Decision tree for choosing a duallity WFST variant. Leaves = variants (duallity blue #D6EAF8).
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam activity {
+  DiamondBackgroundColor #EAECEE
+  DiamondBorderColor #707B7C
+  DiamondFontColor #2C3E50
+  ArrowColor #34495E
+  BorderColor #34495E
+  BackgroundColor #FDEBD0
+}
+title Which WFST variant? — a decision tree over duallity's exports
+
+start
+:Choosing a duallity WFST variant;
+if (Phonetic / sound-alike match?) then (yes)
+  if (Mapping given as rules or a regex?) then (fixed rewrite rules)
+    :**RewriteWfst**
+    rule rewrites (ph->f, ck->k)
+    no feature gate; <<#D6EAF8>>
+    stop
+  else (phonetic regex)
+    :**PhoneticWfst** / **PhoneticNfaWfst**
+    compiled Thompson NFA
+    feature "phonetic-rules"; <<#D6EAF8>>
+    stop
+  endif
+else (no)
+  if (k large over a big dictionary?) then (yes)
+    :**WallBreakerWfst**
+    pigeonhole seeds via SCDAWG
+    bidirectional extension; <<#D6EAF8>>
+    stop
+  else (no)
+    if (Many queries, same dict and k?) then (yes)
+      :**UniversalLevenshteinWfst**
+      query-agnostic automaton
+      built once per max_distance; <<#D6EAF8>>
+      stop
+    else (no)
+      if (Runtime-configurable op set?) then (yes)
+        :**GeneralizedWfst**
+        OperationSet: standard / transposition /
+        merge-split / phonetic-digraph; <<#D6EAF8>>
+        stop
+      else (no)
+        :**LevenshteinWfst**
+        the core adapter — start here; <<#D6EAF8>>
+        stop
+      endif
+    endif
+  endif
+endif
+
+legend bottom
+  Blue leaves are duallity WFST variants; every one implements Wfst<char, TropicalWeight>,
+  so any choice remains composable via compose(t1, t2). Diamonds are decisions.
+end legend
+@enduml

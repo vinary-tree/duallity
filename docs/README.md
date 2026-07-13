@@ -1,14 +1,15 @@
 # duallity documentation
 
 Welcome to the full documentation for **duallity** — *Levenshtein automata as lling-llang WFSTs*.
-This hub maps the documentation and suggests reading orders. The crate-root
-[`README`](../README.md) is the one-page overview; everything below goes deeper.
+This hub maps the corpus and suggests reading orders. The crate-root [`README`](../README.md) is the
+one-page overview; everything below goes deeper, from first-principles theory through the Rust
+architecture, per-variant design, task-oriented guides, and the engineering/security envelope.
 
 ## The map
 
 ```
 docs/
-├── theory/          ← what a Levenshtein WFST is, and why (semirings, automata, composition)
+├── theory/          ← what a Levenshtein WFST is, and why (semirings, automata, composition, limits)
 ├── architecture/    ← how it is built (traits, state encoding, laziness, registries)
 ├── design/          ← one page per WFST variant (API + exact semantics + honest limits)
 ├── guides/          ← task-oriented usage (quickstart, choosing, composing, phonetics, tuning)
@@ -16,7 +17,7 @@ docs/
 ├── security/        ← threat model, hashing & collisions
 ├── references/      ← bibliography (with DOIs) + glossary
 ├── diagrams/        ← all diagram sources + rendered SVGs + the shared color legend
-└── roadmap/         ← inherited research designs outside the shipped crate surface
+└── archive/         ← inherited research designs, retained verbatim, outside the shipped crate surface
 ```
 
 | Section | Start here |
@@ -45,31 +46,40 @@ docs/
 3. all of [architecture/](architecture/README.md)
 4. the [design](design/README.md) page(s) for the variant(s) you use
 5. [guides/03 · Composing pipelines](guides/03-composing-pipelines.md) and [guides/05 · Performance and tuning](guides/05-performance-and-tuning.md)
-6. [engineering/](engineering/README.md)
+6. [engineering/](engineering/README.md) and [security/](security/README.md)
 
 **Researcher (≈3 h)** — the full theory and provenance:
-1. all of [theory/](theory/README.md) (01 → 07)
+1. all of [theory/](theory/README.md) (01 → 07), including the complete correctness proofs
 2. [references/bibliography](references/bibliography.md)
 3. the [design](design/README.md) pages for exact semantics
 4. [theory/06 · WallBreaker](theory/06-wallbreaker-and-the-wall-effect.md) and [theory/07 · Regular-language limits](theory/07-regular-language-limits.md)
 
 ## Conventions
 
-- **Notation.** Every symbol (`Σ, ε, q, k, w, 𝕂, ⊕, ⊗, 0̄, 1̄, ∘, χ, s_n(w,i)`, …) is defined once in
-  the [master notation table](theory/README.md#master-notation). Mathematics is written in Unicode and
-  quoted in backticks.
+- **Mathematics is GitHub-flavored MathJax.** Inline math is a backtick span wrapped in dollar signs —
+  e.g. `` $`\oplus`$ `` renders `` $`\oplus`$ `` — and display math is a fenced block whose info-string
+  is `math`. (A literal dollar character is written as an inline code span, `` `$` ``.) Every symbol is
+  defined once in the [master notation table](theory/README.md#master-notation); the
+  [glossary](references/glossary.md) mirrors those renderings in prose. These two files plus the
+  diagram [color legend](diagrams/README.md) are the three **single sources of truth** the rest of the
+  corpus draws from.
 - **Diagrams** use one [shared color legend](diagrams/README.md): liblevenshtein = red-pink,
   libdictenstein = green, duallity = blue, lling-llang = yellow, output = purple; query/input tape =
   orange, dictionary/output tape = teal; match/substitute/insert/delete = green/red/blue/orange;
-  accepting = gold. Each is a committed source (PlantUML / D2 / Graphviz) plus a rendered SVG.
+  accepting = gold. Each is a committed source (PlantUML, D2, or Graphviz) plus a rendered SVG;
+  mathematical labels are typeset with PlantUML `<latex>` where the illustration carries formulae.
 - **⚠ Honest limitations** are flagged in the design pages where a variant departs from its ideal —
   e.g. the [Rewrite WFST uses unconditional rules](design/phonetic-rewrite-wfst.md) and the
-  [Pipeline builder does not itself compose/search](design/phonetic-pipeline-builder.md). Nothing here
-  over-promises.
+  [Pipeline builder does not itself compose or search](design/phonetic-pipeline-builder.md). Nothing
+  here over-promises.
 
-## A note on `roadmap/`
+## A note on `archive/`
 
-The [`roadmap/`](roadmap/README.md) directory holds documentation **inherited from an earlier
-project** describing a research FST + CFG + Neural text-normalization system. It sits outside
-duallity's shipped crate surface and is clearly banner-labelled as such. The canonical, accurate
-documentation is everything *outside* `roadmap/`.
+The [`archive/`](archive/README.md) directory holds documentation **inherited from an earlier project**
+(`liblevenshtein-rust`) describing a research **FST + CFG + Neural** text-normalization system. It sits
+**outside duallity's shipped crate surface** and is retained verbatim, under its original banners, as
+historical context — it is deliberately *not* rewritten to these conventions. The canonical, accurate
+documentation of what `duallity` actually is and does is everything *outside* `archive/`. Where a
+concept there maps onto real duallity code (the phonetic-regex→NFA→WFST pipeline; the regular-language
+expressivity limits; tropical-semiring composition), it has been re-grounded in the canonical tree and
+is cross-referenced from [`archive/README`](archive/README.md).

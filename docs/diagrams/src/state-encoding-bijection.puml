@@ -1,0 +1,42 @@
+@startuml state-encoding-bijection
+' D3 — Composite state-encoding bijection (d, a) <-> StateId.
+' Depicts: how a product pair (dict_node d, automaton_state a) collapses to a single
+' flat StateId and back, one contiguous radix-M band per dictionary node d.
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+left to right direction
+skinparam rectangle {
+  BorderColor #34495E
+  FontName "DejaVu Sans"
+}
+title Composite state-encoding bijection   <latex>(d, a) \leftrightarrow \mathrm{StateId}</latex>\nradix M = max automaton states per dict node,  with  0 ≤ a < M
+
+rectangle "product pairs (d, a),   0 ≤ a < M" as LEFT #F4F6F7 {
+  rectangle "(0, 0)" as p0 #D6EAF8
+  rectangle "(0, a)" as p1 #D6EAF8
+  rectangle "(1, 0)" as p2 #D6EAF8
+  rectangle "(d, a)" as p3 #D6EAF8
+}
+
+rectangle "flat ids  StateId ∈ [0, dM + M)\ncompact u32, one contiguous band per d" as RIGHT #F4F6F7 {
+  rectangle "0" as q0 #D6EAF8
+  rectangle "a" as q1 #D6EAF8
+  rectangle "M" as q2 #D6EAF8
+  rectangle "dM + a" as q3 #D6EAF8
+}
+
+p0 -[#2ECC71]-> q0 : encode  <latex>\mathrm{StateId} = d \cdot M + a</latex>
+p1 -[#2ECC71]-> q1
+p2 -[#2ECC71]-> q2
+p3 -[#2ECC71]-> q3
+q3 -[#E67E22]-> p3 : decode (checked M > 0)\n<latex>d = \lfloor \mathrm{StateId} / M \rfloor,\ a = \mathrm{StateId} \bmod M</latex>
+
+note as EX #FCF3CF
+  A bijection: encode packs the pair into one u32; decode recovers it exactly.
+  Each dictionary node d owns the contiguous band [dM, dM + M), so distinct
+  pairs never alias. Example — query "helo" (n = 4), k = 2, c = 1 ⇒ M = 5·3·1 = 15;
+  encode(3, 2) = 3·15 + 2 = 47;  decode(47) = (⌊47/15⌋, 47 mod 15) = (3, 2). ✓
+end note
+LEFT -[hidden]down- EX
+@enduml

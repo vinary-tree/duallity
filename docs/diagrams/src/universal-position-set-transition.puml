@@ -1,0 +1,31 @@
+@startuml universal-position-set-transition
+' D · One transition of the universal (Mihov–Schulz) Levenshtein automaton.
+' A state is a SET of positions <offset, err>. On a characteristic vector χ it maps to a raw
+' successor set, which subsumption reduction prunes to the minimal Π'.
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam state {
+  BackgroundColor #D6EAF8
+  BorderColor #34495E
+  FontName "DejaVu Sans"
+}
+title Universal Levenshtein automaton — one step on a characteristic vector <latex>\chi</latex>\nstate = position set   ·   position = <latex>\langle \mathrm{offset},\ \mathrm{err} \rangle</latex>   ·   <latex>k = 2</latex>
+
+state "<latex>\Pi = \{\ \langle 0,0 \rangle,\ \langle 1,1 \rangle\ \}</latex>\ncurrent position set" as PI
+
+state "raw successor (before reduction)\n<latex>\{\ \langle 0,1 \rangle,\ \langle 1,1 \rangle,\ \langle 1,2 \rangle,\ \langle 2,1 \rangle\ \}</latex>" as RAW #F2F3F4
+
+state "<latex>\Pi' = \{\ \langle 0,1 \rangle,\ \langle 1,1 \rangle,\ \langle 2,1 \rangle\ \}</latex>\nsubsumption-reduced successor" as PIP
+
+PI  -[#34495E]-> RAW : read <latex>\chi = (0, 1, 0)</latex>\napply <latex>\Delta</latex> to each position
+RAW -[#E74C3C]-> PIP : drop <latex>\langle 1,2 \rangle</latex>\n(subsumed by <latex>\langle 1,1 \rangle</latex>)
+
+note bottom
+  Reading <latex>\chi = (0,1,0)</latex> (the symbol matches only at window offset 1), each position in
+  <latex>\Pi</latex> emits its elementary successors: <latex>\langle 0,0 \rangle</latex> yields a substitution <latex>\langle 1,1 \rangle</latex>, an
+  insertion <latex>\langle 0,1 \rangle</latex>, and a match-jump <latex>\langle 2,1 \rangle</latex>; <latex>\langle 1,1 \rangle</latex> matches at offset 1 to <latex>\langle 2,1 \rangle</latex>.
+  <b>Subsumption</b>: <latex>\langle i,e \rangle</latex> subsumes <latex>\langle j,f \rangle</latex> iff <latex>e \le f</latex> and <latex>|j - i| \le f - e</latex>.
+  Here <latex>\langle 1,1 \rangle</latex> subsumes <latex>\langle 1,2 \rangle</latex>, so <latex>\langle 1,2 \rangle</latex> is pruned — keeping the state set minimal.
+end note
+@enduml

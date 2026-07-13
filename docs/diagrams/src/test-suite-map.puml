@@ -1,0 +1,52 @@
+@startuml test-suite-map
+' Tree: test suite -> unit + integration -> the public surface each layer pins.
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam rectangle {
+  BorderColor #34495E
+  ArrowColor #34495E
+  FontColor #2C3E50
+}
+left to right direction
+title duallity test suite — what each layer pins on the public surface
+
+rectangle "**duallity test suite**" as ROOT #D6EAF8
+
+rectangle "**Unit tests**\nmodules marked #[cfg(test)] in src/" as UNIT #D6EAF8
+rectangle "**Integration tests**\ntests/*.rs" as INTEG #D6EAF8
+
+ROOT --> UNIT
+ROOT --> INTEG
+
+rectangle "state_source · wrapper · universal_*\nnode_registry · node_key · lazy_cache\nbackend · generalized_* · wallbreaker_*\nphonetic_* · lib\npins: internal invariants of each module" as UM #D6EAF8
+UNIT --> UM
+
+rectangle "algorithm_acceptance\npins: Algorithm accept set —\nStandard / Transposition / MergeAndSplit" as A1 #D6EAF8
+rectangle "cache_policy\npins: CachePolicy CacheAll / Lru / NoCache" as A2 #D6EAF8
+rectangle "dictionary_backend\npins: DictionaryBackend / try_intern" as A3 #D6EAF8
+rectangle "generalized_wfst\npins: GeneralizedWfst / OperationSet" as A4 #D6EAF8
+rectangle "phonetic_nfa_wfst\npins: PhoneticNfaWfst" as A5 #D6EAF8
+rectangle "phonetic_rewrite_wfst\npins: RewriteWfst / CommonPhoneticRules" as A6 #D6EAF8
+rectangle "phonetic_state_source\npins: PhoneticStateSource" as A7 #D6EAF8
+rectangle "phonetic_weights\npins: InvalidWeightError validation" as A8 #D6EAF8
+rectangle "wallbreaker_wfst\npins: WallBreakerWfst results" as A9 #D6EAF8
+rectangle "**wfst_integration**\npins: Wfst / LazyWfst / StateSource\n**label preservation** — query on input tape,\ndictionary on output tape" as A10 #F9E79F
+
+INTEG --> A1
+INTEG --> A2
+INTEG --> A3
+INTEG --> A4
+INTEG --> A5
+INTEG --> A6
+INTEG --> A7
+INTEG --> A8
+INTEG --> A9
+INTEG --> A10
+
+note right of A10 #F9E79F
+  Highlighted label-preservation test:
+  test_levenshtein_state_source_transition_labels_preserve_transducer_sides
+  fixes the 0.3.0 query-input / dictionary-output orientation.
+end note
+@enduml

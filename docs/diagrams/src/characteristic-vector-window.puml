@@ -1,0 +1,47 @@
+@startuml characteristic-vector-window
+' D6 — Relevant subword s_n(w,i) and characteristic vector chi(c, s).
+' Depicts: the sliding 2n+1 window of the term w inspected at query position i, its $
+' sentinels for out-of-range cells, and the bit row chi(c, window) for a candidate c.
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam rectangle {
+  BorderColor #34495E
+  FontName "DejaVu Sans"
+}
+title Relevant subword <latex>s_n(w, i)</latex> and characteristic vector <latex>\chi(c, s)</latex>\nExample: w = "hello",  n = 1,  i = 2,  c = 'l'   ⇒   window = "ell",   χ = 0 1 1
+
+rectangle "$" as sL #F2F3F4
+rectangle "h\n(0)" as w0 #FFFFFF
+rectangle "e\n(1)" as w1 #D1F2EB
+rectangle "l\n(2)" as w2 #D1F2EB
+rectangle "l\n(3)" as w3 #D1F2EB
+rectangle "o\n(4)" as w4 #FFFFFF
+rectangle "$" as sR #F2F3F4
+sL -[hidden]right- w0
+w0 -[hidden]right- w1
+w1 -[hidden]right- w2
+w2 -[hidden]right- w3
+w3 -[hidden]right- w4
+w4 -[hidden]right- sR
+
+rectangle "window <latex>s_1(w, 2)</latex> = (e, l, l)   —   2n+1 = 3 cells, centred at i = 2" as WH #EAECEE
+
+rectangle "0" as b1 #EAECEE
+rectangle "1" as b2 #F9E79F
+rectangle "1" as b3 #F9E79F
+b1 -[hidden]right- b2
+b2 -[hidden]right- b3
+
+w1 -[#85929E]-> b1 : e ≠ l
+w2 -[#1E8449]-> b2 : l = l
+w3 -[#1E8449]-> b3 : l = l
+WH -[hidden]down- b2
+
+note bottom
+  The universal automaton is query-agnostic: a dictionary character c enters ONLY
+  through the bit vector <latex>\chi(c, s_n(w,i))</latex>, whose j-th bit is 1 iff <latex>s_j = c</latex>.
+  Positions outside [0, |w|) are padded with the sentinel $ (never equal to any c),
+  so windows near the ends of w keep the fixed width 2n+1 = 3.
+end note
+@enduml

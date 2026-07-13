@@ -1,1 +1,33 @@
+# ─── Rust / Cargo ─────────────────────────────────────────────────────────────
 /target
+**/*.rs.bk
+# NOTE: Cargo.lock is intentionally TRACKED — duallity builds standalone (it is
+# not a workspace member) and pins its path-dependency resolution.
+
+# ─── Documentation: diagram render by-products ────────────────────────────────
+# Diagram sources (docs/diagrams/src/*.puml, *.d2, *.dot) and their rendered
+# .svg outputs ARE committed — see docs/diagrams/README.md. Everything below is
+# a transient by-product of re-rendering them.
+docs/diagrams/**/err.txt
+docs/diagrams/**/*.png
+docs/diagrams/**/*.pdf
+
+# ─── Benchmarking & profiling artifacts ───────────────────────────────────────
+perf.data
+perf.data.old
+*.perf
+flamegraph.svg
+massif.out.*
+callgrind.out.*
+cachegrind.out.*
+# Intel VTune result directories (r000hs/, r001ue/, …)
+/r[0-9][0-9][0-9]*/
+
+# ─── Editor / OS noise ────────────────────────────────────────────────────────
+.DS_Store
+*.swp
+*.swo
+*~
+
+# ─── Local, machine-specific tool state ───────────────────────────────────────
+.claude/settings.local.json

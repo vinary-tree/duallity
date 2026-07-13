@@ -1,0 +1,40 @@
+@startuml phonetic-route-decision
+' Rules route (RewriteWfst, no feature) vs regex route (PhoneticWfst/PhoneticNfaWfst, phonetic-rules).
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam activity {
+  DiamondBackgroundColor #EAECEE
+  DiamondBorderColor #707B7C
+  DiamondFontColor #2C3E50
+  ArrowColor #34495E
+  BorderColor #34495E
+  BackgroundColor #EAECEE
+}
+title Phonetic matching — rules route vs. regex route
+
+start
+:Phonetic / sound-alike matching;
+if (How is the sound-alike mapping specified?) then (fixed rewrite rules)
+  :**RewriteWfst**
+  + **CommonPhoneticRules** :: english / german / french
+  no feature gate — always available; <<#D6EAF8>>
+  note right #D1F2EB
+    Use when: a small set of deterministic
+    substitutions (ph->f, ck->k) suffices.
+    Zero build config; composes with any
+    LevenshteinWfst via compose(rewrite, lev).
+  end note
+  stop
+else (a phonetic regex pattern)
+  :**PhoneticWfst**<D> / **PhoneticNfaWfst**
+  Thompson NFA over "(ph|f)one"
+  feature = "phonetic-rules"; <<#D6EAF8>>
+  note right #D1F2EB
+    Use when: alternation / character classes /
+    wildcards are needed, or you want the pattern
+    compiled once into an NFA-backed transducer.
+  end note
+  stop
+endif
+@enduml

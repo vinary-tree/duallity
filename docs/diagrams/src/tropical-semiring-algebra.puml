@@ -1,7 +1,7 @@
 @startuml tropical-semiring-algebra
 ' D17 — Tropical semiring algebra panel.
 ' Depicts: the (min, +) algebra duallity computes in, its two identities, and the consequence that
-' a shortest path is the best answer.
+' a shortest path is the best answer. Mathematical labels are typeset with <latex> (JLaTeXMath).
 skinparam backgroundColor #FFFFFF
 skinparam shadowing false
 skinparam defaultFontName "DejaVu Sans"
@@ -9,12 +9,12 @@ skinparam rectangle {
   BorderColor #34495E
   FontName "DejaVu Sans"
 }
-title D17 · The tropical (min, +) semiring  𝕂 = (ℝ ∪ {+∞}, min, +, +∞, 0)
+title D17 · The tropical <latex>(\min, +)</latex> semiring   <latex>\mathbb{K} = (\mathbb{R} \cup \{+\infty\},\, \min,\, +,\, +\infty,\, 0)</latex>
 
-rectangle "<b>⊕  =  min</b>\nthe best (cheapest)\nalternative wins\n\nexample:  2 ⊕ 5 = 2" as PLUS #FCF3CF
-rectangle "<b>⊗  =  +</b>\ncosts add up\nalong a path\n\nexample:  2 ⊗ 5 = 7" as TIMES #FCF3CF
-rectangle "<b>0̄  =  +∞</b>\nidentity for ⊕\n(no path / forbidden)\n\nTropicalWeight::zero()" as ZERO #F2F3F4
-rectangle "<b>1̄  =  0</b>\nidentity for ⊗\n(a free step)\n\nTropicalWeight::one()" as ONE #F9E79F
+rectangle "<latex>\oplus \;=\; \min</latex>\nthe best (cheapest)\nalternative wins\n\nexample:  <latex>2 \oplus 5 = 2</latex>" as PLUS #FCF3CF
+rectangle "⊗ <latex>\;=\; +</latex>\ncosts add up\nalong a path\n\nexample:  2 ⊗ <latex>5 = 7</latex>" as TIMES #FCF3CF
+rectangle "<latex>\bar{0} \;=\; +\infty</latex>\nidentity for <latex>\oplus</latex>\n(no path / forbidden)\n\nTropicalWeight::zero()" as ZERO #F2F3F4
+rectangle "<latex>\bar{1} \;=\; 0</latex>\nidentity for ⊗\n(a free step)\n\nTropicalWeight::one()" as ONE #F9E79F
 
 PLUS -[hidden]right- TIMES
 ZERO -[hidden]right- ONE
@@ -22,9 +22,9 @@ PLUS -[hidden]down- ZERO
 TIMES -[hidden]down- ONE
 
 note bottom
-  Under (min, +):  "⊕-sum over all paths" becomes "<b>minimum-cost path</b>",
-  and "⊗-product along a path" becomes "<b>sum of edge costs</b>".
+  Under <latex>(\min, +)</latex>: the <latex>\oplus</latex>-sum over all paths becomes the <b>minimum-cost path</b>,
+  and the ⊗-product along a path becomes the <b>sum of edge costs</b>.
   So a shortest path <b>is</b> the best correction.
-  ⚠ Note the naming: <b>zero()</b> is the value <b>+∞</b> and <b>one()</b> is the value <b>0</b>.
+  ⚠ Naming: <b>zero()</b> is the value <latex>+\infty</latex> and <b>one()</b> is the value <latex>0</latex>.
 end note
 @enduml

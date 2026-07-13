@@ -1,0 +1,33 @@
+@startuml rwlock-lock-lifecycle
+' RwLock guard lifecycle for the shared registries; poison recovery keeps them usable.
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam state {
+  ArrowColor #34495E
+  BorderColor #34495E
+  FontColor #2C3E50
+}
+title RwLock guard lifecycle — poison recovery keeps registries usable
+
+state "Unlocked" as U #D6EAF8
+state "ReadLocked(n)\nn concurrent readers (shared)" as RL #D6EAF8
+state "WriteLocked\nexactly one writer (exclusive)" as WL #D6EAF8
+state "Poisoned\na thread panicked while a guard was held" as P #E74C3C
+
+[*] --> U
+U --> RL : read()  (first reader)
+RL --> RL : read() / drop  (n readers)
+RL --> U : last reader drops
+U --> WL : write()  (exclusive)
+WL --> U : drop write guard
+RL --> P : panic while held
+WL --> P : panic while held
+P --> U : read_lock / write_lock\nPoisonError::into_inner()  (recover)
+
+note bottom of P
+  duallity's read_lock / write_lock (src/lib.rs) recover the guard via
+  into_inner() instead of re-panicking, so lazy expansion continues.
+  Pinned by test_lock_helpers_recover_poisoned_lock.
+end note
+@enduml

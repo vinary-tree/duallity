@@ -1,0 +1,31 @@
+@startuml transpose-two-arc-chain
+' D · Damerau transposition "ba" → "ab" as a two-arc chain through a dedicated Tr state.
+' arc1 substitutes (cost 1) into the transposition state; arc2 matches (cost 0) back onto the band.
+' Net cost of the whole transposition = 1.
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam state {
+  BackgroundColor #D6EAF8
+  BorderColor #34495E
+  FontName "DejaVu Sans"
+}
+title Transposition as a two-arc chain — "ba" (query) <latex>\to</latex> "ab" (dictionary)\ninput tape = query   ·   output tape = dictionary   ·   total weight = 1
+
+state "N(i, e)\nnormal band state" as N0
+state "Tr(i, e+1)\ntransposition state\n(one edit already charged)" as TR #D6EAF8
+state "N(i+2, e+1)\nback on the band" as N2
+
+[*] -> N0
+N0 -[#E74C3C]-> TR : <b>substitute</b>  <latex>q[i] : q[i{+}1]\ /\ 1</latex>\nemit the 2nd query char first
+TR -[#2ECC71]-> N2 : <b>match</b>  <latex>q[i{+}1] : q[i]\ /\ 0</latex>\nemit the 1st query char, free
+N2 -> [*]
+
+note bottom of TR
+  The pair reads query <latex>q[i]\,q[i{+}1] = </latex> "ba" and writes dictionary
+  <latex>q[i{+}1]\,q[i] = </latex> "ab". Only arc 1 costs; arc 2 is free, so a single
+  adjacent transposition is charged <b>one</b> edit (Damerau–Levenshtein),
+  not two substitutions. The intermediate <b>Tr</b> state exists solely to
+  sequence the swap and cannot be a final/accepting state.
+end note
+@enduml

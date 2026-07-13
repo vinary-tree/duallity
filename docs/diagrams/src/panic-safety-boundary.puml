@@ -1,0 +1,51 @@
+@startuml panic-safety-boundary
+' Fallible-by-construction surface: three partial ops each return Ok/Some (green) or Err/None (red).
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam activity {
+  DiamondBackgroundColor #EAECEE
+  DiamondBorderColor #707B7C
+  DiamondFontColor #2C3E50
+  ArrowColor #34495E
+  BorderColor #34495E
+  BackgroundColor #F2F3F4
+}
+title Fallible-by-construction public surface — no panics escape
+
+start
+:A partial public operation receives caller input;
+split
+  :weight : f64;
+  if (validate_finite_nonnegative_weight:\nfinite and non-negative?) then (ok)
+    :Ok(value); <<#2ECC71>>
+    stop
+  else (NaN / -inf / negative)
+    :Err(InvalidWeightError); <<#E74C3C>>
+    stop
+  endif
+split again
+  :dict_node, automaton_state, radix M;
+  if (try_encode:\nM positive, component below M,\nproduct fits u32?) then (ok)
+    :Some(StateId); <<#2ECC71>>
+    stop
+  else (u32 overflow / out of domain)
+    :None  — prune branch; <<#E74C3C>>
+    stop
+  endif
+split again
+  :state_id, radix M;
+  if (decode:\nradix M nonzero?) then (ok)
+    :Some(dict_node, automaton_state); <<#2ECC71>>
+    stop
+  else (M = 0)
+    :None; <<#E74C3C>>
+    stop
+  endif
+end split
+
+legend bottom
+  No panics on the public surface: every partial operation returns Result / Option.
+  All .expect / .unwrap / panic! sites are confined to #[cfg(test)] modules and doc examples.
+end legend
+@enduml

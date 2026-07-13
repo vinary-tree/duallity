@@ -1,0 +1,76 @@
+@startuml levenshtein-band-states
+' D · Compact (i, e) reachable-state lattice of the Levenshtein automaton for n = 4, k = 2.
+' Rows = query index i (0..4, top→bottom); columns = errors e (0..2, left→right).
+' The 15 = (n+1)(k+1) states form the width-(2k+1) diagonal band. Accepting row (i = n) is gold.
+' The four edit operations are shown in a separate transition key so the lattice stays a clean grid.
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam rectangle {
+  BorderColor #34495E
+  FontName "DejaVu Sans"
+}
+title Levenshtein band — reachable <latex>(i, e)</latex> states for <latex>n = 4,\ k = 2</latex>\nrows = query index <latex>i</latex>   ·   columns = accumulated errors <latex>e</latex>
+
+' --- the 15 lattice states: S<i><e> ; accepting row i = 4 is gold ---
+rectangle "(0, 0)" as S00 #D6EAF8
+rectangle "(0, 1)" as S01 #D6EAF8
+rectangle "(0, 2)" as S02 #D6EAF8
+rectangle "(1, 0)" as S10 #D6EAF8
+rectangle "(1, 1)" as S11 #D6EAF8
+rectangle "(1, 2)" as S12 #D6EAF8
+rectangle "(2, 0)" as S20 #D6EAF8
+rectangle "(2, 1)" as S21 #D6EAF8
+rectangle "(2, 2)" as S22 #D6EAF8
+rectangle "(3, 0)" as S30 #D6EAF8
+rectangle "(3, 1)" as S31 #D6EAF8
+rectangle "(3, 2)" as S32 #D6EAF8
+rectangle "(4, 0)\naccepting" as S40 #F9E79F
+rectangle "(4, 1)\naccepting" as S41 #F9E79F
+rectangle "(4, 2)\naccepting" as S42 #F9E79F
+
+' --- clean grid via hidden edges only (rows, then columns) ---
+S00 -[hidden]right- S01
+S01 -[hidden]right- S02
+S10 -[hidden]right- S11
+S11 -[hidden]right- S12
+S20 -[hidden]right- S21
+S21 -[hidden]right- S22
+S30 -[hidden]right- S31
+S31 -[hidden]right- S32
+S40 -[hidden]right- S41
+S41 -[hidden]right- S42
+
+S00 -[hidden]down- S10
+S10 -[hidden]down- S20
+S20 -[hidden]down- S30
+S30 -[hidden]down- S40
+S01 -[hidden]down- S11
+S11 -[hidden]down- S21
+S21 -[hidden]down- S31
+S31 -[hidden]down- S41
+S02 -[hidden]down- S12
+S12 -[hidden]down- S22
+S22 -[hidden]down- S32
+S32 -[hidden]down- S42
+
+' --- separate transition key: the four edit arcs at readable font ---
+package "edit-operation key  (arcs from any interior state)" as KEY #EAECEE {
+  rectangle "<latex>(i, e)</latex>" as KC #D6EAF8
+  rectangle "<latex>(i{+}1,\ e)</latex>" as KM #D6EAF8
+  rectangle "<latex>(i,\ e{+}1)</latex>" as KI #D6EAF8
+  rectangle "<latex>(i{+}1,\ e{+}1)</latex>" as KX #D6EAF8
+  KC -[#2ECC71]-> KM : <b>match</b> / 0
+  KC -[#3498DB]-> KI : <b>insert</b> / 1
+  KC -[#E74C3C]-> KX : <b>substitute</b> / 1
+  KC -[#E67E22]-> KX : <b>delete</b> / 1
+}
+
+S41 -[hidden]down- KC
+
+legend bottom
+  <color:#2ECC71><b>match</b></color> (free, <latex>e</latex> unchanged)   ·   <color:#E74C3C><b>substitute</b></color>   ·   <color:#3498DB><b>insert</b></color>   ·   <color:#E67E22><b>delete</b></color>  — each <latex>+1</latex> error (see key)
+  <color:#B7950B><b>gold</b></color> = accepting: query fully consumed <latex>(i = n = 4)</latex> within <latex>k = 2</latex> errors.
+  The <latex>(n{+}1)(k{+}1) = 15</latex> reachable states form the width-<latex>(2k{+}1)</latex> diagonal band.
+end legend
+@enduml

@@ -1,0 +1,59 @@
+@startuml wall-growth-vs-seed
+' D · The "wall effect" vs. pigeonhole seeding.
+' LEFT  (liblevenshtein red panel): naive fuzzy frontier fans out Θ(b^k) through the first k chars.
+' RIGHT (libdictenstein green panel): WallBreaker seeds from an exact, error-free substring: O(|P_r|).
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam rectangle {
+  BorderColor #34495E
+  FontName "DejaVu Sans"
+}
+title The wall effect vs. pigeonhole seeding
+
+package "The wall  ⚠  frontier ~ <latex>\Theta(b^{k})</latex>" as WALL #FADBD8 {
+  rectangle "seed\n<latex>\varepsilon</latex>" as W0 #D6EAF8
+  rectangle "char 1\ncand." as W1a #D6EAF8
+  rectangle "char 1\ncand." as W1b #D6EAF8
+  rectangle "char 2\ncand." as W2a #D6EAF8
+  rectangle "char 2\ncand." as W2b #D6EAF8
+  rectangle "char 2\ncand." as W2c #D6EAF8
+  rectangle "char 2\ncand." as W2d #D6EAF8
+  rectangle "<latex>\ldots</latex>" as W3a #F2F3F4
+  rectangle "<latex>\ldots</latex>" as W3b #F2F3F4
+
+  W0 -[#E74C3C]-> W1a
+  W0 -[#E74C3C]-> W1b
+  W1a -[#E74C3C]-> W2a
+  W1a -[#E74C3C]-> W2b
+  W1b -[#E74C3C]-> W2c
+  W1b -[#E74C3C]-> W2d
+  W2a -[#E74C3C,dashed]-> W3a
+  W2d -[#E74C3C,dashed]-> W3b
+}
+
+package "WallBreaker seed  (pigeonhole)" as SEED #D5F5E3 {
+  rectangle "query, <latex>\le k</latex> errors\nlength <latex>m</latex>" as Q #FDEBD0
+  rectangle "some length-<latex>\lfloor m/(k{+}1) \rfloor</latex>\nsubstring <latex>P_r</latex> is <b>error-free</b>" as PR #FCF3CF
+  rectangle "exact-substring lookup\nin the dictionary index\n<latex>O(|P_r|)</latex>" as LK #D5F5E3
+  rectangle "verified seed match\n(anchor, then expand)" as HIT #E8DAEF
+
+  Q  -[#2ECC71]-> PR
+  PR -[#2ECC71]-> LK
+  LK -[#2ECC71]-> HIT
+}
+
+W0 -[hidden]right- Q
+
+note bottom of WALL
+  Naive fuzzy search branches on every edit at every position, so the live
+  frontier explodes as <latex>\Theta(b^{k})</latex> with <latex>b \approx |\Sigma|\,(2k{+}1)</latex> through the first
+  <latex>k</latex> characters — before any anchor exists to prune it. This is the wall.
+end note
+
+note bottom of SEED
+  Pigeonhole: split the query into <latex>k{+}1</latex> blocks; with <latex>\le k</latex> errors at least one
+  block <latex>P_r</latex> survives unedited. A single exact lookup on <latex>P_r</latex> — cost <latex>O(|P_r|)</latex> —
+  seeds the search past the wall, then verification expands only locally.
+end note
+@enduml

@@ -1,0 +1,41 @@
+@startuml lazy-product-frontier
+' D · Lazy composition product Q1 x Q2: only reachable product states are materialized.
+' COMPUTED states = duallity blue, solid weighted arcs. PENDING frontier = ε/free grey, dashed.
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam state {
+  BorderColor #34495E
+  FontName "DejaVu Sans"
+}
+title Lazy product <latex>Q_1 \times Q_2</latex> — only reachable states are expanded
+
+state "COMPUTED  (materialized)" as COMPUTED #D6EAF8 {
+  state "<latex>(q_0, r_0)</latex>\nstart" as P00 #D6EAF8
+  state "<latex>(q_1, r_0)</latex>" as P10 #D6EAF8
+  state "<latex>(q_0, r_1)</latex>" as P01 #D6EAF8
+  state "<latex>(q_1, r_1)</latex>" as P11 #D6EAF8
+
+  P00 -[#34495E]-> P10 : <latex>a\!:\!x\ /\ 1</latex>
+  P00 -[#34495E]-> P01 : <latex>b\!:\!y\ /\ 0</latex>
+  P10 -[#34495E]-> P11 : <latex>b\!:\!y\ /\ 1</latex>
+  P01 -[#34495E]-> P11 : <latex>a\!:\!x\ /\ 1</latex>
+}
+
+state "PENDING frontier  (not yet expanded)" as FRONTIER #F2F3F4 {
+  state "<latex>(q_2, r_1)</latex>\n?" as F21 #F2F3F4
+  state "<latex>(q_1, r_2)</latex>\n?" as F12 #F2F3F4
+  state "<latex>(q_2, r_0)</latex>\n?" as F20 #F2F3F4
+}
+
+P11 -[#85929E,dashed]-> F21 : queued
+P11 -[#85929E,dashed]-> F12 : queued
+P10 -[#85929E,dashed]-> F20 : queued
+
+note bottom
+  The composition <latex>Q_1 \circ Q_2</latex> never enumerates the full Cartesian product
+  <latex>Q_1 \times Q_2</latex>. A worklist pops a computed state, generates its out-arcs, and
+  pushes the newly discovered targets onto the <b>frontier</b> (grey, dashed). Unreachable
+  pairs are never touched, so cost scales with the <b>explored</b> sub-automaton, not <latex>|Q_1|\cdot|Q_2|</latex>.
+end note
+@enduml

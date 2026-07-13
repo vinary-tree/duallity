@@ -1,0 +1,30 @@
+@startuml product-emit-continuation
+' D — GeneralizedWfst multi-symbol operation as a Product -> Emit -> Product chain.
+' Depicts: the phonetic digraph rule ph -> f expands to one Product arc carrying the
+' whole cost, then a weightless Emit continuation for each remaining dictionary char.
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam state {
+  BackgroundColor #D6EAF8
+  BorderColor #34495E
+  FontName "DejaVu Sans"
+}
+title Multi-symbol emit chain — the digraph rule ph -> f  <latex>\langle 2,\, 1,\, 0.15 \rangle</latex>\n2 dictionary chars out, 1 query char in : read query f, emit dict p then h
+
+state "<latex>\mathrm{Product}(d,\, i,\, \mathrm{cost})</latex>\ndict node d, query byte pos i,\naccumulated cost" as P0 #D6EAF8
+state "<latex>\mathrm{Emit}</latex> continuation\ndict chars still to write\n(input/output/target held in Arc)" as E #D6EAF8
+state "<latex>\mathrm{Product}(d'',\, i{+}1)</latex>\nboth digraph chars written,\nquery advanced by one" as P1 #D6EAF8
+
+[*] --> P0
+P0 -[#E74C3C]-> E : <b>1st arc</b>  <latex>f : p \,/\, 0.15</latex>\nreads query f, emits dict p,\nwhole rule cost on this arc
+E -[#3498DB]-> P1 : <b>continuation</b>  <latex>\varepsilon : h \,/\, 0</latex>\nemits dict h, reads nothing,\nfree step (<latex>\bar{1} = 0</latex>)
+
+note bottom
+  A multi-symbol operation whose dictionary output is k chars expands to one
+  <b>Product</b> arc carrying the <b>whole cost</b>, then k-1 free <b>Emit</b>
+  continuation arcs of the form <latex>\varepsilon : \text{char} \,/\, 0</latex>.
+  Putting the cost on the first arc lets shortest-path see it immediately; the
+  continuation is weightless (<latex>\bar{1}</latex>) and cannot be pruned mid-emit.
+end note
+@enduml

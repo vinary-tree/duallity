@@ -2,7 +2,9 @@
 name = "duallity"
 version = "0.3.0"
 edition = "2021"
-rust-version = "1.70"
+# Matches the libdictenstein / liblevenshtein / lling-llang path dependencies,
+# whose --all-features floor is set by sysinfo 0.39 (1.95).
+rust-version = "1.95"
 authors = ["Dylon Edwards <dylon.devo@gmail.com>"]
 license = "Apache-2.0"
 repository = "https://github.com/vinary-tree/duallity"
@@ -16,10 +18,14 @@ liblevenshtein = { path = "../liblevenshtein-rust", version = "0.9" }
 lling-llang = { path = "../lling-llang", version = "0.2" }
 libdictenstein = { path = "../libdictenstein", version = "0.2" }
 # Direct deps used by the relocated wfst sources
-rustc-hash = "1.1"
+# 2.x changed the hash algorithm, so digests differ from 1.x. Safe here: every
+# use is an in-memory index, nothing is persisted.
+rustc-hash = "2.1"
 smallvec = "1.13"
 # Pulled by the original liblevenshtein `wfst` feature (sampling / universal automata)
-rand = "0.9"
+# 0.9.3 is the fix floor for RUSTSEC-2026-0097 (unsound with a custom logger
+# using `rand::rng()`).
+rand = "0.9.3"
 
 [features]
 default = []
@@ -27,7 +33,7 @@ default = []
 phonetic-rules = ["liblevenshtein/phonetic-rules"]
 
 [dev-dependencies]
-criterion = "0.5"
+criterion = "0.8"
 
 [[bench]]
 name = "wfst_expansion"

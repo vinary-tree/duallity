@@ -814,7 +814,7 @@ mod tests {
                 } => {
                     if is_final {
                         let candidate = cost + final_weight.value();
-                        if best_final.map_or(true, |best| candidate < best) {
+                        if best_final.is_none_or(|best| candidate < best) {
                             best_final = Some(candidate);
                         }
                     }

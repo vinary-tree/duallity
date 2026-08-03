@@ -916,7 +916,7 @@ mod tests {
         let path = DictPath {
             target_node_id: 1,
             output: ['p', 'h'].into_iter().collect(),
-            bytes: [b'p', b'h'].into_iter().collect(),
+            bytes: (*b"ph").into_iter().collect(),
         };
 
         assert_eq!(emit.input.as_ref(), &['f']);

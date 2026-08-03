@@ -32,7 +32,7 @@ fn find_transition(
         .find(|transition| {
             transition.input == input
                 && transition.output == output
-                && weight.map_or(true, |expected| {
+                && weight.is_none_or(|expected| {
                     (transition.weight.value() - expected).abs() <= 1e-9
                 })
         })

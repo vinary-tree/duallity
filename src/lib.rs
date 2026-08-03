@@ -92,6 +92,13 @@ mod wallbreaker_builder;
 mod wallbreaker_results;
 mod wallbreaker_wfst;
 
+// fzf max-plus scoring and dictionary adapters
+mod fzf_scorer;
+mod fzf_state_source;
+mod fzf_state_support;
+mod fzf_support;
+mod fzf_wfst;
+
 pub use backend::DictionaryBackend;
 pub use state_source::LevenshteinStateSource;
 pub use universal_state_source::UniversalLevenshteinStateSource;
@@ -110,6 +117,9 @@ pub use phonetic_state_source::PhoneticStateSource;
 pub use phonetic_wfst::{PhoneticWfst, PhoneticWfstBuilder};
 
 // Generalized and WallBreaker WFST exports
+pub use fzf_scorer::{FzfConfig, FzfError, FzfMatch, FzfScheme, FzfScorer, FzfStats};
+pub use fzf_state_source::FzfStateSource;
+pub use fzf_wfst::FzfWfst;
 pub use generalized_builder::GeneralizedWfstBuilder;
 pub use generalized_wfst::GeneralizedWfst;
 pub use wallbreaker_builder::WallBreakerWfstBuilder;
@@ -117,8 +127,8 @@ pub use wallbreaker_wfst::WallBreakerWfst;
 
 // Re-export commonly used lling-llang types for convenience
 pub use lling_llang::prelude::{
-    LazyState, LazyWfst, LazyWfstWrapper, Semiring, StateId, StateSource, TropicalWeight, VocabId,
-    WeightedTransition, Wfst,
+    ArcticWeight, LazyState, LazyWfst, LazyWfstWrapper, Semiring, StateId, StateSource,
+    TropicalWeight, VocabId, WeightedTransition, Wfst,
 };
 
 /// Error returned when a caller supplies an invalid non-negative weight.

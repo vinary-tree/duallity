@@ -25,6 +25,7 @@ Start from what you are trying to do; the strip below routes you to the one guid
 | "I need to chain a rewriter, a matcher, and a language model into one scorer." | [03 · Composing pipelines](03-composing-pipelines.md) | `compose`, `LazyWfstWrapper`, `DictionaryBackend`, and shortest-path search, with per-stage weight math. |
 | "I want sound-alike (phonetic) matching." | [04 · Phonetic matching](04-phonetic-matching.md) | rule-based `RewriteWfst` vs. regex-based `PhoneticWfst`; the English / German / French rule sets. |
 | "It works, but I need it faster or smaller." | [05 · Performance and tuning](05-performance-and-tuning.md) | cache policy, LRU eviction, lazy costs, and eager WallBreaker construction. |
+| "I want fzf V2 ranking over a shared-prefix dictionary." | [06 · fzf dictionary ranking](06-fzf-dictionary-ranking.md) | `FzfScorer`, the balanced DFS visitor, exact scores, and the Arctic WFST exit. |
 
 ### The full guide index
 
@@ -35,6 +36,7 @@ Start from what you are trying to do; the strip below routes you to the one guid
 | 03 | [Composing pipelines](03-composing-pipelines.md) | `compose`, `LazyWfstWrapper`, `DictionaryBackend`, and shortest-path search. |
 | 04 | [Phonetic matching](04-phonetic-matching.md) | Rewrite rules vs. phonetic regex; the English / German / French rule sets. |
 | 05 | [Performance and tuning](05-performance-and-tuning.md) | Cache policy, eviction, lazy costs, eager WallBreaker construction. |
+| 06 | [fzf dictionary ranking](06-fzf-dictionary-ranking.md) | Rank a character dictionary with prefix-shared FuzzyMatchV2 columns. |
 
 ---
 

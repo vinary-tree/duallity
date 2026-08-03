@@ -1,0 +1,34 @@
+@startuml
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam ArrowColor #34495E
+skinparam activity {
+  BackgroundColor #D6EAF8
+  BorderColor #2471A3
+  DiamondBackgroundColor #FCF3CF
+  DiamondBorderColor #B7950B
+}
+start
+:liblevenshtein explicit-stack DFS\n#FADBD8;
+:enter dictionary edge once\n#D5F5E3;
+:duallity advances one shared\nFuzzyMatchV2 DP column\n#D6EAF8;
+if (<latex>U(p) < \tau_k</latex> ?) then (yes)
+  :leave edge and reject subtree\n#FADBD8;
+else (no)
+  if (dictionary node is final?) then (yes)
+    :emit exact score\nand update <latex>\tau_k</latex>\n#E8DAEF;
+  endif
+  :visit children depth-first\n#D5F5E3;
+endif
+:lling-llang Arctic arc stores\n<latex>S_{j+1}-S_j</latex>\n#FCF3CF;
+:leave restores the parent column\n#D6EAF8;
+stop
+legend right
+|= Color |= Owner |
+|<#FADBD8>| liblevenshtein traversal |
+|<#D5F5E3>| dictionary structure |
+|<#D6EAF8>| duallity scorer |
+|<#FCF3CF>| lling-llang algebra |
+|<#E8DAEF>| ranked result |
+endlegend
+@enduml

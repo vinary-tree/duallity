@@ -13,6 +13,7 @@ document the exact dictionary-node key together with the residual hash-table con
 |----------|--------|
 | [Threat model](threat-model.md) | The inputs and trust boundary, the (small) attack surface, and how to bound resource use with concrete numeric limits. |
 | [Hashing and collisions](hashing-and-collisions.md) | The exact `DictionaryNodeKey`, why ordinary hash-table collisions cannot alias two dictionary nodes, and future hardening options. |
+| [fzf resource bounds](fzf-resource-bounds.md) | Query/candidate ceilings, prefix-shared DP growth, top-k heap use, and path-sensitive lazy-state expansion. |
 
 ## STRIDE-lite assessment
 

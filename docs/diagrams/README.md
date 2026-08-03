@@ -79,6 +79,7 @@ Tools: **P** = PlantUML, **D2** = Terrastruct D2, **G** = Graphviz. Diagrams mar
 | D33 | [`rwlock-lock-lifecycle`](rwlock-lock-lifecycle.svg) | P | engineering/concurrency-and-locking |
 | D34 | [`test-suite-map`](test-suite-map.svg) | P | engineering/testing |
 | D35 ★ | [`threat-surface-resource-bounds`](threat-surface-resource-bounds.svg) | P | security/threat-model |
+| D36 ★ | [`fzf-prefix-shared-dp`](fzf-prefix-shared-dp.svg) | P | design/fzf-wfst |
 | — ★ | [`composition-pipeline`](composition-pipeline.svg) | P | README, guides/01, guides/03, theory/04 |
 
 ## Rendering

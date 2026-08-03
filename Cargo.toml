@@ -34,9 +34,14 @@ phonetic-rules = ["liblevenshtein/phonetic-rules"]
 
 [dev-dependencies]
 criterion = "0.8"
+proptest = "1.11"
 
 [[bench]]
 name = "wfst_expansion"
+harness = false
+
+[[bench]]
+name = "fzf_trie_vs_flat"
 harness = false
 
 [package.metadata.docs.rs]

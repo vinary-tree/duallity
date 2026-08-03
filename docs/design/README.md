@@ -1,7 +1,9 @@
 # Design — the WFST variants
 
-duallity ships a family of WFST wrappers. Every one that *is* a transducer implements
-`Wfst<char, TropicalWeight>` (and `LazyWfst`), so every one composes ([theory/04](../theory/04-composition.md)).
+duallity ships a family of WFST wrappers. Distance variants implement
+`Wfst<char, TropicalWeight>`; the [fzf adapter](fzf-wfst.md) implements
+`Wfst<char, ArcticWeight>`. Each lazy wrapper composes when the surrounding
+pipeline accepts its weight algebra ([theory/04](../theory/04-composition.md)).
 This section documents each variant in depth: its exact 0.3.0 API, its operational semantics, its
 complexity, worked examples, and its **honest limitations**. Pick a variant by *what you are matching*
 and *how you will call it*.

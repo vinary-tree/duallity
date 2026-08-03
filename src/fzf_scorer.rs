@@ -17,9 +17,14 @@ pub struct FzfStats {
     pub columns_computed: usize,
     /// Complete candidates scored.
     pub candidates_scored: usize,
-    /// Prefixes rejected because their sound upper bound was below the kth
-    /// exact score.
+    /// Total prefixes rejected by either resource or score bounds.
     pub prefixes_pruned: usize,
+    /// Prefixes rejected because no completion can reach the kth exact score.
+    pub score_bound_prefixes_pruned: usize,
+    /// Prefixes rejected because they exceed the candidate-length limit.
+    pub length_prefixes_pruned: usize,
+    /// Capacity-sensitive score bounds evaluated after the length check.
+    pub upper_bounds_computed: usize,
 }
 
 /// An exact `FuzzyMatchV2` score.
@@ -87,8 +92,11 @@ impl FzfScorer {
         })
     }
 
-    /// Sound upper bound for every descendant of the current DFS prefix.
-    pub fn current_upper_bound(&self) -> i32 {
+    /// Sound upper bound for every accepted descendant of the current DFS prefix.
+    ///
+    /// `None` means that the configured candidate budget cannot contain a
+    /// completion from any live local-alignment state.
+    pub fn current_upper_bound(&self) -> Option<i32> {
         self.core.upper_bound(
             self.columns
                 .last()
@@ -149,15 +157,25 @@ impl PrefixPruner<char> for FzfScorer {
         self.columns.push(next);
         self.stats.columns_computed = self.stats.columns_computed.saturating_add(1);
 
-        let within_length_limit = depth <= self.core.config().max_candidate_chars;
-        let within_score_bound = self
-            .cutoff()
-            .is_none_or(|threshold| self.current_upper_bound() >= threshold);
-        let keep = within_length_limit && within_score_bound;
-        if !keep {
+        if depth > self.core.config().max_candidate_chars {
+            self.stats.length_prefixes_pruned = self.stats.length_prefixes_pruned.saturating_add(1);
+            self.stats.prefixes_pruned = self.stats.prefixes_pruned.saturating_add(1);
+            return false;
+        }
+
+        self.stats.upper_bounds_computed = self.stats.upper_bounds_computed.saturating_add(1);
+        let bound = self.current_upper_bound();
+        let score_can_survive = match (bound, self.cutoff()) {
+            (None, _) => false,
+            (Some(_), None) => true,
+            (Some(upper), Some(threshold)) => upper >= threshold,
+        };
+        if !score_can_survive {
+            self.stats.score_bound_prefixes_pruned =
+                self.stats.score_bound_prefixes_pruned.saturating_add(1);
             self.stats.prefixes_pruned = self.stats.prefixes_pruned.saturating_add(1);
         }
-        keep
+        score_can_survive
     }
 
     fn leave(&mut self, _unit: char, depth: usize) {
@@ -189,8 +207,8 @@ impl PrefixPruner<char> for FzfScorer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use libdictenstein::Dictionary;
     use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
+    use libdictenstein::Dictionary;
     use liblevenshtein::transducer::SubsequenceQueryIterator;
     use proptest::prelude::*;
 
@@ -240,10 +258,19 @@ mod tests {
             k in 1usize..8,
         ) {
             let terms: Vec<_> = terms.into_iter().collect();
+            let maximum_candidate_chars = terms
+                .iter()
+                .map(|term| term.chars().count())
+                .max()
+                .unwrap_or(0);
             let dictionary = DynamicDawgChar::<()>::from_terms(terms.iter().map(String::as_str));
             let scorer = FzfScorer::with_config(
                 &query,
-                FzfConfig { top_k: k, ..FzfConfig::default() },
+                FzfConfig {
+                    top_k: k,
+                    max_candidate_chars: maximum_candidate_chars,
+                    ..FzfConfig::default()
+                },
             ).expect("generated query is bounded");
             let query_units = scorer.query_units();
             let trie = SubsequenceQueryIterator::with_pruner(
@@ -263,5 +290,30 @@ mod tests {
             }).collect();
             prop_assert_eq!(top_k(trie, k), top_k(flat, k));
         }
+    }
+
+    #[test]
+    fn score_bound_pruning_is_observably_non_vacuous() {
+        let terms = ["abc", "azzzzz", "azzzyz", "azzyzz"];
+        let dictionary = DynamicDawgChar::<()>::from_terms(terms);
+        let config = FzfConfig {
+            top_k: 1,
+            max_candidate_chars: 6,
+            ..FzfConfig::default()
+        };
+        let scorer = FzfScorer::with_config("abc", config).expect("fixture query is valid");
+        let mut walker =
+            SubsequenceQueryIterator::with_pruner(dictionary.root(), scorer.query_units(), scorer);
+        let results: Vec<_> = walker.by_ref().collect();
+        let stats = walker.pruner().stats();
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].units.iter().collect::<String>(), "abc");
+        assert!(stats.score_bound_prefixes_pruned > 0, "stats={stats:?}");
+        assert_eq!(stats.length_prefixes_pruned, 0, "stats={stats:?}");
+        assert_eq!(
+            stats.prefixes_pruned,
+            stats.score_bound_prefixes_pruned + stats.length_prefixes_pruned,
+        );
     }
 }

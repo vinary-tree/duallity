@@ -52,10 +52,11 @@ procedure SCORE-DICTIONARY(root, query, k)
     stack   := [core.initial-column]
     best-k  := empty minimum heap
 
-    on ENTER(character):
+    on ENTER(character, depth):
         next := core.advance(stack.last, character)
         push(stack, next)
-        return core.upper-bound(next) >= kth-score(best-k)
+        capacity := maximum-candidate-length - depth
+        return core.upper-bound(next, capacity) >= kth-score(best-k)
 
     on ACCEPT(term):
         score := stack.last.best-complete-score
@@ -73,27 +74,36 @@ therefore balanced even when an entire subtree is rejected.
 
 An earlier design proposed only the active-alignment term
 `` $`S + (m-j)\beta`$ ``. That is unsound: a descendant can ignore the prefix
-and begin a perfect match later. Let `` $`U_0`$ `` bound an alignment that has
-not started, and `` $`U_i`$ `` bound a live alignment matched through query
+and begin a perfect match later. Let `` $`A(p)=n_{\max}-|p|`$ `` be the number
+of candidate characters still available under the configured length ceiling.
+Let `` $`C(p)`$ `` be the best complete score already observed in prefix
+`` $`p`$ ``, and let `` $`S_i`$ `` be a live alignment matched through query
 index `` $`i`$ ``. The implemented bound is
 
 ```math
 U(p) = \max\!\left(
-  U_0,\
-  \max_{i\ \mathrm{reachable}}
+  C(p),\
+  \mathbf{1}_{m \le A(p)} U_0,\
+  \max_{\substack{i\ \mathrm{reachable} \\ m-i-1 \le A(p)}}
     \left[S_i + (m-i-1)(s_{\mathrm{match}} + b_{\max})\right]
 \right).
 ```
 
-Every descendant alignment is either unstarted or extends one live cell, so it
-is covered by one term. Pruning when `` $`U(p) < \tau_k`$ `` cannot remove a
-score at least `` $`\tau_k`$ ``. Rocq, Verus, Dafny, two SMT solvers, TLA+, and
-property tests check the same invariant.
+Infeasible terms are omitted; if all three alternatives are absent, the Rust
+API returns `None` and the subtree cannot contain a match. A gap transition
+cannot increase a cell score, a match adds at most
+`` $`s_{\mathrm{match}}+b_{\max}`$ ``, and each child consumes one unit of
+capacity. A newly started child alignment is covered by its parent's unstarted
+term. These recurrence facts derive `` $`U(pc)\le U(p)`$ `` and, by induction,
+every completed descendant score is at most `` $`U(p)`$ ``. Pruning when
+`` $`U(p) < \tau_k`$ `` therefore cannot remove a score at least
+`` $`\tau_k`$ ``.
 
-Without subtree height or character-reachability metadata, `` $`U_0`$ `` is the
-global maximum and usually prevents score-based prefix pruning. Prefix sharing
-still avoids recomputing common DP columns. Reachability metadata is gated by
-measurement; it is not silently added as an unmeasured Bloom-filter cost.
+`FzfStats` separates score-bound and length-bound rejections and counts bound
+evaluations. The checked-in real-path benchmark observes score-bound pruning;
+the generated property suite checks descendant domination, child monotonicity,
+and exact top-`` $`k`$ `` equality. See the
+[scientific ledger](../scientific-ledger/fzf-prefix-bound-2026-08-02.md).
 
 ## Path-sensitive WFST states
 
@@ -123,9 +133,12 @@ materialization may create more states than its underlying DAWG.
 characters. Callers handling untrusted input should choose lower limits.
 Scores use `i32` with saturating bound arithmetic.
 
-Evidence includes upstream fixtures, generated trie/brute-force top-`` $`k`$ ``
-equality, generated descendant-bound checks, cross-surface integration tests,
-Arctic algebra properties, and five formal-verification tool families.
+Evidence includes an independent batch implementation checked against 15
+published upstream scores, score-for-score differential testing over a
+checked-in real repository path corpus, generated trie/brute-force
+top-`` $`k`$ `` equality, generated descendant-bound and monotonicity checks,
+cross-surface integration tests, Arctic algebra properties, and five
+formal-verification tool families.
 
 ## Deliberate limitations
 

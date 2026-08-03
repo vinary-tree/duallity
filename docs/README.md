@@ -15,6 +15,7 @@ docs/
 ├── guides/          ← task-oriented usage (quickstart, choosing, composing, phonetics, tuning)
 ├── engineering/     ← safety, concurrency, testing
 ├── security/        ← threat model, hashing & collisions
+├── scientific-ledger/ ← reproducible performance and verification observations
 ├── references/      ← bibliography (with DOIs) + glossary
 ├── diagrams/        ← all diagram sources + rendered SVGs + the shared color legend
 └── archive/         ← inherited research designs, retained verbatim, outside the shipped crate surface

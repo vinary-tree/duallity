@@ -15,7 +15,12 @@ let dictionary = DynamicDawgChar::<()>::from_terms([
 ]);
 let scorer = FzfScorer::with_config(
     "fzfs",
-    FzfConfig { top_k: 10, ..FzfConfig::default() },
+    FzfConfig {
+        top_k: 10,
+        // Use the tightest trusted ingestion limit, not usize::MAX.
+        max_candidate_chars: 256,
+        ..FzfConfig::default()
+    },
 )?;
 let mut matches: Vec<_> = SubsequenceQueryIterator::with_pruner(
     dictionary.root(), scorer.query_units(), scorer,
@@ -32,5 +37,10 @@ Ok(())
 
 Set case mode, scoring scheme, and resource ceilings explicitly for a public
 service. `top_k` maintains a pruning cutoff but does not truncate the iterator.
+The prefix bound uses `max_candidate_chars` as remaining-capacity metadata, so
+a tight, truthful ceiling improves pruning without changing scores. The
+`FzfStats::score_bound_prefixes_pruned`, `length_prefixes_pruned`, and
+`upper_bounds_computed` counters distinguish the effects. A loose default is
+safe but deliberately conservative.
 Use `FzfWfst` when the score must participate in weighted composition. See the
 [design and proof rationale](../design/fzf-wfst.md).

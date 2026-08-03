@@ -305,28 +305,41 @@ impl FzfCore {
         Ok(column.best_full_score)
     }
 
-    /// A sound prefix bound over every live local-alignment alternative.
+    /// A capacity-sensitive upper bound for every accepted descendant.
     ///
-    /// The unstarted alternative is essential: a descendant may begin a
-    /// perfect local match after the current prefix. Without subtree height or
-    /// reachability metadata this term is the global maximum, making the bound
-    /// intentionally conservative.
-    pub(crate) fn upper_bound(&self, column: &FzfColumn) -> i32 {
-        let unstarted = self.maximum_score();
-        column
+    /// Each term corresponds to one state of fzf's local-alignment recurrence:
+    /// a match already completed in this prefix, a reachable query cell that
+    /// still has enough candidate characters to finish, or an alignment that
+    /// has not started yet. The latter is included only while the remaining
+    /// candidate budget can still contain the complete query. `None` means
+    /// that no completion fits inside [`FzfConfig::max_candidate_chars`].
+    pub(crate) fn upper_bound(&self, column: &FzfColumn) -> Option<i32> {
+        let available = self.config.max_candidate_chars.saturating_sub(column.depth);
+        let per_match = SCORE_MATCH.saturating_add(self.max_bonus);
+        let mut bound = column.best_full_score;
+
+        for (index, cell) in column
             .cells
             .iter()
             .enumerate()
             .filter(|(_, cell)| cell.reachable)
-            .map(|(index, cell)| {
-                let remaining = self.query.len().saturating_sub(index.saturating_add(1));
-                cell.score.saturating_add(
+        {
+            let remaining = self.query.len().saturating_sub(index.saturating_add(1));
+            if remaining <= available {
+                let optimistic = cell.score.saturating_add(
                     i32::try_from(remaining)
                         .unwrap_or(i32::MAX)
-                        .saturating_mul(SCORE_MATCH + self.max_bonus),
-                )
-            })
-            .fold(unstarted, i32::max)
+                        .saturating_mul(per_match),
+                );
+                bound = Some(bound.map_or(optimistic, |current| current.max(optimistic)));
+            }
+        }
+
+        if self.query.len() <= available {
+            let unstarted = self.maximum_score();
+            bound = Some(bound.map_or(unstarted, |current| current.max(unstarted)));
+        }
+        bound
     }
 
     pub(crate) fn maximum_score(&self) -> i32 {
@@ -480,16 +493,40 @@ mod tests {
 
     #[test]
     fn unstarted_alternative_prevents_unsound_prefix_pruning() {
-        let core = FzfCore::new("fb", FzfConfig::default()).expect("short query is valid");
+        let candidate = "xxxxxxxx/foo/bar";
+        let core = FzfCore::new(
+            "fb",
+            FzfConfig {
+                max_candidate_chars: candidate.chars().count(),
+                ..FzfConfig::default()
+            },
+        )
+        .expect("short query is valid");
         let mut column = core.initial_column();
         for character in "xxxxxxxx/".chars() {
             column = core.advance(&column, character);
         }
         let descendant_score = core
-            .score_chars("xxxxxxxx/foo/bar".chars())
+            .score_chars(candidate.chars())
             .expect("candidate is bounded")
             .expect("descendant contains the query");
-        assert!(core.upper_bound(&column) >= descendant_score);
+        assert!(core
+            .upper_bound(&column)
+            .is_some_and(|bound| bound >= descendant_score));
+    }
+
+    #[test]
+    fn exhausted_capacity_has_no_completion_bound() {
+        let core = FzfCore::new(
+            "abc",
+            FzfConfig {
+                max_candidate_chars: 2,
+                ..FzfConfig::default()
+            },
+        )
+        .expect("short query is valid");
+        let column = core.advance(&core.initial_column(), 'x');
+        assert_eq!(core.upper_bound(&column), None);
     }
 
     proptest! {
@@ -503,10 +540,12 @@ mod tests {
             suffix in "[A-Za-z0-9/_ -]{0,12}",
             case_sensitive in any::<bool>(),
         ) {
+            let capacity = prefix.chars().count().saturating_add(suffix.chars().count());
             let core = FzfCore::new(
                 &query,
                 FzfConfig {
                     case_sensitive,
+                    max_candidate_chars: capacity,
                     ..FzfConfig::default()
                 },
             ).expect("generated query is below the configured limit");
@@ -514,16 +553,26 @@ mod tests {
             for character in prefix.chars() {
                 prefix_column = core.advance(&prefix_column, character);
             }
+            let prefix_bound = core.upper_bound(&prefix_column);
             let candidate = format!("{prefix}{suffix}");
             if let Some(score) = core
                 .score_chars(candidate.chars())
                 .expect("generated candidate is below the configured limit")
             {
                 prop_assert!(
-                    score <= core.upper_bound(&prefix_column),
-                    "query={query:?}, prefix={prefix:?}, suffix={suffix:?}, score={score}, bound={}",
-                    core.upper_bound(&prefix_column),
+                    prefix_bound.is_some_and(|bound| score <= bound),
+                    "query={query:?}, prefix={prefix:?}, suffix={suffix:?}, score={score}, bound={prefix_bound:?}",
                 );
+            }
+
+            if let Some(first) = suffix.chars().next() {
+                let child = core.advance(&prefix_column, first);
+                if let (Some(parent_bound), Some(child_bound)) =
+                    (prefix_bound, core.upper_bound(&child))
+                {
+                    prop_assert!(child_bound <= parent_bound,
+                        "query={query:?}, prefix={prefix:?}, next={first:?}, parent={parent_bound}, child={child_bound}");
+                }
             }
         }
     }

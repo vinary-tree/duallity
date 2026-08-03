@@ -12,7 +12,13 @@ edge count, dictionary depth, and the top-`` $`k`$ `` heap size.
 | `top_k` | minimum heap uses `` $`O(k)`$ `` memory | caller configuration |
 | lazy WFST states | DAWG joins remain path-sensitive | cache policy and state budget |
 
-The upper bound deliberately retains an unstarted alignment. Removing it would
-improve pruning by becoming unsound. For untrusted queries, use smaller limits
-than the permissive library defaults, request deadlines, and a service-layer
-cap on lazy-state expansion.
+The upper bound retains an unstarted alignment only while the remaining
+candidate budget can contain the whole query. Removing it earlier would improve
+pruning by becoming unsound; configuring a ceiling larger than the real
+ingestion limit is safe but needlessly weak. `None` from
+`current_upper_bound()` means no live, completed, or unstarted alternative can
+finish within the configured limit. For untrusted queries, use truthful limits
+smaller than the permissive library defaults, request deadlines, and a
+service-layer cap on lazy-state expansion. Monitor score-bound and length-bound
+pruning separately so an apparent optimization is not actually rejection at a
+resource limit.

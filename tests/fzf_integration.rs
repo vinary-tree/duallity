@@ -1,6 +1,6 @@
 use duallity::{FzfConfig, FzfScorer, FzfStateSource, FzfWfst};
-use libdictenstein::Dictionary;
 use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
+use libdictenstein::Dictionary;
 use liblevenshtein::transducer::SubsequenceQueryIterator;
 use lling_llang::prelude::{ArcticWeight, LazyState, Semiring, StateSource};
 

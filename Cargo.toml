@@ -14,7 +14,7 @@ categories = ["text-processing", "algorithms"]
 readme = "README.md"
 
 [dependencies]
-liblevenshtein = { path = "../liblevenshtein-rust", version = "0.9" }
+liblevenshtein = { path = "../liblevenshtein-rust", version = "0.10" }
 lling-llang = { path = "../lling-llang", version = "0.2" }
 libdictenstein = { path = "../libdictenstein", version = "0.2" }
 # Direct deps used by the relocated wfst sources

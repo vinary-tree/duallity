@@ -65,8 +65,8 @@ impl<N: DictionaryNode> FzfStateRegistry<N> {
 mod tests {
     use super::*;
     use crate::fzf_support::{FzfConfig, FzfCore};
-    use libdictenstein::Dictionary;
     use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
+    use libdictenstein::Dictionary;
 
     #[test]
     fn registry_keys_children_by_full_parent_path_state() {

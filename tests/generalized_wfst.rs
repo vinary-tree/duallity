@@ -32,9 +32,8 @@ fn find_transition(
         .find(|transition| {
             transition.input == input
                 && transition.output == output
-                && weight.is_none_or(|expected| {
-                    (transition.weight.value() - expected).abs() <= 1e-9
-                })
+                && weight
+                    .is_none_or(|expected| (transition.weight.value() - expected).abs() <= 1e-9)
         })
         .cloned()
         .expect("expected transition not found")

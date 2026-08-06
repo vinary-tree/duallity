@@ -1,6 +1,6 @@
 use duallity::{FzfConfig, FzfScorer};
-use libdictenstein::Dictionary;
 use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
+use libdictenstein::Dictionary;
 use liblevenshtein::transducer::SubsequenceQueryIterator;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -5,7 +5,7 @@
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 [![crates.io](https://img.shields.io/crates/v/duallity.svg)](https://crates.io/crates/duallity)
 [![docs.rs](https://img.shields.io/docsrs/duallity)](https://docs.rs/duallity)
-![MSRV](https://img.shields.io/badge/rustc-1.70%2B-orange)
+![MSRV](https://img.shields.io/badge/rustc-1.95%2B-orange)
 
 ---
 
@@ -259,7 +259,7 @@ The full, DOI-linked bibliography is in [`docs/references/bibliography.md`](docs
 
 ## License
 
-Licensed under the [Apache License, Version 2.0](LICENSE). Minimum supported Rust version: **1.70**.
+Licensed under the [Apache License, Version 2.0](LICENSE). Minimum supported Rust version: **1.95**.
 
 Part of the [vinary-tree](https://github.com/vinary-tree) family:
 [`libdictenstein`](https://github.com/vinary-tree/libdictenstein) ·

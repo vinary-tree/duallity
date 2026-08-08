@@ -1,0 +1,12 @@
+prefix=${pcfiledir}/../..
+exec_prefix=${prefix}
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: duallity
+Description: Lazy dictionary-backed edit and phonetic WFST adapters
+Version: 0.3.0
+Requires: vinary-tree-interop >= 0.1.0
+Libs: -L${libdir} -lduallity
+Libs.private: -ldl -lpthread -lm
+Cflags: -I${includedir}

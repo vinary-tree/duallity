@@ -56,6 +56,8 @@
 //! ```
 
 mod backend;
+#[cfg(feature = "bindings-core")]
+pub mod bindings;
 mod lazy_cache;
 mod node_key;
 mod node_registry;
@@ -124,6 +126,9 @@ pub use generalized_builder::GeneralizedWfstBuilder;
 pub use generalized_wfst::GeneralizedWfst;
 pub use wallbreaker_builder::WallBreakerWfstBuilder;
 pub use wallbreaker_wfst::WallBreakerWfst;
+
+#[cfg(feature = "ffi")]
+pub mod ffi;
 
 // Re-export commonly used lling-llang types for convenience
 pub use lling_llang::prelude::{

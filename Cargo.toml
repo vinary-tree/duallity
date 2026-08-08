@@ -15,8 +15,9 @@ readme = "README.md"
 
 [dependencies]
 liblevenshtein = { path = "../liblevenshtein-rust", version = "0.10" }
-lling-llang = { path = "../lling-llang", version = "0.2" }
+lling-llang = { path = "../lling-llang", version = "0.2", default-features = false }
 libdictenstein = { path = "../libdictenstein", version = "0.2" }
+vinary-tree-interop = { path = "../liblevenshtein-rust/vinary-tree-interop", version = "0.1.0", optional = true }
 # Direct deps used by the relocated wfst sources
 # 2.x changed the hash algorithm, so digests differ from 1.x. Safe here: every
 # use is an in-memory index, nothing is persisted.
@@ -29,12 +30,36 @@ rand = "0.9.3"
 
 [features]
 default = []
+bindings-core = [
+    "dep:vinary-tree-interop",
+    "lling-llang/bindings-core",
+    "liblevenshtein/bindings-core",
+]
+ffi = ["bindings-core"]
+native-bindings-full = ["ffi", "phonetic-rules"]
+c-bindings = ["native-bindings-full"]
+cpp-bindings = ["native-bindings-full"]
+python-bindings = ["native-bindings-full"]
+jvm-bindings = ["native-bindings-full"]
+clojure-bindings = ["jvm-bindings"]
+javascript-bindings = ["bindings-core"]
+typescript-bindings = ["javascript-bindings"]
+clojurescript-bindings = ["javascript-bindings"]
+dotnet-bindings = ["native-bindings-full"]
+go-bindings = ["native-bindings-full"]
+swift-bindings = ["native-bindings-full"]
+ruby-bindings = ["native-bindings-full"]
+fortran-bindings = ["native-bindings-full"]
+ocaml-bindings = ["native-bindings-full"]
+haskell-bindings = ["native-bindings-full"]
+lua-bindings = ["native-bindings-full"]
 # Phonetic Levenshtein WFST variants (require liblevenshtein's phonetic rules)
 phonetic-rules = ["liblevenshtein/phonetic-rules"]
 
 [dev-dependencies]
 criterion = "0.8"
 proptest = "1.11"
+libdictenstein = { path = "../libdictenstein", version = "0.2", features = ["bindings-core"] }
 
 [[bench]]
 name = "wfst_expansion"
@@ -46,3 +71,6 @@ harness = false
 
 [package.metadata.docs.rs]
 all-features = true
+
+[lib]
+crate-type = ["rlib", "cdylib", "staticlib"]

@@ -28,6 +28,17 @@ Every diagram colors concepts identically so the reader builds one consistent me
 | **epsilon / free step** | epsilon transition (`` $`\bar{1} = 0`$ ``) | `#F2F3F4` (light gray, dashed) |
 | **final / accepting** | accepting state, final weight | `#F9E79F` (gold border) |
 
+Resource-ABI concepts (used in the binding and trust-boundary diagrams). These three hexes are
+**family-shared**: the same colors name the same concepts in every sibling catalog
+(liblevenshtein, libdictenstein, lling-llang), so cross-repo data-flow diagrams read identically.
+None collides with a hex already claimed above:
+
+| Concept | Meaning | Hex |
+|---|---|---|
+| **VtResource handle** | the retained two-word `(context, vtable)` interop resource that crosses the C ABI | `#DCEDC8` (pale lime, `#33691E` stroke) |
+| **foreign / host trust zone** | code on the far side of the ABI boundary — every callback result is untrusted input | `#FFCDD2` (light rose, `#B71C1C` dashed border) |
+| **leased / borrowed memory** | provider-owned buffers (edge pages, arc batches) borrowed only for the duration of one call | `#FFECB3` (pale amber, `#FF6F00` stroke) |
+
 Operation edge colors (used in the edit-lattice and state diagrams):
 
 | Edit operation | Color | Cost |
@@ -104,8 +115,8 @@ for f in src/*.dot;  do dot -Tsvg "$f" -o "$(basename "${f%.dot}").svg"; done
 **JLaTeXMath caveats (this PlantUML build).** The bundled JLaTeXMath renders the common math commands
 (`\oplus`, `\min`, `\bar{0}`, `\mathbb{K}`, `\chi`, `\lfloor\rfloor`, `\langle\rangle`, `\bigoplus`,
 `\Theta`, subscripts/superscripts, …) but **not** `\otimes` (it renders blank) or `\lvert`/`\rvert`
-(parse error). Diagram sources therefore write the tropical *times* operator as the plain Unicode `⊗`
-and use `|…|` for bars. GitHub-flavored Markdown MathJax has no such gap, so the prose uses `\otimes`
+(parse error). Diagram sources therefore write the tropical *times* operator as the literal U+2297
+(CIRCLED TIMES) character and use plain `|…|` for bars. GitHub-flavored Markdown MathJax has no such gap, so the prose uses `\otimes`
 and `\lvert\rvert` freely.
 
 If a local engine is unavailable, the [Kroki](https://kroki.io) gateway renders the same sources over

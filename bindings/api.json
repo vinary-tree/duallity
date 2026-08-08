@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "duallity",
+  "author": {
+    "name": "Dylon Edwards",
+    "email": "dylon.devo@gmail.com"
+  },
+  "organization": {
+    "github": "vinary-tree",
+    "npmScope": "vinary-tree"
+  },
+  "interop": {
+    "crate": "vinary-tree-interop",
+    "cPrefix": "vt_",
+    "cHeader": "vinary_tree_interop.h",
+    "npm": "@vinary-tree/interop",
+    "resourceLayout": ["context", "vtable"],
+    "dictionaryInterfaceVersion": 1,
+    "scalarWfstInterfaceVersion": 1
+  },
+  "packages": {
+    "cratesIo": "duallity",
+    "npm": "@vinary-tree/duallity"
+  },
+  "packageVersion": "0.3.0",
+  "abiVersion": 1,
+  "apiRevision": 1,
+  "cPrefix": "duallity_",
+  "cHeader": "duallity.h",
+  "cppHeader": "duallity.hpp",
+  "cppNamespace": "vinary_tree::duallity",
+  "snapshot": {
+    "boundary": "query-start",
+    "revision": "immutable-resource",
+    "captureComplexity": "O(1)",
+    "resourceMayOutliveSource": true
+  },
+  "marshalling": {
+    "dictionaryIngress": "captured-vt.dictionary.v1-snapshot",
+    "wfstHandoff": "O(1)-retained-two-word-resource",
+    "wfstExpansion": "lazy-product-states-over-shared-registries",
+    "customProviderDefault": "serialized-caller-thread",
+    "customProviderOptIn": "parallel-reentrant"
+  },
+  "unitDomains": {
+    "UNICODE_SCALAR": 2
+  },
+  "weightDomains": {
+    "default": "tropical-f64",
+    "byKind": {
+      "FZF": "arctic-f64"
+    }
+  },
+  "enums": {
+    "status": {
+      "cType": "DuallityStatus",
+      "cPrefix": "DUALLITY_STATUS_",
+      "values": {
+        "OK": 0,
+        "INVALID_ARGUMENT": 1,
+        "INVALID_UTF8": 2,
+        "NULL_POINTER": 3,
+        "PANIC": 4,
+        "INCOMPATIBLE_RESOURCE": 5,
+        "PROVIDER_ERROR": 6,
+        "LIMIT_EXCEEDED": 7
+      }
+    },
+    "algorithm": {
+      "cType": "DuallityAlgorithm",
+      "cPrefix": "DUALLITY_ALGORITHM_",
+      "values": {
+        "STANDARD": 0,
+        "TRANSPOSITION": 1,
+        "MERGE_AND_SPLIT": 2,
+        "DAMERAU_LEVENSHTEIN": 3
+      }
+    },
+    "wfstKind": {
+      "cType": "DuallityWfstKind",
+      "cPrefix": "DUALLITY_WFST_",
+      "values": {
+        "LEVENSHTEIN": 0,
+        "UNIVERSAL_STANDARD": 1,
+        "UNIVERSAL_TRANSPOSITION": 2,
+        "UNIVERSAL_MERGE_AND_SPLIT": 3,
+        "GENERALIZED_STANDARD": 4,
+        "GENERALIZED_TRANSPOSITION": 5,
+        "GENERALIZED_MERGE_AND_SPLIT": 6,
+        "GENERALIZED_PHONETIC": 7,
+        "FZF": 8
+      }
+    }
+  },
+  "objects": {
+    "DuallityWfst": {
+      "accepts": "VtResource(dictionary-v1, UNICODE_SCALAR)",
+      "produces": "VtResource(vt.scalar-wfst.1)",
+      "ownership": "retains-query-start-dictionary-snapshot",
+      "methods": ["new", "resource", "free"]
+    }
+  },
+  "cFunctions": [
+    {"name": "duallity_abi_version", "rustModule": "ffi"},
+    {"name": "duallity_api_revision", "rustModule": "ffi"},
+    {"name": "duallity_last_error_message", "rustModule": "ffi"},
+    {"name": "duallity_wfst_new", "rustModule": "ffi"},
+    {"name": "duallity_wfst_free", "rustModule": "ffi"},
+    {"name": "duallity_wfst_resource", "rustModule": "ffi"},
+    {"name": "duallity_resource_release", "rustModule": "ffi"}
+  ],
+  "javascript": {
+    "package": "@vinary-tree/duallity",
+    "version": "0.3.0",
+    "engines": {"node": ">=22.14"},
+    "dependencies": {
+      "@vinary-tree/interop": "0.1.0",
+      "@vinary-tree/vinary-tree": "0.10.0"
+    },
+    "exports": {
+      ".": {"import": "facades/native.mjs", "require": "facades/native.cjs"},
+      "./typescript": {"import": "facades/typescript.mjs", "require": "facades/typescript.cjs"},
+      "./clojurescript": {"import": "facades/clojurescript.mjs", "require": "facades/clojurescript.cjs"},
+      "./wasm": {"import": "facades/wasm.mjs"},
+      "./wasi": {"import": "facades/wasi.mjs"},
+      "./cljs/vinary_tree/duallity.cljs": {"file": "cljs/vinary_tree/duallity.cljs"}
+    },
+    "facadeExports": ["runtimeIdentity", "wfst"],
+    "cljsNamespace": "vinary-tree.duallity",
+    "cljsFunctions": ["wfst", "start", "state", "close!"]
+  },
+  "wasm": {
+    "umbrellaPackage": "@vinary-tree/vinary-tree",
+    "projectPackage": "@vinary-tree/duallity",
+    "runtimeIdentityGuard": true,
+    "nodeDefault": "native-napi",
+    "alternatives": ["wasm", "wasi-preview1"]
+  }
+}

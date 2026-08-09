@@ -5,3 +5,7 @@
 StateEncoding.v
 # ABI status classification (BindingError -> DuallityStatus)
 StatusMapping.v
+# Dictionary adapter faithfulness (foreign resource -> libdictenstein view)
+AdapterLaws.v
+# Fzf arctic-weight telescoping and pruning bound
+FzfPrefixBound.v

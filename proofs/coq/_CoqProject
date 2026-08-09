@@ -1,0 +1,5 @@
+# duallity Coq/Rocq proofs
+-Q . Duallity
+
+# Product-state codec (dictionary_node x automaton_state -> StateId)
+StateEncoding.v

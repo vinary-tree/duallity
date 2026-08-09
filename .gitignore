@@ -31,3 +31,16 @@ cachegrind.out.*
 
 # ─── Local, machine-specific tool state ───────────────────────────────────────
 .claude/settings.local.json
+
+# ─── Coq/Rocq proof build artifacts ───────────────────────────────────────────
+# Proof SOURCES (proofs/coq/*.v, _CoqProject, Makefile, proofs/verify.sh) ARE
+# committed; everything below is a transient by-product of building them.
+proofs/coq/CoqMakefile
+proofs/coq/CoqMakefile.conf
+proofs/coq/.CoqMakefile.d
+proofs/coq/*.vo
+proofs/coq/*.vok
+proofs/coq/*.vos
+proofs/coq/*.glob
+proofs/coq/*.aux
+proofs/coq/.*.aux

@@ -146,8 +146,10 @@ The **weight domain** is observable on the returned resource's `vt.scalar-wfst.1
 scorer maximizes a match score, so it advertises `VtWeightDomain::ArcticF64`; every edit-distance kind
 minimizes a cost and advertises `VtWeightDomain::TropicalF64`. A consumer must read `weight_domain`
 before interpreting arc weights — the same `f64` slot means "lower is better" under tropical and
-"higher is better" under arctic. The per-variant semantics are documented in the
-[design](../design/README.md) pages; this table is only the *ABI selector* view of them.
+"higher is better" under arctic. The fzf scorer's arctic telescoping and its lazy pruning bound are
+machine-checked in [`proofs/coq/FzfPrefixBound.v`](../../proofs/coq/FzfPrefixBound.v). The per-variant
+semantics are documented in the [design](../design/README.md) pages; this table is only the *ABI
+selector* view of them.
 
 ## 5. The capture-once rule
 
@@ -193,7 +195,9 @@ captured provider:
 
 Because the duallity WFST engines are generic over any `Dictionary`, they walk the foreign dictionary
 through these two impls exactly as they walk a native `DynamicDawgChar` — the foreign origin is
-invisible above the adapter.
+invisible above the adapter. That the adapter is a *faithful* view of the captured revision — its
+`root` / `is_final` / `edges` / `transition` mirror the snapshot exactly — is machine-checked in
+[`proofs/coq/AdapterLaws.v`](../../proofs/coq/AdapterLaws.v).
 
 **Output side — lling-llang.** The chosen engine is wrapped in an `AdapterProvider` that implements
 lling-llang's **`ScalarWfstProvider`**: `weight_domain`, `start`, `num_states`, and `state`. The

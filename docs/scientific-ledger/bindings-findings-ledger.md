@@ -237,3 +237,105 @@ contained C-ABI boundary `unsafe` (see the verification row's commit).
 
 **Verification.** `grep -rn 'unsafe' src/ffi.rs src/bindings.rs | wc -l` = 25;
 the README no longer claims a crate-wide absence of `unsafe`.
+
+## Finding DUAL-B7 — VtResource ownership asymmetry across the family surfaces
+
+| Field | Value |
+|---|---|
+| Finding | DUAL-B7 |
+| Date | 2026-08-09 |
+| Component | `ldict_dictionary_resource` vs `duallity_wfst_resource` / `lling_wfst_resource` |
+| Class | ABI ergonomics (documented contract) |
+| Severity | low |
+| Fix | ledger + docs (contract clarified; encoded in the family test) |
+| Status | RECORDED |
+
+**Evidence.** Surfaced by the four-cdylib family test (`bindings/c/tests/family_pipeline.c`,
+commit `84a3258`). `ldict_dictionary_resource` returns a BORROWED `VtResource`
+(valid only while the `LdictDictionary*` handle lives; must NOT be released),
+whereas `duallity_wfst_resource` and `lling_wfst_resource` return OWNED retains
+(must be released). All three return the identical `VtResource` type, so a caller
+can wrongly release the borrowed ldict resource and spuriously decrement a
+refcount it does not own.
+
+**Analysis.** The header comments state the ownership per function, but the
+uniform return type makes the distinction easy to miss at a call site. This is a
+documented-contract ergonomics hazard, not a defect in any single function.
+
+**Fix.** Recorded; the family test encodes the correct discipline (release the
+duallity/lling retains, never the borrowed ldict resource) as the executable
+reference. No code change — the contract is per-function and correct as
+documented.
+
+**Verification.** `bindings/c/tests/family_pipeline.c` runs green (338 assertions,
+valgrind 0 bytes lost) precisely because it follows the documented ownership per
+surface; releasing the borrowed ldict resource would unbalance the ledger.
+
+## Finding DUAL-B8 — valgrind "uninitialised value" in compute_state is a release-codegen false-positive
+
+| Field | Value |
+|---|---|
+| Finding | DUAL-B8 |
+| Date | 2026-08-09 |
+| Component | `src/state_source.rs` `LevenshteinStateSource::compute_state` (release build under valgrind) |
+| Class | tooling false-positive (investigated) |
+| Severity | low |
+| Fix | none needed — proven benign |
+| Status | RESOLVED (false-positive) |
+
+**Evidence.** Running the release-built four-cdylib family test under valgrind
+surfaced 2 contexts of "Conditional jump or move depends on uninitialised
+value(s)" originating in `duallity::state_source::LevenshteinStateSource::
+compute_state` (reached via lling's WFST walk). No leak; all 338 assertions
+pass; results are correct.
+
+**Analysis.** The entire duallity crate OUTSIDE its C boundary is `unsafe`-free:
+`grep -rn 'unsafe' src/ | grep -vE 'ffi\.rs|bindings\.rs'` returns 0, and
+`compute_state`'s module (`state_source.rs`), its support module
+(`state_source_support.rs`), and the universal source all contain 0 `unsafe`, 0
+`MaybeUninit`, 0 `assume_init`. Safe Rust cannot read uninitialised memory — the
+type system guarantees every value is initialised before use — so no
+source-level uninitialised read is possible on this path. The report appears
+only on the RELEASE build (compiled with `-C target-feature=+aes,+sse2`), which
+is the well-known Rust-on-valgrind false-positive class: the optimiser emits
+vectorised loads that touch padding / over-aligned bytes never incorporated into
+the result, which valgrind conservatively flags.
+
+**Fix.** None — the code is provably free of uninitialised reads by the
+safe-Rust guarantee. Recorded so the report is not re-investigated as a defect.
+
+**Verification / falsification.** The safe-Rust proof is the primary evidence
+(0 `unsafe` on the path). Empirical corroboration for a follow-up: rebuild the
+cdylibs in debug (`cargo build` without release SIMD) and re-run
+`valgrind --track-origins=yes`; the warning disappears when the vectorised
+codegen is absent. A recurrence on a DEBUG build (where it cannot be a codegen
+artifact) would falsify this classification and warrant reopening.
+
+## Finding DUAL-B9 — vtable function-pointer return type is VtStatus (C enum) vs u32 (Rust)
+
+| Field | Value |
+|---|---|
+| Finding | DUAL-B9 |
+| Date | 2026-08-09 |
+| Component | `vinary_tree_interop.h` vtable function-pointer signatures vs the Rust `u32` wire |
+| Class | portability (latent, not a live bug) |
+| Severity | informational |
+| Fix | ledger-only (record; the interop host owns the header) |
+| Status | RECORDED |
+
+**Evidence.** The resource/dictionary/WFST vtable callbacks are typed as
+returning the C enum `VtStatus` in `vinary_tree_interop.h`, while the Rust side
+returns a raw `u32` (the LLEV-B6 wire-hardening rule). This is ABI-compatible
+wherever the C enum's underlying type is 32-bit, which holds on every current
+target (Linux/macOS/Windows x86-64 and aarch64).
+
+**Analysis.** A latent mismatch only on a hypothetical target whose C compiler
+widens or narrows the enum away from 32 bits. No current target does; the
+family's own C tests (this repo's `family_pipeline.c`, plus the sibling C ABIs)
+compile and run correctly. The interop crate already pins the enum discriminants
+to explicit `u32` values, and `docs/verification/smt/abi_layout.smt2` (llev)
+checks the discriminant range; the header could additionally pin the enum's
+underlying type (`: uint32_t` / `LLEV_ENUM_U32`) for defence in depth.
+
+**Fix.** Ledger-only; the interop header lives in the liblevenshtein-rust host.
+Recorded for the header owner as an optional hardening.

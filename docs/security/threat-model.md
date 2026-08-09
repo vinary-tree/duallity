@@ -17,7 +17,7 @@ inputs are exactly three:
 | Input | Typical trust | Shape | Notes |
 |-------|---------------|-------|-------|
 | the **query** `` $`q`$ `` | often **untrusted** (e.g. a user's search box) | a `&str`, `` $`n = \lvert q \rvert`$ `` Unicode scalars | the only input an anonymous caller usually controls directly |
-| the **dictionary** `` $`D`$ `` | usually **trusted** (built by the host) | an in-memory [libdictenstein](../references/glossary.md) container (DAWG, DAT, SCDAWG…) | host-constructed; not deserialized by duallity |
+| the **dictionary** `` $`D`$ `` | usually **trusted** in-process; **untrusted** as a foreign `vt.dictionary.v1` resource across the C ABI ([§7](#7-the-foreign-dictionary-as-untrusted-input)) | an in-memory [libdictenstein](../references/glossary.md) container, or a foreign `VtResource` | host-built in-process, not deserialized; validated at the ABI boundary otherwise |
 | **configuration** (`max_distance` `` $`= k`$ ``, `CachePolicy`, edit/phonetic weights, rewrite rules) | the **host** | scalars, enums, small rule tables | the resource-governing knobs |
 
 duallity performs **no I/O**: it opens no files or sockets, makes no network calls, spawns no
@@ -28,9 +28,9 @@ computation.
 
 <img src="../diagrams/threat-surface-resource-bounds.svg" alt="Untrusted query, trusted dictionary, and host configuration cross the API trust boundary into duallity's pure-compute core; the resource bounds (query-length cap, max_distance cap, CachePolicy::Lru, num_results check) gate the denial-of-service path, backstopped by the u32 StateId and VocabId structural ceilings" width="860"/>
 
-> **New diagram.** `threat-surface-resource-bounds` is introduced by this page. Its D2 source
-> (`../diagrams/src/threat-surface-resource-bounds.d2`) and rendered SVG are committed alongside the
-> other diagrams; regenerate with `d2 --layout elk` per
+> **New diagram.** `threat-surface-resource-bounds` is introduced by this page. Its PlantUML source
+> (`../diagrams/src/threat-surface-resource-bounds.puml`) and rendered SVG are committed alongside the
+> other diagrams; regenerate with headless `plantuml -tsvg` per
 > [diagrams/README.md](../diagrams/README.md#rendering). It uses the shared color legend: untrusted
 > query = warm orange, trusted dictionary = green, host config = gray, the duallity core = blue,
 > results = purple, the resource-bound valves = gold, and the structural-ceiling backstop = red-pink.
@@ -53,9 +53,11 @@ The surface an adversary can actually reach is small and is enumerated here in f
 
 **Explicitly out of scope** (no mechanism exists inside duallity):
 
-- **Memory-safety exploits** — the crate contains **no `unsafe`**
+- **Memory-safety exploits in the pure-compute core** — the matching engine contains **no `unsafe`**
   ([engineering/safety-and-panics](../engineering/safety-and-panics.md)); it has no raw-pointer,
-  uninitialized-memory, or out-of-bounds surface of its own.
+  uninitialized-memory, or out-of-bounds surface of its own. The C ABI boundary module
+  (`src/ffi.rs`, `src/bindings.rs`) does use `unsafe` to speak the resource ABI; its dedicated,
+  contained threat surface is [§7](#7-the-foreign-dictionary-as-untrusted-input).
 - **Injection** — there is no query language, template engine, SQL, or shell invocation to inject
   into; `` $`q`$ `` is consumed as an array of `char`, never interpreted as code.
 - **Deserialization / untrusted parsing** — duallity constructs nothing from untrusted bytes.
@@ -180,10 +182,75 @@ The determinism is robust to threading:
 Practical consequences: golden-output tests are stable, a reported miscorrection can be reproduced
 from its inputs, and results can be cached or compared byte-for-byte across runs and machines.
 
+## 7. The foreign dictionary as untrusted input
+
+Sections 1–6 treat the in-process case, where the host builds the dictionary `` $`D`$ `` directly and
+`` $`D`$ `` is trusted. duallity also exposes a **C ABI**
+([architecture/06](../architecture/06-resource-abi-and-bindings.md)) through which a dictionary arrives
+as a **foreign `vt.dictionary.v1` `VtResource`** — a `(context, vtable)` handle implemented by an
+independently compiled library. Across that boundary the dictionary is **untrusted input**: duallity
+cannot assume the provider is correct, cooperative, or non-adversarial, and treats every callback
+result as hostile until validated.
+
+### 7.1 The three adversarial classes
+
+| Class | What a hostile provider does | Concrete shapes |
+|-------|------------------------------|-----------------|
+| **Adversarial vtable** | hands over an ABI-incompatible or malformed vtable | null required function pointers; a `struct_size` shorter than the published struct; a mismatched `abi_version`; no dictionary interface at all |
+| **Misbehaving paging** | returns edge pages that would loop or over-read | `written > capacity`; `offset + written > total`; zero progress with edges still outstanding |
+| **Out-of-domain output** | returns values outside the declared domain | an edge `label` that is not a Unicode scalar; an `is_final`/`found` flag that is not `0` or `1`; a status discriminant outside the published range |
+
+### 7.2 Validation and containment duties
+
+duallity discharges each class with a specific check, so a hostile provider produces a bounded, typed
+`DuallityStatus` — never undefined behavior or an unbounded loop:
+
+- **Vtable discovery** validates `struct_size`, `abi_version`, and the required function pointers
+  before any call; a missing interface or incompatible vtable becomes `INCOMPATIBLE_RESOURCE`.
+- **Unit-domain check** requires `UnicodeScalar`; a byte- or `u64`-domain dictionary is rejected, not
+  misinterpreted.
+- **Status decode** runs every raw `u32` status through `VtStatus::from_raw`, mapping an out-of-range
+  discriminant to `PROVIDER_ERROR` instead of reading an illegal enum value.
+- **Edge-page validation** rejects the three misbehaving-paging shapes above, so expansion can neither
+  loop nor read out of bounds.
+- **Scalar validation** admits only `char::from_u32`-valid labels and `0`/`1` flags.
+- **Concurrency gate** serializes callbacks through a per-provider mutex unless the provider advertises
+  `PARALLEL_REENTRANT`, so a non-reentrant provider is never entered concurrently.
+- **Fault latch** records the first non-`Ok` status seen during lazy expansion and surfaces it as
+  `PROVIDER_ERROR`, keeping the reported cause deterministic.
+- **Panic containment** wraps the constructor and resource-handoff bodies in `catch_unwind`, converting
+  any panic into `DUALLITY_STATUS_PANIC` rather than unwinding across the `extern "C"` frame (which
+  would itself be undefined behavior).
+
+The FFI boundary module (`src/ffi.rs`, `src/bindings.rs`) is the one place duallity uses `unsafe` — it
+dereferences caller pointers and calls foreign function pointers — so, unlike the pure-compute core
+([engineering/safety-and-panics](../engineering/safety-and-panics.md)), it carries a memory-safety
+obligation. That obligation is discharged by the checks above plus the capture-once rule
+([architecture/06 §5](../architecture/06-resource-abi-and-bindings.md#5-the-capture-once-rule)): the
+foreign dictionary is read exactly once into an immutable snapshot, so a provider cannot mutate the
+revision mid-traversal to invalidate an in-flight node id.
+
+<img src="../diagrams/foreign-provider-trust-boundary.svg" alt="A foreign vt.dictionary.v1 provider in the untrusted zone emits adversarial vtables, misbehaving paging, and out-of-domain output; duallity's validation valves (vtable discovery, unit-domain check, edge-page validation, scalar validation, status decode), serial gate, fault latch, and catch_unwind boundary route every case to a bounded, well-typed DuallityStatus with no undefined behavior" width="880"/>
+
+> **New diagram — `foreign-provider-trust-boundary` (D39).** A PlantUML diagram of the
+> untrusted-provider surface; source and SVG under
+> [`../diagrams/`](../diagrams/README.md#catalog). Legend: foreign zone light rose, adversarial input
+> substitute-red, validation valves match-green, the serial gate leased-amber, panic containment gray,
+> the bounded typed result purple.
+
+### 7.3 What remains the host's duty
+
+duallity contains provider *misbehavior*, but two properties stay with the host. First, the provider
+must honor the `retain`/`release` reference-count contract: a double-release is a use-after-free
+duallity cannot detect. Second, the resource-exhaustion bounds of §3–§4 still apply — a foreign
+dictionary can be adversarially *large* as well as malformed, so the same `max_distance`,
+query-length, and cache bounds govern the work it induces.
+
 ## See also
 
 - [security/README](README.md) — the STRIDE-lite assessment this page details.
 - [security/hashing-and-collisions](hashing-and-collisions.md) — why the node key admits no logical aliasing.
+- [architecture/06 · The resource ABI and language bindings](../architecture/06-resource-abi-and-bindings.md) — the C ABI, the double adapter, and the validation/containment machinery §7 relies on.
 - [guides/05 · Performance and tuning](../guides/05-performance-and-tuning.md) — the same knobs, framed for performance.
-- [engineering/safety-and-panics](../engineering/safety-and-panics.md) — the zero-`unsafe` story and the `u32` fail-closed boundaries.
+- [engineering/safety-and-panics](../engineering/safety-and-panics.md) — the compute-core zero-`unsafe` story, the contained boundary `unsafe`, and the `u32` fail-closed boundaries.
 - [theory/06 · WallBreaker and the wall effect](../theory/06-wallbreaker-and-the-wall-effect.md) — the large-`` $`k`$ `` cost this page bounds.

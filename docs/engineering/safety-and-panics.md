@@ -1,7 +1,8 @@
 # Safety and panics
 
-duallity is engineered for a **clean, auditable safety story**: no `unsafe`, no reachable production
-panic, and a fully typed error surface. This page states that story precisely and gives the
+duallity's **compute core** is engineered for a **clean, auditable safety story**: no `unsafe`, no
+reachable production panic, and a fully typed error surface. Its C ABI boundary adds a small,
+deliberately contained `unsafe` surface (§1, §3.5). This page states both precisely and gives the
 **complete inventory** of every place the crate *can* abort a thread — so a caller embedding duallity
 in a long-running service knows exactly what it is exposed to.
 
@@ -13,9 +14,17 @@ in a long-running service knows exactly what it is exposed to.
 
 ## 1. Zero `unsafe`
 
-Every module under `src/` is written in **safe Rust**. There is **no `unsafe`** anywhere in the crate
-(`grep -rn 'unsafe' src/` returns nothing). The consequence is strong: duallity delegates **no**
-memory-safety obligation to the caller, and no combination of inputs can provoke undefined behaviour.
+Every module of duallity's **pure-compute core** — the matching engines, state sources, caches, and
+registries — is written in **safe Rust**: the core delegates **no** memory-safety obligation to the
+caller, and no combination of *query and dictionary* inputs can provoke undefined behaviour.
+
+The sole exception is the **C ABI boundary** (`src/ffi.rs`, `src/bindings.rs`), which speaks the
+vinary-tree resource ABI ([architecture/06](../architecture/06-resource-abi-and-bindings.md)) and must
+therefore dereference caller pointers and call foreign function pointers — irreducible `unsafe` for any
+C ABI. That `unsafe` is confined to those two modules and is *contained* rather than trusted (§3.5):
+every foreign input is validated, faults latch to a typed `PROVIDER_ERROR`, and every panic is caught
+at the boundary. The audit recipe is now that `grep -rln 'unsafe' src/` returns exactly `src/ffi.rs`
+and `src/bindings.rs`.
 
 The performance budget is therefore spent entirely on *data-structure and laziness* choices — a
 [`FxHashMap`](https://docs.rs/rustc-hash) for interning, a
@@ -84,9 +93,11 @@ Every direct panic-capable construct in the crate sits in one of two places:
    `wfst.add_rule("ph", "f", 0.1).expect("valid rewrite rule")` model the idiomatic
    `Result`-handling pattern; they are documentation, not a code path in the compiled crate.
 
-There are **no** `.expect`/`.unwrap`/`panic!`/`unreachable!`/`todo!`/`unimplemented!` calls in any
-production path. (Auditing recipe: the only matches outside a `#[cfg(test)] mod tests` block are
-`///`/`//!` doc-comment lines.)
+Outside the C ABI boundary (§3.5), there are **no** `.expect`/`.unwrap`/`panic!`/`unreachable!`/
+`todo!`/`unimplemented!` calls in any production path: in the compute core the only matches outside a
+`#[cfg(test)] mod tests` block are `///`/`//!` doc-comment lines. The boundary modules `src/ffi.rs`
+and `src/bindings.rs` do contain a few such constructs, all either precondition-checked or neutralized
+by the `catch_unwind` that wraps every boundary entry point (§3.5).
 
 ### 3.2 Implicit panic sources are eliminated by construction
 
@@ -125,6 +136,33 @@ pub(crate) fn write_lock<T>(lock: &RwLock<T>) -> RwLockWriteGuard<'_, T> {
 
 The mechanism and why it is sound for append-only interning tables are detailed in
 [concurrency §5](concurrency-and-locking.md#5-lock-poisoning-and-recovery).
+
+### 3.5 The C ABI boundary contains its own panics
+
+The [C ABI](../architecture/06-resource-abi-and-bindings.md) modules `src/ffi.rs` and `src/bindings.rs`
+are the crate's only `unsafe`, and its only production panic-capable constructs. They are safe because
+the boundary is *closed*:
+
+- **Every fallible entry point is wrapped in `catch_unwind`.** `duallity_wfst_new` and
+  `duallity_wfst_resource` run their bodies inside `catch_unwind(AssertUnwindSafe(...))`; any unwind —
+  including from an `.unwrap()`, `.expect()`, or `unreachable!()` — is converted to
+  `DUALLITY_STATUS_PANIC` with a thread-local message, never propagated across the `extern "C"` frame
+  (which would be undefined behavior).
+- **The `.unwrap()` calls are precondition-checked.** The vtable-function unwraps (e.g.
+  `snapshot.unwrap()`) run only after `discover_dictionary` has verified those pointers are non-null,
+  so they cannot fire on a conforming provider — and `catch_unwind` still contains one if a malicious
+  provider somehow provoked it.
+- **Lock acquisitions use poison recovery.** `lock().unwrap_or_else(|p| p.into_inner())` recovers a
+  poisoned mutex rather than re-panicking, exactly as the registries do (§3.4).
+- **The `unreachable!()` arms are exhaustively narrowed.** They sit inside a `match` whose outer arm
+  has already restricted the `kind`, so no input reaches them.
+
+So the boundary's `unsafe` and panic-capable constructs do not weaken the caller-facing guarantee: a
+boundary call returns a typed `DuallityStatus`, never an unwind or undefined behavior. The
+provider-side validation that backs this is
+[architecture/06 §7](../architecture/06-resource-abi-and-bindings.md#7-provider-fault-handling-and-validation),
+and the adversarial-input view is
+[security/threat-model §7](../security/threat-model.md#7-the-foreign-dictionary-as-untrusted-input).
 
 ## 4. `Send + Sync` and `Clone`
 

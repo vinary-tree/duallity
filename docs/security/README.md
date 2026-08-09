@@ -28,11 +28,11 @@ duallity. The sixth — denial of service — is the whole of the practical surf
 | STRIDE category | Applies to duallity? | Rationale |
 |-----------------|----------------------|-----------|
 | **S**poofing (falsifying identity) | **N/A** | duallity authenticates nothing and holds no principals, sessions, tokens, or credentials. There is no identity to spoof. |
-| **T**ampering (violating integrity) | **N/A** in the library | With no persistence, no I/O, and no deserialization there is no on-disk or on-wire artifact whose integrity duallity could fail to protect. The one *logical* integrity question — could two distinct dictionary nodes be conflated? — is closed by the exact key ([hashing-and-collisions](hashing-and-collisions.md)). In-memory tampering is the host's memory-safety domain, and duallity adds **no `unsafe`** ([engineering/safety-and-panics](../engineering/safety-and-panics.md)). |
+| **T**ampering (violating integrity) | **N/A** in the library | With no persistence, no I/O, and no deserialization there is no on-disk or on-wire artifact whose integrity duallity could fail to protect. The one *logical* integrity question — could two distinct dictionary nodes be conflated? — is closed by the exact key ([hashing-and-collisions](hashing-and-collisions.md)). In-memory tampering is the host's memory-safety domain; duallity's pure-compute core adds **no `unsafe`** ([engineering/safety-and-panics](../engineering/safety-and-panics.md)), and its C-ABI boundary uses `unsafe` only behind validated, panic-contained checks ([threat-model §7](threat-model.md#7-the-foreign-dictionary-as-untrusted-input)). |
 | **R**epudiation (denying an action) | **N/A** | duallity keeps no logs or transactions to repudiate; it is a deterministic pure function of `` $`(q, D, \text{config})`$ ``. Its [determinism](threat-model.md#6-determinism-and-reproducibility) actively *aids* the host's own auditing and issue reproduction. |
 | **I**nformation disclosure (leaking data) | **N/A** | duallity processes strings, not secrets, and opens no channel over which to leak. It is not constant-time, but its running time is a function of **public** inputs only (the query, the dictionary, and `` $`k`$ ``); it branches on no secret, so timing reveals nothing sensitive. |
 | **D**enial of service (exhausting resources) | **Yes — the one real risk** | An adversary who controls the query (and possibly influences the dictionary) can try to inflate the explored product-state band. This is the subject of [threat-model §3–§4](threat-model.md#3-the-realistic-risk-resource-exhaustion-dos) and is bounded by `max_distance`, query length, and `CachePolicy::Lru`. |
-| **E**levation of privilege (gaining rights) | **N/A** | No privilege boundary is crossed: no `unsafe`, no FFI into privileged code, no process or shell invocation, and no dynamic code loading. duallity runs entirely within the host's existing privileges. |
+| **E**levation of privilege (gaining rights) | **N/A** | No privilege boundary is crossed: the C ABI calls only into a foreign dictionary provider the host itself supplied (never into privileged code), spawns no process or shell, and loads no dynamic code. The boundary's `unsafe` is validated and panic-contained ([threat-model §7](threat-model.md#7-the-foreign-dictionary-as-untrusted-input)); duallity runs entirely within the host's existing privileges. |
 
 The single live row — **denial of service** — is not left as an abstract worry: every vector is tied
 to a concrete, enforceable bound in the [threat model's per-vector mitigation table](threat-model.md#4-per-vector-mitigations)
@@ -44,9 +44,11 @@ and, beneath those tunable knobs, to the crate's **hard structural ceilings** (t
 - **No I/O, no network, no deserialization.** duallity only computes over a query string and an
   in-memory dictionary you supply; there is no parsing-of-untrusted-bytes, SSRF, path-traversal, or
   deserialization-gadget surface of its own.
-- **No `unsafe`** ([engineering/safety-and-panics](../engineering/safety-and-panics.md)) — the crate
-  introduces no memory-safety surface of its own making, and every fallible step reports through
-  `Result`/`Option` rather than a wrapping overflow.
+- **No `unsafe` in the pure-compute core** ([engineering/safety-and-panics](../engineering/safety-and-panics.md)) —
+  the matching engine introduces no memory-safety surface of its own, and every fallible step reports
+  through `Result`/`Option` rather than a wrapping overflow. The C-ABI boundary (`src/ffi.rs`,
+  `src/bindings.rs`) uses `unsafe` to speak the resource ABI, but validates every foreign input and
+  catches panics ([threat-model §7](threat-model.md#7-the-foreign-dictionary-as-untrusted-input)).
 - **The realistic concern is algorithmic resource use** at large `` $`k`$ `` / large dictionaries.
   Bound it with a small `max_distance`, a query-length cap at the host boundary, and
   `CachePolicy::Lru` (see [threat-model](threat-model.md)).

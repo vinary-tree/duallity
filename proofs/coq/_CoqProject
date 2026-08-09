@@ -3,3 +3,5 @@
 
 # Product-state codec (dictionary_node x automaton_state -> StateId)
 StateEncoding.v
+# ABI status classification (BindingError -> DuallityStatus)
+StatusMapping.v

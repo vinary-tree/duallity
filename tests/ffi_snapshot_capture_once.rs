@@ -7,8 +7,8 @@
 //! across the source resource and every snapshot it hands out.
 //!
 //! Correspondence:
-//! - DUAL-CAP-1: `snapshot` fires exactly once, at construction; `root`/`len` are read exactly once there too (construction is O(1) in the dictionary — no `node_edges` before the first expansion).
-//! - DUAL-CAP-2: zero `snapshot` calls occur during traversal, no matter how many resource retains or full walks the consumer performs.
+//! - INVARIANT-HOOK: DUAL-CAP-1 — `snapshot` fires exactly once, at construction; `root`/`len` are read exactly once there too (construction is O(1) in the dictionary — no `node_edges` before the first expansion).
+//! - INVARIANT-HOOK: DUAL-CAP-2 — zero `snapshot` calls occur during traversal, no matter how many resource retains or full walks the consumer performs.
 
 #![cfg(feature = "ffi")]
 

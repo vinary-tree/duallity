@@ -219,7 +219,7 @@ duallity = { version = "0.3", features = ["phonetic-rules"] }
 ## Performance & safety at a glance
 
 - **Lazy + cached.** Product states are computed on first touch and memoized in a per-WFST `LazyStateCache`; a `CachePolicy` (`CacheAll` / `Lru { max_states }` / `NoCache`) bounds memory. See [architecture/04](docs/architecture/04-lazy-evaluation-and-caching.md) and [guides/05](docs/guides/05-performance-and-tuning.md).
-- **Zero `unsafe`, panic-free public surface.** Fallible operations return `Result`/`Option` (`try_encode`, `decode`, `try_intern`, weight setters → `InvalidWeightError`); `.expect`/`.unwrap` live only under `#[cfg(test)]`. See [engineering/safety-and-panics](docs/engineering/safety-and-panics.md).
+- **`unsafe`-free compute core, panic-free public surface.** The Rust compute core carries no `unsafe`; the optional C-ABI boundary (`src/ffi.rs`, `src/bindings.rs`) uses contained, `catch_unwind`-guarded `unsafe` for foreign-pointer and resource handling, never leaking a panic. Fallible operations return `Result`/`Option` (`try_encode`, `decode`, `try_intern`, weight setters → `InvalidWeightError`); `.expect`/`.unwrap` live only under `#[cfg(test)]`. See [engineering/safety-and-panics](docs/engineering/safety-and-panics.md).
 - **`Clone + Send + Sync`.** Registries are `Arc<RwLock<…>>` with poison recovery; clones are cheap. See [engineering/concurrency-and-locking](docs/engineering/concurrency-and-locking.md).
 - **Pure compute.** No I/O, no network, no deserialization; the one real risk is resource exhaustion, bounded by `max_distance` and the cache policy. See [security/threat-model](docs/security/threat-model.md).
 

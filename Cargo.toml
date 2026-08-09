@@ -69,6 +69,11 @@ harness = false
 name = "fzf_trie_vs_flat"
 harness = false
 
+[[bench]]
+name = "ffi_constructor_benchmarks"
+harness = false
+required-features = ["ffi"]
+
 [package.metadata.docs.rs]
 all-features = true
 

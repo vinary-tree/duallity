@@ -19,6 +19,7 @@ docs/architecture/01-crate-family-and-dependency-graph.md
 docs/architecture/02-wfst-trait-surface.md
 docs/architecture/03-state-encoding-and-product-space.md
 docs/architecture/05-registries-and-interning.md
+docs/architecture/06-resource-abi-and-bindings.md
 docs/architecture/README.md
 docs/design/README.md
 docs/design/fzf-wfst.md

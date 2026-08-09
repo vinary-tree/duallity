@@ -38,6 +38,7 @@ only has to preserve the invariant, not re-establish it.
 | 03 | [State encoding and the product space](03-state-encoding-and-product-space.md) | How `` $`(d, a)`$ `` pairs pack into one `` $`u32`$ `` `StateId`, and the two encoding regimes (arithmetic vs. registry). | Encoding is a **bijection** on the valid region: `` $`\mathrm{decode}(\mathrm{encode}(d, a)) = (d, a)`$ `` whenever `` $`0 \le a < M`$ ``. |
 | 04 | [Lazy evaluation and caching](04-lazy-evaluation-and-caching.md) | `expand → compute_state → cache`, deterministic LRU, and the immutable/mutable split. | Each `StateId` is computed **at most once per cache epoch**; `compute_state` is referentially transparent — a pure function of the id. |
 | 05 | [Registries and interning](05-registries-and-interning.md) | How nodes and abstract states get stable `` $`u32`$ `` ids, and the lock-based concurrency model. | Every distinct node / abstract state receives **one stable, dense `` $`u32`$ `` id** that never changes for the life of the WFST. |
+| 06 | [The resource ABI and language bindings](06-resource-abi-and-bindings.md) | The vinary-tree resource ABI, the seven-function `duallity_*` C ABI, the nine automaton kinds, the capture-once rule, and the double-adapter bridge. | A dictionary revision is **captured exactly once** at construction; the resulting resource is immutable and may outlive its source, so every later expansion reads the same snapshot. |
 
 ## Source-module map
 
@@ -59,6 +60,7 @@ it* — architecture chapters for the shared machinery, design documents for the
 | **Phonetic regex/NFA** | `phonetic_nfa_wfst.rs`, `phonetic_nfa_support.rs` | `PhoneticNfaWfst` | [design/phonetic-nfa-wfst](../design/phonetic-nfa-wfst.md) |
 | **Phonetic Levenshtein** | `phonetic_wfst.rs`, `phonetic_state_source.rs`, `phonetic_state_support.rs`, `phonetic_anchors.rs` | `PhoneticWfst`, `PhoneticWfstBuilder`, `PhoneticStateSource` | [design/phonetic-wfst](../design/phonetic-wfst.md) |
 | **Phonetic pipeline** | `composed_phonetic.rs` | `PhoneticPipelineBuilder`, `PhoneticPipelineConfig`, `PhoneticMatch` | [design/phonetic-pipeline-builder](../design/phonetic-pipeline-builder.md) |
+| **Resource ABI / bindings** | `ffi.rs`, `bindings.rs` | `DuallityWfst`, `DuallityStatus`, `WfstKind`, `create_wfst`, `ResourceDictionary`, `ResourceNode`, `AdapterProvider` | [architecture/06](06-resource-abi-and-bindings.md) |
 
 The `phonetic_*` modules marked `#[cfg(feature = "phonetic-rules")]` in `lib.rs` (`phonetic_anchors`,
 `phonetic_nfa_support`, `phonetic_nfa_wfst`, `phonetic_state_source`, `phonetic_state_support`,

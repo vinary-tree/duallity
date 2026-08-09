@@ -17,7 +17,7 @@ and its original *Doklady* citation. Every DOI in this file was checked to resol
 publisher) and to match its work's title, venue, volume, issue, page range, and year against the
 [Crossref](https://www.crossref.org/) metadata record.
 
-**Numbering.** Entries are numbered **1–20 globally**, in topic order, and this global number is the
+**Numbering.** Entries are numbered **1–22 globally**, in topic order, and this global number is the
 one the [mapping table](#how-these-map-to-the-documentation) uses. It is *independent* of the
 bracketed `[n]` markers inside each chapter: those are **page-local** and resolve within that
 chapter's own `## References` list (see [references/README](README.md#how-a-citation-flows)).
@@ -137,6 +137,18 @@ Design guidance cited by the architecture chapters for duallity's crate-boundary
     WFST adapters are extracted into a separate crate that sits *above* liblevenshtein and lling-llang,
     keeping the dependency graph acyclic.
 
+## Persistence and the resource ABI
+
+The immutable-revision model behind duallity's capture-once dictionary snapshot, which lets a WFST
+resource outlive the source handle it was built from.
+
+22. **Driscoll, J. R., Sarnak, N., Sleator, D. D., & Tarjan, R. E.** (1989). *Making Data Structures
+    Persistent.* Journal of Computer and System Sciences 38(1), 86–124.
+    [doi:10.1016/0022-0000(89)90034-2](https://doi.org/10.1016/0022-0000(89)90034-2) — a persistent
+    structure exposes an immutable prior *version* that survives later updates; duallity's
+    `snapshot`-captured dictionary revision ([architecture/06](../architecture/06-resource-abi-and-bindings.md))
+    is exactly such a version, which is why a WFST can outlive its source dictionary handle.
+
 ---
 
 ## How these map to the documentation
@@ -175,6 +187,7 @@ the three tables cover every chapter of [theory](../theory/) 01–07 and every
 | Architecture page | Cites |
 |-------------------|-------|
 | [architecture/01 · Crate family and dependency graph](../architecture/01-crate-family-and-dependency-graph.md) | 9, 10 † |
+| [architecture/06 · The resource ABI and language bindings](../architecture/06-resource-abi-and-bindings.md) | 6, 7, 9, 10, 21, 22 |
 
 > † architecture/01's inline `[13]` maps to **Martin, R. C.** (2000) — entry **21** above; its
 > page-local number differs from the global one, per the numbering scheme in

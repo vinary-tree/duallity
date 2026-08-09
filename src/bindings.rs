@@ -93,7 +93,15 @@ impl fmt::Display for BindingError {
 
 impl std::error::Error for BindingError {}
 
-fn status(value: VtStatus) -> Result<(), BindingError> {
+fn status(raw: u32) -> Result<(), BindingError> {
+    // The wire carries a raw u32 (interop status rule): decode before any
+    // enum-typed use; an out-of-range discriminant is provider misbehavior,
+    // never undefined behavior (family hardening LLEV-B6).
+    let Some(value) = VtStatus::from_raw(raw) else {
+        return Err(BindingError::InvalidProviderOutput(
+            "provider returned an out-of-range status code",
+        ));
+    };
     if value.is_ok() {
         Ok(())
     } else {
@@ -241,7 +249,7 @@ unsafe fn discover_dictionary(
         VT_DICTIONARY_INTERFACE_VERSION,
         &mut interface,
     );
-    if result == VtStatus::Unsupported {
+    if VtStatus::from_raw(result) == Some(VtStatus::Unsupported) {
         return Err(BindingError::MissingDictionaryInterface);
     }
     status(result)?;
@@ -318,6 +326,8 @@ impl ResourceNode {
                     &mut total,
                 )
             });
+            let callback_status =
+                VtStatus::from_raw(callback_status).unwrap_or(VtStatus::ProviderError);
             if !callback_status.is_ok() {
                 return self.fail(callback_status, Vec::new());
             }
@@ -356,6 +366,8 @@ impl DictionaryNode for ResourceNode {
         let callback_status = self
             .provider
             .call(|| unsafe { callback(self.provider.resource.0.context, self.id, &mut result) });
+        let callback_status =
+            VtStatus::from_raw(callback_status).unwrap_or(VtStatus::ProviderError);
         if !callback_status.is_ok() {
             return self.fail(callback_status, false);
         }
@@ -384,6 +396,8 @@ impl DictionaryNode for ResourceNode {
                 &mut found,
             )
         });
+        let callback_status =
+            VtStatus::from_raw(callback_status).unwrap_or(VtStatus::ProviderError);
         if !callback_status.is_ok() {
             return self.fail(callback_status, None);
         }
@@ -689,7 +703,7 @@ mod tests {
                     VT_WFST_INTERFACE_VERSION,
                     &mut interface
                 ),
-                VtStatus::Ok
+                VtStatus::Ok.to_raw()
             );
             let table = &*interface.cast::<VtWfstVTable>();
             assert_eq!(table.weight_domain, VtWeightDomain::TropicalF64);
@@ -711,7 +725,7 @@ mod tests {
                         &mut final_state,
                         &mut weight
                     ),
-                    VtStatus::Ok
+                    VtStatus::Ok.to_raw()
                 );
                 found_final |= final_state == 1;
                 let mut arcs = [VtWfstArc::default(); 64];
@@ -727,7 +741,7 @@ mod tests {
                         &mut written,
                         &mut total
                     ),
-                    VtStatus::Ok
+                    VtStatus::Ok.to_raw()
                 );
                 assert_eq!(written, total);
                 frontier.extend(arcs[..written].iter().map(|arc| arc.target_state));
@@ -789,13 +803,13 @@ mod tests {
                     VT_WFST_INTERFACE_VERSION,
                     &mut interface,
                 ),
-                VtStatus::Ok,
+                VtStatus::Ok.to_raw(),
             );
             let table = &*interface.cast::<VtWfstVTable>();
             let mut start = 0;
             assert_eq!(
                 table.start.unwrap()(resource.context, &mut start),
-                VtStatus::Ok,
+                VtStatus::Ok.to_raw(),
             );
             let mut seen = HashSet::new();
             let mut frontier = vec![(start, String::new())];
@@ -815,7 +829,7 @@ mod tests {
                         &mut final_state,
                         &mut final_weight,
                     ),
-                    VtStatus::Ok,
+                    VtStatus::Ok.to_raw(),
                 );
                 accepted |= final_state == 1 && output == "CAT";
                 let mut arcs = [VtWfstArc::default(); 128];
@@ -831,7 +845,7 @@ mod tests {
                         &mut written,
                         &mut total,
                     ),
-                    VtStatus::Ok,
+                    VtStatus::Ok.to_raw(),
                 );
                 assert_eq!(written, total);
                 for arc in &arcs[..written] {

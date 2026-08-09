@@ -37,6 +37,38 @@ jobs:
         run: cargo fmt --all -- --check
 
   # ---------------------------------------------------------------------
+  # Multi-cdylib C family pipeline: build all four sibling crates as
+  # separate shared libraries (each with only its own `ffi` feature, so the
+  # exported C ABIs are disjoint) and run bindings/c/tests/family_pipeline.c
+  # against all four in one process. This is the C-ABI counterpart of the
+  # in-process Rust test tests/family_pipeline.rs and exercises the whole
+  # producer -> adapter -> composer / consumer chain end to end.
+  # ---------------------------------------------------------------------
+  c-family-pipeline:
+    name: C family pipeline (four cdylibs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout dev sibling crates
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Sibling path dependencies resolve against the workspace parent
+          # (mirrors the local checkout layout and the checkout-dev-siblings
+          # action). Dependency order: llattice, then the dictionary crate,
+          # then lling-llang and liblevenshtein, then duallity (this repo).
+          parent="$(dirname "$GITHUB_WORKSPACE")"
+          for repo in llattice libdictenstein lling-llang liblevenshtein-rust; do
+            echo "::group::Cloning $repo @ master"
+            git clone --depth 1 --branch master \
+              "https://github.com/vinary-tree/$repo.git" "$parent/$repo"
+            echo "::endgroup::"
+          done
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build four cdylibs, compile and run the C family pipeline
+        run: bindings/c/tests/build-and-run.sh
+
+  # ---------------------------------------------------------------------
   # Supply-chain gate: published advisories, banned crates, permitted
   # sources. Configured in deny.toml.
   #

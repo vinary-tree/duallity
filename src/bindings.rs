@@ -331,7 +331,22 @@ impl ResourceNode {
             if !callback_status.is_ok() {
                 return self.fail(callback_status, Vec::new());
             }
+            // Paging acceptance harmonized to the single proven predicate
+            // `ConsumerAcceptance.accepts_dec` (family finding F3 / LLEV-B8):
+            // reject a reply unless every conjunct holds — `written <= capacity`
+            // (over-fill), `offset <= total` and `offset + written <= total`
+            // (past the end), and progress (an empty page is legal only when the
+            // node is exhausted). The `offset > total` conjunct is stated
+            // explicitly so this predicate is textually identical to the sibling
+            // consumers (llev/lling `src/bindings.rs`) and each proven rejection
+            // lemma maps to one conjunct; it is subsumed by the saturating
+            // `offset + written > total` check but kept for that correspondence.
+            // The claimed-total sanity bound (`total <= max_total`) is realized
+            // STRUCTURALLY: neither `result` nor `page` is ever sized from the
+            // provider-reported `total`, so an inflated total cannot drive an
+            // allocation abort.
             if written > page.len()
+                || offset > total
                 || offset.saturating_add(written) > total
                 || (written == 0 && offset < total)
             {

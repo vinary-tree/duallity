@@ -1,0 +1,60 @@
+@startuml foreign-provider-trust-boundary
+' D39 — A foreign vt.dictionary.v1 provider is untrusted input. Adversarial
+' behaviours (red) pass through duallity's validation valves (green) and panic
+' containment, producing a bounded, well-typed DuallityStatus (purple) — never UB.
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam rectangle {
+  BorderColor #34495E
+  FontColor #2C3E50
+}
+skinparam ArrowColor #34495E
+title Foreign-provider trust boundary — untrusted callbacks, contained failures
+
+package "Foreign host (untrusted trust zone)" as HOST #FFCDD2 {
+  rectangle "Adversarial vtable\nnull fns, short struct_size,\nwrong abi_version" as A1 #E74C3C
+  rectangle "Misbehaving paging\nwritten > capacity,\noffset+written > total,\nzero progress" as A2 #E74C3C
+  rectangle "Out-of-domain output\nlabel not a Unicode scalar,\nis_final/found not in {0,1},\nstatus code out of range" as A3 #E74C3C
+}
+
+package "duallity validation (this crate)" as DUAL #D6EAF8 {
+  rectangle "Vtable discovery\nstruct_size, abi_version,\nretain/release/query_interface,\nrequired dictionary fns" as V1 #2ECC71
+  rectangle "Unit-domain check\nrequire UnicodeScalar" as V2 #2ECC71
+  rectangle "Edge-page validation\nbounds + monotone progress" as V3 #2ECC71
+  rectangle "Scalar validation\nchar::from_u32; 0/1 flags" as V4 #2ECC71
+  rectangle "Status decode\nVtStatus::from_raw ->\nProviderError on out-of-range" as V5 #2ECC71
+  rectangle "Serial gate\nMutex unless\nPARALLEL_REENTRANT" as V6 #FFECB3
+  rectangle "Fault latch\nfirst fault wins ->\ntake_fault()" as V7 #2ECC71
+  rectangle "catch_unwind boundary\npanic -> STATUS_PANIC" as V8 #F2F3F4
+}
+
+rectangle "Bounded, well-typed result\nDuallityStatus\n(OK / INCOMPATIBLE_RESOURCE /\nPROVIDER_ERROR / PANIC)\nno undefined behavior" as OUT #E8DAEF
+
+A1 --> V1
+A1 --> V2
+A2 --> V3
+A3 --> V4
+A3 --> V5
+
+V1 --> V8
+V2 --> V8
+V3 --> V7
+V4 --> V7
+V5 --> V7
+V6 --> V7
+V7 --> V8
+V8 --> OUT
+
+caption A foreign VtResource is untrusted input; every callback result is validated, faults latch, panics are caught.
+
+legend right
+  |= Color |= Concept |
+  |<#FFCDD2>| foreign / untrusted zone |
+  |<#E74C3C>| adversarial input |
+  |<#2ECC71>| validation valve |
+  |<#FFECB3>| leased memory / serial gate |
+  |<#F2F3F4>| panic containment |
+  |<#E8DAEF>| bounded typed result |
+endlegend
+@enduml

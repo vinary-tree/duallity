@@ -1,0 +1,88 @@
+@startuml wfst-new-capture-compose-sequence
+' D38 — duallity_wfst_new -> capture-once snapshot -> build adapter -> compose.
+' The captured revision is immutable and outlives the source dictionary handle
+' (proved in proofs/tla/SnapshotCaptureOnce.tla).
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam sequence {
+  ArrowColor #34495E
+  LifeLineBorderColor #AAB7B8
+  ParticipantBorderColor #34495E
+}
+title duallity_wfst_new — capture once, build lazily, compose after the source is gone
+
+actor "Caller (C ABI)" as Caller
+participant "duallity_wfst_new" as NEW #D6EAF8
+participant "Foreign provider\nvt.dictionary.v1" as PROV #FFCDD2
+participant "DictionaryProvider\n(captured snapshot)" as CAP #D5F5E3
+participant "WFST adapter\n(1 of 9 kinds)" as ADAPT #D6EAF8
+participant "lling-llang\ncompose + search" as LLL #FCF3CF
+
+Caller -> NEW : duallity_wfst_new(dictionary, query, k, algorithm, kind, out)
+activate NEW
+note over NEW #F2F3F4
+  catch_unwind boundary:
+  any panic becomes DUALLITY_STATUS_PANIC
+end note
+
+NEW -> PROV : query_interface(vt.dictionary.v1)
+activate PROV
+PROV --> NEW : dictionary vtable
+deactivate PROV
+note over NEW #FFECB3
+  validate base + dictionary vtables:
+  struct_size, abi_version, non-null fns
+end note
+
+NEW -> PROV : snapshot(context) -> out_snapshot
+activate PROV
+PROV --> NEW : new VtResource (one retain)
+deactivate PROV
+note over NEW, CAP #DCEDC8
+  CAPTURE ONCE — the only snapshot call.
+  The revision is immutable and independently retained.
+end note
+
+NEW -> CAP : re-discover on snapshot;\ncheck unit_domain == UnicodeScalar
+activate CAP
+CAP -> PROV : root(), len()
+activate PROV
+PROV --> CAP : root id, optional len
+deactivate PROV
+CAP --> NEW : Arc<DictionaryProvider>
+deactivate CAP
+
+NEW -> ADAPT : build over ResourceDictionary\n(Levenshtein / Universal / Generalized / Fzf)
+activate ADAPT
+ADAPT --> NEW : adapter (no states expanded)
+deactivate ADAPT
+
+NEW -> NEW : take_fault()? -> Ok
+NEW -> NEW : AdapterProvider -> OwnedWfstResource\n(vt.scalar-wfst.1); Box::into_raw
+NEW --> Caller : DUALLITY_STATUS_OK, *out_wfst
+deactivate NEW
+
+== source dictionary may now be mutated or dropped ==
+
+Caller -> Caller : duallity_wfst_resource -> retained VtResource
+Caller -> LLL : compose(edit_resource, downstream)
+activate LLL
+loop shortest-path expansion (lazy)
+  LLL -> ADAPT : state(s) — expand next product state
+  activate ADAPT
+  ADAPT -> CAP : is_final / edges / transition\non the CAPTURED snapshot
+  activate CAP
+  CAP --> ADAPT : node data (source handle not consulted)
+  deactivate CAP
+  ADAPT --> LLL : arcs + tropical / arctic weights
+  deactivate ADAPT
+end
+LLL --> Caller : ranked corrections
+deactivate LLL
+
+note over Caller, LLL #E8DAEF
+  The captured revision backs every later expansion,
+  so results are stable even after the source is gone.
+end note
+@enduml

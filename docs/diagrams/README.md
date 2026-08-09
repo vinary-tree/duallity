@@ -91,6 +91,9 @@ Tools: **P** = PlantUML, **D2** = Terrastruct D2, **G** = Graphviz. Diagrams mar
 | D34 | [`test-suite-map`](test-suite-map.svg) | P | engineering/testing |
 | D35 ★ | [`threat-surface-resource-bounds`](threat-surface-resource-bounds.svg) | P | security/threat-model |
 | D36 ★ | [`fzf-prefix-shared-dp`](fzf-prefix-shared-dp.svg) | P | design/fzf-wfst |
+| D37 ★ | [`duallity-resource-abi-dataflow`](duallity-resource-abi-dataflow.svg) | P | architecture/06 |
+| D38 | [`wfst-new-capture-compose-sequence`](wfst-new-capture-compose-sequence.svg) | P | architecture/06 |
+| D39 | [`foreign-provider-trust-boundary`](foreign-provider-trust-boundary.svg) | P | security/threat-model |
 | — ★ | [`composition-pipeline`](composition-pipeline.svg) | P | README, guides/01, guides/03, theory/04 |
 
 ## Rendering

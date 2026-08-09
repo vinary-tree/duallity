@@ -1,0 +1,67 @@
+@startuml duallity-resource-abi-dataflow
+' D37 — The three-sibling resource-ABI data flow.
+' A foreign vt.dictionary.v1 provider crosses the C ABI into duallity, which
+' double-adapts it (libdictenstein Dictionary/DictionaryNode on the input side,
+' lling-llang ScalarWfstProvider on the output side) and hands back a retained
+' vt.scalar-wfst.1 resource that lling-llang composes.
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam componentStyle rectangle
+skinparam component {
+  BorderColor #34495E
+  FontColor #2C3E50
+}
+skinparam package {
+  BorderColor #34495E
+  FontColor #2C3E50
+}
+skinparam ArrowColor #34495E
+title Resource-ABI data flow — a foreign dictionary becomes a composable WFST resource
+
+' ── Foreign / host trust zone (every callback result is untrusted input) ──
+package "Foreign host (untrusted trust zone)" as HOST #FFCDD2 {
+  component "Dictionary provider\nvt.dictionary.v1\n(VtResource: context + vtable)" as PROV #DCEDC8
+}
+
+' ── duallity: the double adapter (this crate) ──
+package "duallity (blue)" as DUAL #D6EAF8 {
+  component "duallity_wfst_new\nC ABI entry\ncatch_unwind boundary" as NEW #D6EAF8
+  component "ResourceDictionary / ResourceNode\nimpl libdictenstein\nDictionary + DictionaryNode\n(Unit = char)" as RDICT #D5F5E3
+  component "WFST adapter\nLevenshtein / Universal /\nGeneralized / Fzf\n(1 of 9 kinds)" as ADAPT #D6EAF8
+  component "AdapterProvider\nimpl lling-llang\nScalarWfstProvider" as APROV #FCF3CF
+}
+
+' ── liblevenshtein: the automata engine the adapters drive ──
+package "liblevenshtein (red-pink)" as LLEV #FADBD8 {
+  component "Levenshtein /\nuniversal / generalized\nautomata" as AUTO #FADBD8
+}
+
+' ── lling-llang: the WFST algebra + the outgoing resource ──
+package "lling-llang (yellow)" as LLL #FCF3CF {
+  component "OwnedWfstResource\nvt.scalar-wfst.1\n(VtResource: context + vtable)" as OWNED #DCEDC8
+  component "compose\nlazy product" as COMPOSE #FCF3CF
+}
+
+component "Ranked corrections\n(term, tropical / arctic weight)" as OUT #E8DAEF
+
+PROV -down-> NEW : borrow VtResource\nfor the call
+NEW -down-> RDICT : capture-once snapshot\n<latex>O(1)</latex>; new retain
+RDICT -down-> ADAPT : Dictionary / DictionaryNode\n(root, is_final, edges, transition)
+ADAPT -left-> AUTO : drives the automaton\nlock-step with the dictionary
+ADAPT -down-> APROV : lazy states + arcs
+APROV -down-> OWNED : from_provider
+OWNED -down-> COMPOSE : retained handoff\n<latex>O(1)</latex>
+COMPOSE -down-> OUT : shortest-path search
+
+legend right
+  |= Color |= Concept |
+  |<#FADBD8>| liblevenshtein (automata) |
+  |<#D5F5E3>| libdictenstein trait impls |
+  |<#D6EAF8>| duallity (this crate) |
+  |<#FCF3CF>| lling-llang (WFST algebra) |
+  |<#DCEDC8>| VtResource handle |
+  |<#FFCDD2>| foreign / untrusted zone |
+  |<#E8DAEF>| output / results |
+endlegend
+@enduml

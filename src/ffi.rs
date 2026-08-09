@@ -173,7 +173,18 @@ pub extern "C" fn duallity_wfst_new(
             crate::bindings::create_wfst(dictionary, query, maximum_distance, algorithm, kind)
         }
         .map_err(map_error)?;
-        *output(out_wfst, "out_wfst")? = Box::into_raw(Box::new(DuallityWfst { resource }));
+        // Resolve the output slot BEFORE relinquishing ownership of the boxed
+        // handle. Written as one assignment, the right-hand side
+        // `Box::into_raw(Box::new(..))` runs first: it constructs the handle
+        // (which retains the dictionary snapshot) and hands out a raw pointer
+        // with no owner, so a null `out_wfst` short-circuiting the left-hand
+        // `output(..)?` afterward orphans the box and leaks the retained
+        // snapshot. Binding `slot` first makes the null-pointer early return
+        // drop `resource` (releasing the snapshot) instead. This preserves the
+        // validation order (query, algorithm, kind, construction, then output).
+        // Found by the W8 asan/lsan leg; see finding DUAL-B10.
+        let slot = output(out_wfst, "out_wfst")?;
+        *slot = Box::into_raw(Box::new(DuallityWfst { resource }));
         Ok(())
     })
 }
@@ -207,7 +218,14 @@ pub unsafe extern "C" fn duallity_wfst_resource(
             set_error("wfst is null");
             return Err(DuallityStatus::NullPointer);
         }
-        *output(out_resource, "out_resource")? = unsafe { &*wfst }.resource.clone().into_raw();
+        // Resolve the output slot BEFORE taking the retain, for the same reason
+        // as DUAL-B10 in `duallity_wfst_new`: `clone().into_raw()` produces an
+        // owned VtResource retain with no owner, so checking `out_resource` for
+        // null afterward would leak that retain (its refcount is never
+        // released). Binding `slot` first means a null `out_resource` returns
+        // before any retain is taken.
+        let slot = output(out_resource, "out_resource")?;
+        *slot = unsafe { &*wfst }.resource.clone().into_raw();
         Ok(())
     })
 }

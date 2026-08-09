@@ -11,6 +11,7 @@
 //! - DUAL-DICT-1: a non-UnicodeScalar dictionary is refused as IncompatibleResource.
 //! - DUAL-VER-1: `duallity_abi_version`/`duallity_api_revision` are pinned.
 //! - DUAL-ERR-1: the thread-local last-error message matches the rejection.
+//! - DUAL-B10: a null output pointer on `duallity_wfst_new` / `duallity_wfst_resource` is rejected without leaking the constructed handle or the retain (verified under the W8 asan/lsan leg).
 
 #![cfg(feature = "ffi")]
 
@@ -297,6 +298,29 @@ fn null_output_pointer_is_null_pointer() {
     );
     assert_eq!(status, DuallityStatus::NullPointer);
     assert_eq!(last_error(), "out_wfst is null");
+}
+
+#[test]
+fn null_out_resource_pointer_is_null_pointer() {
+    // Companion to `null_output_pointer_is_null_pointer` for the resource
+    // accessor. A null `out_resource` must be rejected BEFORE a retain is taken:
+    // otherwise the `clone().into_raw()` retain is orphaned and the captured
+    // dictionary snapshot leaks. This is the `duallity_wfst_resource` instance
+    // of DUAL-B10 (the `duallity_wfst_new` instance was caught empirically by
+    // the W8 asan/lsan leg); under that leg this test's construction retain must
+    // be released on the early return, so a leak here fails CI.
+    let dictionary = unicode_dictionary();
+    let source = dictionary.resource();
+    let mut wfst = ptr::null_mut();
+    assert_eq!(
+        duallity_wfst_new(source.as_raw(), b"cat".as_ptr(), 3, 1, 0, 0, &mut wfst),
+        DuallityStatus::Ok
+    );
+    assert!(!wfst.is_null());
+    let status = unsafe { duallity_wfst_resource(wfst, ptr::null_mut()) };
+    assert_eq!(status, DuallityStatus::NullPointer);
+    assert_eq!(last_error(), "out_resource is null");
+    unsafe { duallity_wfst_free(wfst) };
 }
 
 #[test]

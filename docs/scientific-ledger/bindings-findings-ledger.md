@@ -339,3 +339,95 @@ underlying type (`: uint32_t` / `LLEV_ENUM_U32`) for defence in depth.
 
 **Fix.** Ledger-only; the interop header lives in the liblevenshtein-rust host.
 Recorded for the header owner as an optional hardening.
+
+## Finding DUAL-B10 — duallity_wfst_new leaked the constructed handle on a null output pointer
+
+| Field | Value |
+|---|---|
+| Finding | DUAL-B10 |
+| Date | 2026-08-09 |
+| Component | `src/ffi.rs` (`duallity_wfst_new`, `duallity_wfst_resource`) — output-pointer validation vs. resource ownership |
+| Class | resource leak (retained dictionary snapshot / VtResource retain at the C ABI boundary) |
+| Severity | medium |
+| Fix | this commit (adds the W8 asan/tsan leg and the reorder that closes the leak) |
+| Status | FIXED |
+
+**Evidence.** Wave W8 added `scripts/run-sanitizers.sh` (nightly `-Zbuild-std`
+AddressSanitizer + LeakSanitizer, then ThreadSanitizer) and a `sanitizers` CI
+job. The first scoped local run,
+
+```text
+SANITIZER_ONLY=address bash scripts/run-sanitizers.sh --test ffi_constructor_matrix
+```
+
+(nightly `1.99.0 2026-07-20`, `rust-src`, target `x86_64-unknown-linux-gnu`)
+reported, after `test result: ok. 10 passed`:
+
+```text
+==ERROR: LeakSanitizer: detected memory leaks
+Direct leak of 16 byte(s) in 1 object(s) allocated from:
+  ... <AssertUnwindSafe<duallity::ffi::duallity_wfst_new::{closure#0}>> ...
+  duallity_wfst_new src/ffi.rs:168
+  ffi_constructor_matrix::null_output_pointer_is_null_pointer tests/ffi_constructor_matrix.rs:289
+Indirect leak of 728/520/... byte(s) ...
+  <LockFreeDawg<char, BindingValue>>::copy_node (libdictenstein)
+  ... DynamicDawgBinding::insert_text ... unicode_dictionary() tests/ffi_constructor_matrix.rs:48
+SUMMARY: AddressSanitizer: 2484 byte(s) leaked in 32 allocation(s).
+error: test failed
+```
+
+The script exited `1` (the CI leg has teeth). The direct leak is one
+`Box<DuallityWfst>`; the 31 indirect blocks are the dictionary snapshot the
+handle's `OwnedWfstResource` retains, reachable only through that orphaned box.
+Only `null_output_pointer_is_null_pointer` triggers it: it passes a valid
+`(query, algorithm, kind, distance)` but a null `out_wfst`.
+
+**Analysis.** `duallity_wfst_new` ended with a single assignment:
+
+```rust
+*output(out_wfst, "out_wfst")? = Box::into_raw(Box::new(DuallityWfst { resource }));
+```
+
+The right-hand side is evaluated first: `create_wfst` has already built
+`resource` (retaining the dictionary snapshot), `Box::new` moves it onto the
+heap, and `Box::into_raw` relinquishes ownership, yielding a raw pointer with no
+owner. Only then is the left-hand `output(out_wfst, ..)?` evaluated; with a null
+`out_wfst` it returns `NullPointer` and the closure unwinds via `?` — but the
+box is already an unowned raw pointer, so nothing drops it and the retained
+snapshot leaks. Dropping a `*mut T` is a no-op, so the functional test still saw
+`status == NullPointer` with `out_wfst` untouched; the defect was invisible to
+safe Rust and `catch_unwind` and visible only to lsan. `duallity_wfst_resource`
+carried the identical latent pattern — `*output(out_resource, ..)? =
+wfst.resource.clone().into_raw()` retains before the null check — leaking one
+VtResource retain on a null `out_resource` (no test exercised that path, so lsan
+did not reach it).
+
+**Fix.** This commit resolves the output slot into a local BEFORE relinquishing
+ownership, so a null pointer drops the still-owned local instead of orphaning an
+`into_raw`'d pointer:
+
+```rust
+let slot = output(out_wfst, "out_wfst")?;   // null → early return drops `resource`
+*slot = Box::into_raw(Box::new(DuallityWfst { resource }));
+```
+
+The same one-line reorder is applied to `duallity_wfst_resource` (resolve the
+slot before `clone().into_raw()`). The validation order (query, algorithm, kind,
+construction, then output) and every status/message are unchanged;
+`tests/ffi_constructor_matrix.rs` gains `null_out_resource_pointer_is_null_pointer`
+to pin the accessor variant under the sanitizer leg.
+
+**Verification.** Re-running the identical scoped command after the fix:
+
+```text
+running 11 tests ... test result: ok. 11 passed
+sanitizers: all requested runs completed cleanly   (script exit 0)
+```
+
+No LeakSanitizer report — all 2484 leaked bytes eliminated. Scope: the local
+run covered asan+lsan over `ffi_constructor_matrix` only (a representative
+boundary test; `-Zbuild-std` rebuilds std plus the full sibling path-dep stack
+under instrumentation, so it is scoped for tractability). The CI `sanitizers`
+job runs the whole `--features ffi` suite under both asan+lsan and tsan.
+Falsification: revert either reorder and re-run the scoped asan command; lsan
+reports the leak again and the script exits 1.

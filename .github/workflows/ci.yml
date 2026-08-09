@@ -69,6 +69,45 @@ jobs:
         run: bindings/c/tests/build-and-run.sh
 
   # ---------------------------------------------------------------------
+  # Dynamic analysis: AddressSanitizer (+ LeakSanitizer) then ThreadSanitizer
+  # over duallity's OWN Rust FFI/ABI boundary tests (--features ffi). Catches,
+  # at the C ABI gate, the defect classes safe Rust and catch_unwind cannot:
+  # use-after-free, out-of-bounds access, leaked leased/retained VtResource
+  # handles, and data races across the call gate. The multi-cdylib C
+  # family_pipeline job above is already valgrind-covered; this leg covers the
+  # Rust FFI surface under the sanitizer runtimes instead. Requires nightly +
+  # rust-src for -Zbuild-std, which rebuilds std (and, because duallity is a
+  # path-dep consumer of all three siblings, the sibling stack) with the
+  # sanitizer runtime, so it is deliberately its own slow job.
+  # ---------------------------------------------------------------------
+  sanitizers:
+    name: Sanitizers (ASan/TSan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout dev sibling crates
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Sibling path dependencies resolve against the workspace parent, in
+          # dependency order (mirrors the c-family-pipeline job above). The
+          # sanitizer script's inline RUSTFLAGS override the job-level
+          # target-feature flags per cargo invocation; the ffi graph pulls no
+          # gxhash/PathMap, so the AES/SSE2 floor is not needed for this leg.
+          parent="$(dirname "$GITHUB_WORKSPACE")"
+          for repo in llattice libdictenstein lling-llang liblevenshtein-rust; do
+            echo "::group::Cloning $repo @ master"
+            git clone --depth 1 --branch master \
+              "https://github.com/vinary-tree/$repo.git" "$parent/$repo"
+            echo "::endgroup::"
+          done
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+      - name: AddressSanitizer and ThreadSanitizer over the FFI boundary suite
+        run: bash scripts/run-sanitizers.sh
+
+  # ---------------------------------------------------------------------
   # Supply-chain gate: published advisories, banned crates, permitted
   # sources. Configured in deny.toml.
   #

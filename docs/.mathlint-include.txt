@@ -15,6 +15,8 @@
 #   docs/theory/03-levenshtein-as-transducer.md
 #   docs/theory/04-composition.md
 README.md
+bindings/cpp/README.md
+bindings/javascript/README.md
 docs/architecture/01-crate-family-and-dependency-graph.md
 docs/architecture/02-wfst-trait-surface.md
 docs/architecture/03-state-encoding-and-product-space.md
@@ -36,6 +38,7 @@ docs/guides/01-quickstart.md
 docs/guides/02-choosing-a-variant.md
 docs/guides/05-performance-and-tuning.md
 docs/guides/06-fzf-dictionary-ranking.md
+docs/guides/07-language-bindings.md
 docs/guides/README.md
 docs/references/README.md
 docs/references/bibliography.md

@@ -25,6 +25,10 @@ capped_make() {
 capped_make -C "$ROOT/proofs/coq" proof-check
 capped_make -C "$ROOT/proofs/coq" -j1
 
+# ABI invariant registry: every hooked invariant is registered, and every row
+# points at a live spec (and test, unless formal-only).
+python3 "$ROOT/scripts/check-abi-invariants.py"
+
 # --- TLC model checking ---------------------------------------------------
 tlc_cmd() {
   if command -v tlc >/dev/null 2>&1; then

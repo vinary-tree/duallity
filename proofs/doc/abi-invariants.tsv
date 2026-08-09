@@ -1,0 +1,20 @@
+# id	layer	law	spec_kind	spec_path	spec_name	strength	test_path	test_name	gate
+# The duallity ABI invariant registry (traceability: model <-> invariant <-> test <-> gate).
+# strength ladder: rocq-unbounded > tlaps-unbounded > apalache-inductive > verus > smt-dual > tlc-bounded > test-pinned.
+# test_path/test_name '-' marks a formal-only row (pure Rocq/TLA+ result; evidence is the proof).
+# Rows are upgraded to test-backed as the correspondence tests land. Checked by
+#   scripts/check-abi-invariants.py (invoked from proofs/verify.sh).
+DUAL-ENC-1	state-codec	decode is a left inverse of try_encode (exact product-state round trip)	coq	proofs/coq/StateEncoding.v	decode_round_trip	rocq-unbounded	-	-	proofs/verify.sh (coqc + make proof-check)
+DUAL-ENC-2	state-codec	try_encode is injective (no two pairs collide on one id)	coq	proofs/coq/StateEncoding.v	try_encode_injective	rocq-unbounded	-	-	proofs/verify.sh (coqc + make proof-check)
+DUAL-ENC-3	state-codec	try_encode is None exactly on zero width, out-of-range index, or word overflow	coq	proofs/coq/StateEncoding.v	try_encode_rejects	rocq-unbounded	-	-	proofs/verify.sh (coqc + make proof-check)
+DUAL-ENC-4	state-codec	a decoded automaton index is always a valid slot (< width)	coq	proofs/coq/StateEncoding.v	decode_automaton_in_range	rocq-unbounded	-	-	proofs/verify.sh (coqc + make proof-check)
+DUAL-STAT-1	status	no binding error is ever mapped to Ok	coq	proofs/coq/StatusMapping.v	map_error_never_ok	rocq-unbounded	-	-	proofs/verify.sh (coqc + make proof-check)
+DUAL-STAT-2	status	the error classification is exhaustive and as documented	coq	proofs/coq/StatusMapping.v	map_error_is_classified	rocq-unbounded	-	-	proofs/verify.sh (coqc + make proof-check)
+DUAL-STAT-3	status	a caught panic is distinct from success and every mapped failure	coq	proofs/coq/StatusMapping.v	boundary_mapped_failure_never_ok	rocq-unbounded	-	-	proofs/verify.sh (coqc + make proof-check)
+DUAL-CAP-1	snapshot	after construction the captured dictionary revision never changes	tla	proofs/tla/SnapshotCaptureOnce.tla	CaptureOnce	tlc-bounded	-	-	proofs/verify.sh (run_tlc snapshot-capture-once)
+DUAL-CAP-2	snapshot	a live-dictionary mutation never alters the captured revision	tla	proofs/tla/SnapshotCaptureOnce.tla	MutationIsolation	tlc-bounded	-	-	proofs/verify.sh (run_tlc snapshot-capture-once)
+DUAL-DICT-1	adapter	adapter traversal composes across paged/resumed reads (walk_app)	coq	proofs/coq/AdapterLaws.v	walk_app	rocq-unbounded	-	-	proofs/verify.sh (coqc + make proof-check)
+DUAL-DICT-2	adapter	the adapter view is prefix-closed (trie prefix property preserved)	coq	proofs/coq/AdapterLaws.v	walk_prefix_closed	rocq-unbounded	-	-	proofs/verify.sh (coqc + make proof-check)
+DUAL-DICT-3	adapter	membership is sound: a positive answer is a real reached final node	coq	proofs/coq/AdapterLaws.v	contains_sound	rocq-unbounded	-	-	proofs/verify.sh (coqc + make proof-check)
+DUAL-FZF-1	fzf	the arc-delta product telescopes to the candidate's exact fzf score	coq	proofs/coq/FzfPrefixBound.v	path_weight_is_exact_score	rocq-unbounded	-	-	proofs/verify.sh (coqc + make proof-check)
+DUAL-FZF-2	fzf	max-plus pruning preserves the exact maximum (top-k soundness)	coq	proofs/coq/FzfPrefixBound.v	prune_preserves_best	rocq-unbounded	-	-	proofs/verify.sh (coqc + make proof-check)

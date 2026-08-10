@@ -86,7 +86,7 @@ This document provides comprehensive citations to open access papers, arXiv prep
   booktitle={Interspeech 2021},
   pages={4857--4861},
   year={2021},
-  doi={10.21437/Interspeech.2021-1019}
+  doi={10.21437/Interspeech.2021-1571}
 }
 ```
 

@@ -29,6 +29,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - name: Binding-surface drift gate
+        run: python3 scripts/check-bindings.py
+      - name: Binding-documentation gate
+        run: python3 scripts/check-binding-docs.py
       - name: cargo build
         run: cargo build --verbose
       - name: cargo test

@@ -27,6 +27,7 @@ docs/
 | **Architecture** | [architecture/README](architecture/README.md) |
 | **Design (variants)** | [design/README](design/README.md) — the variant selection matrix |
 | **Guides** | [guides/README](guides/README.md) — install + feature flags |
+| **Foreign-language bindings** | [bindings/README](bindings/README.md) — C, C++, JavaScript, TypeScript, and ClojureScript guides with executable evidence |
 | **Engineering** | [engineering/README](engineering/README.md) |
 | **Security** | [security/README](security/README.md) |
 | **References** | [bibliography](references/bibliography.md) · [glossary](references/glossary.md) |
@@ -58,7 +59,7 @@ docs/
 **Binding author (≈45 min)** — call duallity from C, C++, or JavaScript:
 1. [architecture/06 · The resource ABI and language bindings](architecture/06-resource-abi-and-bindings.md) — the seven-function C ABI, the nine kinds, capture-once, and the double adapter
 2. [guides/07 · Language bindings](guides/07-language-bindings.md) — the nine-section per-language guide
-3. the per-language READMEs: [JavaScript](../bindings/javascript/README.md) · [C++](../bindings/cpp/README.md)
+3. the [binding hub](bindings/README.md), then the per-language C, C++, or JavaScript-family guide
 4. [security/threat-model](security/threat-model.md) — why a foreign dictionary is untrusted input
 
 ## Conventions

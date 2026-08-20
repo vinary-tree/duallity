@@ -104,3 +104,45 @@ at load time; refuse a major you do not understand. This binding tracks crate `d
 - [docs/guides/07 · Language bindings](../../docs/guides/07-language-bindings.md) — the nine-section cross-language guide.
 - [docs/architecture/06 · The resource ABI and language bindings](../../docs/architecture/06-resource-abi-and-bindings.md) — the ABI reference.
 - [bindings/javascript/README](../javascript/README.md) — the JS / TS / cljs facade.
+
+## Executable conformance evidence
+
+[`tests/package_smoke.cpp`](tests/package_smoke.cpp) is compiled against the
+staged CMake package and exercises the move-only WFST/resource lifecycle through
+public installed headers:
+
+```sh
+cmake -S bindings/cpp/tests/package -B target/duallity-cpp-package
+cmake --build target/duallity-cpp-package
+ctest --test-dir target/duallity-cpp-package --output-on-failure
+```
+
+The C family pipeline independently verifies cross-library snapshot isolation,
+exact result parity, and both teardown orders.
+
+## Security and provider trust
+
+RAII balances local owners but cannot make an arbitrary dictionary resource
+trustworthy. Construction validates the base vtable, dictionary interface and
+version, Unicode-scalar domain, node/page output, optional values, and provider
+statuses before publishing the WFST. Never create a `resource` by copying raw
+words unless the corresponding retain succeeded. See the
+[threat model](../../docs/security/threat-model.md).
+
+## Troubleshooting
+
+| Symptom | Likely cause and response |
+|---|---|
+| `INCOMPATIBLE_RESOURCE` | Verify `vt.dictionary.v1`, its interface version, and Unicode-scalar domain. |
+| provider error during traversal | Preserve the diagnostic and audit the provider's paging, IDs, ordering, and lifetimes. |
+| interop header not found | Install the family header or set `VT_INTEROP_HEADER` deliberately. |
+| shared library not found | Check staged `lib/`, loader path/rpath, target triple, and debug/release profile. |
+| resource survives but WFST was destroyed | Expected: each `retained_resource()` result owns an independent retain. |
+
+## Maintainer workflow
+
+1. Update [`bindings/api.json`](../api.json), the C header, and architecture reference together.
+2. Preserve move-only ownership and total status-to-exception mapping.
+3. Extend installed-package smoke tests, including failure and teardown cases.
+4. Run both binding gates and the four-library C family pipeline.
+5. Verify shared/static staging and update compatibility/security prose before release.

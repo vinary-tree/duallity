@@ -22,6 +22,34 @@
     "cratesIo": "duallity",
     "npm": "@vinary-tree/duallity"
   },
+  "supportTiers": {
+    "tier1": ["c", "cpp", "javascript", "typescript", "clojurescript"]
+  },
+  "documentation": {
+    "hub": "docs/bindings/README.md",
+    "architecture": "docs/architecture/06-resource-abi-and-bindings.md",
+    "checker": "scripts/check-binding-docs.py",
+    "facades": {
+      "c": {
+        "languages": ["C"],
+        "guide": "bindings/c/README.md",
+        "example": "bindings/c/tests/family_pipeline.c",
+        "requiredHeadings": ["Installation and loading", "Executable conformance evidence", "API, selectors, and domains", "Ownership and capture-once semantics", "Errors and failure containment", "Concurrency and reentrancy", "Performance and marshalling", "Security and provider trust", "Compatibility and troubleshooting", "Maintainer workflow"]
+      },
+      "cpp": {
+        "languages": ["C++"],
+        "guide": "bindings/cpp/README.md",
+        "example": "bindings/cpp/tests/package_smoke.cpp",
+        "requiredHeadings": ["Install / build", "Quickstart", "Ownership and memory model", "Errors", "Concurrency and zero-copy", "Security and provider trust", "Troubleshooting", "Version compatibility", "Executable conformance evidence", "Maintainer workflow"]
+      },
+      "javascript": {
+        "languages": ["JavaScript", "TypeScript", "ClojureScript"],
+        "guide": "bindings/javascript/README.md",
+        "example": "bindings/javascript/test/facades.test.mjs",
+        "requiredHeadings": ["Install", "Quickstart", "Ownership and memory model", "Errors", "Concurrency and zero-copy", "Security and provider trust", "Troubleshooting", "Version compatibility", "Executable conformance evidence", "Maintainer workflow"]
+      }
+    }
+  },
   "packageVersion": "0.3.0",
   "abiVersion": 1,
   "apiRevision": 1,

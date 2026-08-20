@@ -124,3 +124,43 @@ misbehaving dictionary provider throws `PROVIDER_ERROR`; an out-of-range `kind`/
 - [docs/architecture/06 · The resource ABI and language bindings](../../docs/architecture/06-resource-abi-and-bindings.md) — the ABI reference.
 - [bindings/cpp/README](../cpp/README.md) — the C++ RAII facade.
 - [docs/security/threat-model](../../docs/security/threat-model.md) — why a foreign dictionary is untrusted input.
+
+## Executable conformance evidence
+
+[`test/facades.test.mjs`](test/facades.test.mjs) exercises the public
+JavaScript, TypeScript, ClojureScript, native, WebAssembly, and WASI entry points
+against an instrumented runtime contract:
+
+```sh
+npm test --prefix bindings/javascript
+```
+
+It verifies export parity, selector forwarding, runtime-identity/interface
+guards, state expansion, and deterministic release without importing
+repository-private implementation modules.
+
+## Security and provider trust
+
+Treat resource-like JavaScript objects as untrusted. The facade rejects a
+different runtime identity or missing dictionary interface before crossing into
+native code. Native construction then validates version/domain metadata, UTF-8,
+selectors, provider node/page output, and resource limits. Do not bypass the
+guard with private handle fields or move a resource between workers/runtimes.
+
+## Troubleshooting
+
+| Symptom | Likely cause and response |
+|---|---|
+| different-runtime `TypeError` | Deduplicate the umbrella runtime and use only one of native, WebAssembly, or WASI in a resource domain. |
+| incompatible-resource error | Supply a Unicode-scalar `vt.dictionary.v1` object from the same runtime. |
+| invalid selector/distance | Check the nine kind strings and each kind's represented maximum distance. |
+| native module load failure | Verify Node version, OS/CPU artifact, exact family pins, and reinstall the package. |
+| rising native memory | Close every returned WFST in `finally`; GC finalizers are fallback containment only. |
+
+## Maintainer workflow
+
+1. Update [`bindings/api.json`](../api.json), `package.json`, declarations, and every entry point together.
+2. Keep JavaScript, TypeScript, and ClojureScript exports and selector semantics identical.
+3. Add positive, negative, cross-runtime, and close-after-error cases to `facades.test.mjs`.
+4. Run both binding gates, npm tests, and the family pipeline.
+5. Validate native, WebAssembly, and WASI packages without weakening runtime identity.

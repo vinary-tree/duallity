@@ -1,0 +1,51 @@
+name: Checkout development siblings
+description: Recreate the Vinary Tree sibling source graph for Cargo path dependencies
+inputs:
+  llattice-ref:
+    description: llattice Git ref
+    required: false
+    default: master
+  libdictenstein-ref:
+    description: libdictenstein Git ref
+    required: false
+    default: master
+  liblevenshtein-ref:
+    description: liblevenshtein-rust Git ref
+    required: false
+    default: master
+  lling-llang-ref:
+    description: lling-llang Git ref
+    required: false
+    default: master
+  interop-ref:
+    description: vinary-tree-interop Git ref
+    required: false
+    default: master
+runs:
+  using: composite
+  steps:
+    - name: Clone the complete sibling graph
+      shell: bash
+      env:
+        LLATTICE_REF: ${{ inputs.llattice-ref }}
+        LIBDICTENSTEIN_REF: ${{ inputs.libdictenstein-ref }}
+        LIBLEVENSHTEIN_REF: ${{ inputs.liblevenshtein-ref }}
+        LLING_LLANG_REF: ${{ inputs.lling-llang-ref }}
+        INTEROP_REF: ${{ inputs.interop-ref }}
+      run: |
+        set -euo pipefail
+        parent="$(dirname "$GITHUB_WORKSPACE")"
+        clone() {
+          local repository="$1"
+          local ref="$2"
+          echo "::group::Cloning $repository @ $ref"
+          git clone --depth 1 --branch "$ref" \
+            "https://github.com/vinary-tree/$repository.git" \
+            "$parent/$repository"
+          echo "::endgroup::"
+        }
+        clone vinary-tree-interop "$INTEROP_REF"
+        clone llattice "$LLATTICE_REF"
+        clone libdictenstein "$LIBDICTENSTEIN_REF"
+        clone liblevenshtein-rust "$LIBLEVENSHTEIN_REF"
+        clone lling-llang "$LLING_LLANG_REF"

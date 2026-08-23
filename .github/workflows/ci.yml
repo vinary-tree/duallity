@@ -25,7 +25,10 @@ jobs:
     name: Build and test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/checkout-dev-siblings
+        with:
+          lling-llang-ref: ${{ startsWith(github.ref_name, 'release/') && github.ref_name || 'master' }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -52,22 +55,10 @@ jobs:
     name: C family pipeline (four cdylibs)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Checkout dev sibling crates
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Sibling path dependencies resolve against the workspace parent
-          # (mirrors the local checkout layout and the checkout-dev-siblings
-          # action). Dependency order: llattice, then the dictionary crate,
-          # then lling-llang and liblevenshtein, then duallity (this repo).
-          parent="$(dirname "$GITHUB_WORKSPACE")"
-          for repo in llattice libdictenstein lling-llang liblevenshtein-rust; do
-            echo "::group::Cloning $repo @ master"
-            git clone --depth 1 --branch master \
-              "https://github.com/vinary-tree/$repo.git" "$parent/$repo"
-            echo "::endgroup::"
-          done
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/checkout-dev-siblings
+        with:
+          lling-llang-ref: ${{ startsWith(github.ref_name, 'release/') && github.ref_name || 'master' }}
       - uses: dtolnay/rust-toolchain@stable
       - name: Build four cdylibs, compile and run the C family pipeline
         run: bindings/c/tests/build-and-run.sh
@@ -88,23 +79,10 @@ jobs:
     name: Sanitizers (ASan/TSan)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Checkout dev sibling crates
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Sibling path dependencies resolve against the workspace parent, in
-          # dependency order (mirrors the c-family-pipeline job above). The
-          # sanitizer script's inline RUSTFLAGS override the job-level
-          # target-feature flags per cargo invocation; the ffi graph pulls no
-          # gxhash/PathMap, so the AES/SSE2 floor is not needed for this leg.
-          parent="$(dirname "$GITHUB_WORKSPACE")"
-          for repo in llattice libdictenstein lling-llang liblevenshtein-rust; do
-            echo "::group::Cloning $repo @ master"
-            git clone --depth 1 --branch master \
-              "https://github.com/vinary-tree/$repo.git" "$parent/$repo"
-            echo "::endgroup::"
-          done
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/checkout-dev-siblings
+        with:
+          lling-llang-ref: ${{ startsWith(github.ref_name, 'release/') && github.ref_name || 'master' }}
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: rust-src
@@ -122,7 +100,11 @@ jobs:
     name: Supply chain (cargo-deny)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/checkout-dev-siblings
         with:
-          command: check advisories bans sources licenses
+          lling-llang-ref: ${{ startsWith(github.ref_name, 'release/') && github.ref_name || 'master' }}
+      # Docker actions mount only this repository and therefore hide sibling
+      # path dependencies. Run cargo-deny in the host runner namespace.
+      - uses: taiki-e/install-action@cargo-deny
+      - run: cargo deny check advisories bans sources licenses

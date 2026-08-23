@@ -95,7 +95,7 @@ boundary is caught, an exception here is a *reported* error, never undefined beh
 ## Version compatibility
 
 Negotiate with `duallity_abi_version()` (currently `1`) and `duallity_api_revision()` (currently `1`)
-at load time; refuse a major you do not understand. This binding tracks crate `duallity 0.3.0`
+at load time; refuse a major you do not understand. This binding tracks crate `duallity 4.0.0-rc.1`
 (**MSRV 1.95**) and `vinary-tree-interop 0.1.0` (ABI version `1`). The living version record is the
 [bindings findings ledger](../../docs/scientific-ledger/bindings-findings-ledger.md).
 

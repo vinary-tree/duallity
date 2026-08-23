@@ -81,7 +81,7 @@ F \;=\; \{\, S \in Q : \mathrm{EAclose}(S) \cap F_N \neq \varnothing \,\},
 The end-anchor closure in `` $`F`$ `` is what makes a pattern like `one$` accept exactly when the
 consumed prefix ends the string (`src/phonetic_anchors.rs`).
 
-## 3. API surface (duallity 0.3.0)
+## 3. API surface (duallity 4.0.0-rc.1)
 
 `PhoneticNfaWfst` is exported from the crate root **behind `features = ["phonetic-rules"]`**
 (`src/phonetic_nfa_wfst.rs`). It is a concrete, non-generic type wrapping

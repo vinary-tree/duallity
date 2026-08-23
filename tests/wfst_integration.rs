@@ -41,6 +41,8 @@ impl Dictionary for UnknownLenDict {
 
 impl DictionaryNode for UnknownLenNode {
     type Unit = char;
+    type SnapshotCursor = libdictenstein::SnapshotTraversalCursor;
+    type SnapshotGraphValueHandle = libdictenstein::SnapshotTraversalCursor;
 
     fn is_final(&self) -> bool {
         false

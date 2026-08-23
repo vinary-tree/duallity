@@ -14,7 +14,10 @@
     "cPrefix": "vt_",
     "cHeader": "vinary_tree_interop.h",
     "npm": "@vinary-tree/interop",
-    "resourceLayout": ["context", "vtable"],
+    "resourceLayout": [
+      "context",
+      "vtable"
+    ],
     "dictionaryInterfaceVersion": 1,
     "scalarWfstInterfaceVersion": 1
   },
@@ -23,7 +26,13 @@
     "npm": "@vinary-tree/duallity"
   },
   "supportTiers": {
-    "tier1": ["c", "cpp", "javascript", "typescript", "clojurescript"]
+    "tier1": [
+      "c",
+      "cpp",
+      "javascript",
+      "typescript",
+      "clojurescript"
+    ]
   },
   "documentation": {
     "hub": "docs/bindings/README.md",
@@ -31,26 +40,67 @@
     "checker": "scripts/check-binding-docs.py",
     "facades": {
       "c": {
-        "languages": ["C"],
+        "languages": [
+          "C"
+        ],
         "guide": "bindings/c/README.md",
         "example": "bindings/c/tests/family_pipeline.c",
-        "requiredHeadings": ["Installation and loading", "Executable conformance evidence", "API, selectors, and domains", "Ownership and capture-once semantics", "Errors and failure containment", "Concurrency and reentrancy", "Performance and marshalling", "Security and provider trust", "Compatibility and troubleshooting", "Maintainer workflow"]
+        "requiredHeadings": [
+          "Installation and loading",
+          "Executable conformance evidence",
+          "API, selectors, and domains",
+          "Ownership and capture-once semantics",
+          "Errors and failure containment",
+          "Concurrency and reentrancy",
+          "Performance and marshalling",
+          "Security and provider trust",
+          "Compatibility and troubleshooting",
+          "Maintainer workflow"
+        ]
       },
       "cpp": {
-        "languages": ["C++"],
+        "languages": [
+          "C++"
+        ],
         "guide": "bindings/cpp/README.md",
         "example": "bindings/cpp/tests/package_smoke.cpp",
-        "requiredHeadings": ["Install / build", "Quickstart", "Ownership and memory model", "Errors", "Concurrency and zero-copy", "Security and provider trust", "Troubleshooting", "Version compatibility", "Executable conformance evidence", "Maintainer workflow"]
+        "requiredHeadings": [
+          "Install / build",
+          "Quickstart",
+          "Ownership and memory model",
+          "Errors",
+          "Concurrency and zero-copy",
+          "Security and provider trust",
+          "Troubleshooting",
+          "Version compatibility",
+          "Executable conformance evidence",
+          "Maintainer workflow"
+        ]
       },
       "javascript": {
-        "languages": ["JavaScript", "TypeScript", "ClojureScript"],
+        "languages": [
+          "JavaScript",
+          "TypeScript",
+          "ClojureScript"
+        ],
         "guide": "bindings/javascript/README.md",
         "example": "bindings/javascript/test/facades.test.mjs",
-        "requiredHeadings": ["Install", "Quickstart", "Ownership and memory model", "Errors", "Concurrency and zero-copy", "Security and provider trust", "Troubleshooting", "Version compatibility", "Executable conformance evidence", "Maintainer workflow"]
+        "requiredHeadings": [
+          "Install",
+          "Quickstart",
+          "Ownership and memory model",
+          "Errors",
+          "Concurrency and zero-copy",
+          "Security and provider trust",
+          "Troubleshooting",
+          "Version compatibility",
+          "Executable conformance evidence",
+          "Maintainer workflow"
+        ]
       }
     }
   },
-  "packageVersion": "0.3.0",
+  "packageVersion": "4.0.0-rc.1",
   "abiVersion": 1,
   "apiRevision": 1,
   "cPrefix": "duallity_",
@@ -125,43 +175,106 @@
       "accepts": "VtResource(dictionary-v1, UNICODE_SCALAR)",
       "produces": "VtResource(vt.scalar-wfst.1)",
       "ownership": "retains-query-start-dictionary-snapshot",
-      "methods": ["new", "resource", "free"]
+      "methods": [
+        "new",
+        "resource",
+        "free"
+      ]
     }
   },
   "cFunctions": [
-    {"name": "duallity_abi_version", "rustModule": "ffi"},
-    {"name": "duallity_api_revision", "rustModule": "ffi"},
-    {"name": "duallity_last_error_message", "rustModule": "ffi"},
-    {"name": "duallity_wfst_new", "rustModule": "ffi"},
-    {"name": "duallity_wfst_free", "rustModule": "ffi"},
-    {"name": "duallity_wfst_resource", "rustModule": "ffi"},
-    {"name": "duallity_resource_release", "rustModule": "ffi"}
+    {
+      "name": "duallity_abi_version",
+      "rustModule": "ffi"
+    },
+    {
+      "name": "duallity_api_revision",
+      "rustModule": "ffi"
+    },
+    {
+      "name": "duallity_last_error_message",
+      "rustModule": "ffi"
+    },
+    {
+      "name": "duallity_wfst_new",
+      "rustModule": "ffi"
+    },
+    {
+      "name": "duallity_wfst_free",
+      "rustModule": "ffi"
+    },
+    {
+      "name": "duallity_wfst_resource",
+      "rustModule": "ffi"
+    },
+    {
+      "name": "duallity_resource_release",
+      "rustModule": "ffi"
+    }
   ],
   "javascript": {
     "package": "@vinary-tree/duallity",
-    "version": "0.3.0",
-    "engines": {"node": ">=22.14"},
+    "version": "4.0.0-rc.1",
+    "engines": {
+      "node": ">=22.14"
+    },
     "dependencies": {
-      "@vinary-tree/interop": "0.1.0",
-      "@vinary-tree/vinary-tree": "0.10.0"
+      "@vinary-tree/interop": "4.0.0-rc.1",
+      "@vinary-tree/vinary-tree": "4.0.0-rc.1"
     },
     "exports": {
-      ".": {"import": "facades/native.mjs", "require": "facades/native.cjs"},
-      "./typescript": {"import": "facades/typescript.mjs", "require": "facades/typescript.cjs"},
-      "./clojurescript": {"import": "facades/clojurescript.mjs", "require": "facades/clojurescript.cjs"},
-      "./wasm": {"import": "facades/wasm.mjs"},
-      "./wasi": {"import": "facades/wasi.mjs"},
-      "./cljs/vinary_tree/duallity.cljs": {"file": "cljs/vinary_tree/duallity.cljs"}
+      ".": {
+        "import": "facades/native.mjs",
+        "require": "facades/native.cjs"
+      },
+      "./typescript": {
+        "import": "facades/typescript.mjs",
+        "require": "facades/typescript.cjs"
+      },
+      "./clojurescript": {
+        "import": "facades/clojurescript.mjs",
+        "require": "facades/clojurescript.cjs"
+      },
+      "./wasm": {
+        "import": "facades/wasm.mjs"
+      },
+      "./wasi": {
+        "import": "facades/wasi.mjs"
+      },
+      "./cljs/vinary_tree/duallity.cljs": {
+        "file": "cljs/vinary_tree/duallity.cljs"
+      }
     },
-    "facadeExports": ["runtimeIdentity", "wfst"],
+    "facadeExports": [
+      "runtimeIdentity",
+      "wfst"
+    ],
     "cljsNamespace": "vinary-tree.duallity",
-    "cljsFunctions": ["wfst", "start", "state", "close!"]
+    "cljsFunctions": [
+      "wfst",
+      "start",
+      "state",
+      "close!"
+    ]
   },
   "wasm": {
     "umbrellaPackage": "@vinary-tree/vinary-tree",
     "projectPackage": "@vinary-tree/duallity",
     "runtimeIdentityGuard": true,
     "nodeDefault": "native-napi",
-    "alternatives": ["wasm", "wasi-preview1"]
+    "alternatives": [
+      "wasm",
+      "wasi-preview1"
+    ]
+  },
+  "release": {
+    "canonical": "4.0.0-rc.1",
+    "registries": {
+      "cargo": "4.0.0-rc.1",
+      "cmake": "4.0.0-rc.1",
+      "npm": "4.0.0-rc.1",
+      "pkgConfig": "4.0.0-rc.1"
+    },
+    "distTag": "next"
   }
 }

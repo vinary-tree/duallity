@@ -82,7 +82,7 @@ and `` $`(d,\Phi) \in F`$ `` exactly when that first case fires. `` $`k`$ `` (= 
 exist and therefore which states are explored. The weights `` $`\omega_p, \omega_e`$ `` scale the
 *reported* costs for ranking — they do **not** change the explored set.
 
-## 3. API surface (duallity 0.3.0)
+## 3. API surface (duallity 4.0.0-rc.1)
 
 All three types are exported from the crate root **behind `features = ["phonetic-rules"]`**
 (`src/phonetic_wfst.rs`, `src/phonetic_state_source.rs`). They share the dictionary bounds

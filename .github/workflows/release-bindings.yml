@@ -19,9 +19,10 @@ jobs:
         run: |
           parent=$(dirname "$GITHUB_WORKSPACE")
           git clone --depth 1 --branch v0.1.0 https://github.com/vinary-tree/llattice.git "$parent/llattice"
-          git clone --depth 1 --branch v0.2.1 https://github.com/vinary-tree/libdictenstein.git "$parent/libdictenstein"
-          git clone --depth 1 --branch v0.2.0 https://github.com/vinary-tree/lling-llang.git "$parent/lling-llang"
-          git clone --depth 1 --branch v0.10.0 https://github.com/vinary-tree/liblevenshtein-rust.git "$parent/liblevenshtein-rust"
+          git clone --depth 1 --branch v4.0.0-rc.1 https://github.com/vinary-tree/libdictenstein.git "$parent/libdictenstein"
+          git clone --depth 1 --branch v4.0.0-rc.1 https://github.com/vinary-tree/lling-llang.git "$parent/lling-llang"
+          git clone --depth 1 --branch v4.0.0-rc.1 https://github.com/vinary-tree/liblevenshtein-rust.git "$parent/liblevenshtein-rust"
+          git clone --depth 1 --branch v4.0.0-rc.1 https://github.com/vinary-tree/vinary-tree-interop.git "$parent/vinary-tree-interop"
       - uses: dtolnay/rust-toolchain@1.95
       - run: cargo test --no-default-features --features ffi
       - run: cargo clippy --no-default-features --features ffi --lib -- -D warnings
@@ -50,9 +51,10 @@ jobs:
         run: |
           parent=$(dirname "$GITHUB_WORKSPACE")
           git clone --depth 1 --branch v0.1.0 https://github.com/vinary-tree/llattice.git "$parent/llattice"
-          git clone --depth 1 --branch v0.2.1 https://github.com/vinary-tree/libdictenstein.git "$parent/libdictenstein"
-          git clone --depth 1 --branch v0.2.0 https://github.com/vinary-tree/lling-llang.git "$parent/lling-llang"
-          git clone --depth 1 --branch v0.10.0 https://github.com/vinary-tree/liblevenshtein-rust.git "$parent/liblevenshtein-rust"
+          git clone --depth 1 --branch v4.0.0-rc.1 https://github.com/vinary-tree/libdictenstein.git "$parent/libdictenstein"
+          git clone --depth 1 --branch v4.0.0-rc.1 https://github.com/vinary-tree/lling-llang.git "$parent/lling-llang"
+          git clone --depth 1 --branch v4.0.0-rc.1 https://github.com/vinary-tree/liblevenshtein-rust.git "$parent/liblevenshtein-rust"
+          git clone --depth 1 --branch v4.0.0-rc.1 https://github.com/vinary-tree/vinary-tree-interop.git "$parent/vinary-tree-interop"
       - uses: dtolnay/rust-toolchain@1.95
       - run: cargo build --release --no-default-features --features ffi
       - run: scripts/stage-native-package.sh "${{ matrix.target }}" target/release dist
@@ -60,9 +62,11 @@ jobs:
       - name: Test installed CMake package with shared and static linkage
         shell: bash
         run: |
-          prefix="$PWD/dist/duallity-0.3.0-${{ matrix.target }}"
+          prefix="$PWD/dist/duallity-4.0.0-rc.1-${{ matrix.target }}"
+          ../vinary-tree-interop/scripts/stage-native-package.sh dist/interop
+          interop_prefix="$PWD/dist/interop/vinary-tree-interop-4.0.0-rc.1"
           cmake -S bindings/cpp/tests/package -B target/cmake-shared \
-            -DCMAKE_PREFIX_PATH="$prefix"
+            -DCMAKE_PREFIX_PATH="$interop_prefix;$prefix"
           cmake --build target/cmake-shared --config Release
           case "$RUNNER_OS" in
             Linux) LD_LIBRARY_PATH="$prefix/lib" target/cmake-shared/duallity_package_smoke ;;
@@ -70,7 +74,7 @@ jobs:
             Windows) PATH="$prefix/bin:$PATH" target/cmake-shared/Release/duallity_package_smoke.exe ;;
           esac
           cmake -S bindings/cpp/tests/package -B target/cmake-static \
-            -DCMAKE_PREFIX_PATH="$prefix" -DDUALLITY_LINKAGE=STATIC
+            -DCMAKE_PREFIX_PATH="$interop_prefix;$prefix" -DDUALLITY_LINKAGE=STATIC
           cmake --build target/cmake-static --config Release
           if [[ "$RUNNER_OS" == Windows ]]; then
             target/cmake-static/Release/duallity_package_smoke.exe
@@ -118,7 +122,7 @@ jobs:
           package-manager-cache: false
       - uses: actions/download-artifact@v7
         with: { name: npm-package, path: dist }
-      - run: npm publish --access public --provenance dist/*.tgz
+      - run: npm publish --access public --provenance --tag next dist/*.tgz
 
   crates-io:
     needs: contract
@@ -133,9 +137,10 @@ jobs:
         run: |
           parent=$(dirname "$GITHUB_WORKSPACE")
           git clone --depth 1 --branch v0.1.0 https://github.com/vinary-tree/llattice.git "$parent/llattice"
-          git clone --depth 1 --branch v0.2.1 https://github.com/vinary-tree/libdictenstein.git "$parent/libdictenstein"
-          git clone --depth 1 --branch v0.2.0 https://github.com/vinary-tree/lling-llang.git "$parent/lling-llang"
-          git clone --depth 1 --branch v0.10.0 https://github.com/vinary-tree/liblevenshtein-rust.git "$parent/liblevenshtein-rust"
+          git clone --depth 1 --branch v4.0.0-rc.1 https://github.com/vinary-tree/libdictenstein.git "$parent/libdictenstein"
+          git clone --depth 1 --branch v4.0.0-rc.1 https://github.com/vinary-tree/lling-llang.git "$parent/lling-llang"
+          git clone --depth 1 --branch v4.0.0-rc.1 https://github.com/vinary-tree/liblevenshtein-rust.git "$parent/liblevenshtein-rust"
+          git clone --depth 1 --branch v4.0.0-rc.1 https://github.com/vinary-tree/vinary-tree-interop.git "$parent/vinary-tree-interop"
       - uses: dtolnay/rust-toolchain@1.95
       - run: cargo publish
         env: { CARGO_REGISTRY_TOKEN: "${{ secrets.CARGO_REGISTRY_TOKEN }}" }

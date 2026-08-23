@@ -97,7 +97,7 @@ representative of each key. A rule such as `ph→f` at `` $`0.1`$ `` therefore d
 duplicate `` $`(\text{in},\text{out},\text{to})`$ `` edges introduced by overlapping rules collapse
 to their cheapest form.
 
-## 3. API surface (duallity 0.3.0)
+## 3. API surface (duallity 4.0.0-rc.1)
 
 `RewriteWfst`, `RewriteRule`, and `CommonPhoneticRules` are re-exported from the crate root with **no
 feature gate** (`src/phonetic_rewrite_wfst.rs`). `RewriteWfst` is a concrete, non-generic type.

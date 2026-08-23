@@ -7,7 +7,7 @@
 //! dictionary snapshot remain shared, so independent calls are reentrant.
 
 use crate::{FzfWfst, GeneralizedWfstBuilder, LevenshteinWfst, UniversalLevenshteinWfst};
-use libdictenstein::{Dictionary, DictionaryNode, SyncStrategy};
+use libdictenstein::{Dictionary, DictionaryNode, SnapshotTraversalCursor, SyncStrategy};
 use liblevenshtein::transducer::universal::{MergeAndSplit, Standard, Transposition};
 use liblevenshtein::transducer::Algorithm;
 use lling_llang::bindings::{OwnedWfstResource, ScalarWfstProvider, ScalarWfstState};
@@ -374,6 +374,8 @@ impl ResourceNode {
 
 impl DictionaryNode for ResourceNode {
     type Unit = char;
+    type SnapshotCursor = SnapshotTraversalCursor;
+    type SnapshotGraphValueHandle = SnapshotTraversalCursor;
 
     fn is_final(&self) -> bool {
         let mut result = 0;

@@ -6,7 +6,7 @@ They build on the concepts in [theory](../theory/) and the exact per-variant API
 but you can follow them front to back without reading those first — every guide cross-links back to the
 theory and design pages when you want the underlying *why*.
 
-Each guide is self-contained and grounds every code example in the crate's real 0.3.0 surface
+Each guide is self-contained and grounds every code example in the crate's real 4.0.0-rc.1 surface
 (`src/lib.rs` and the per-variant modules). Code blocks are marked `rust,ignore`: they are
 *illustrative and byte-accurate to the public API*, not doctests, so you can read them for signatures
 and intent without a compile step. Mathematics is written in GitHub-flavored MathJax — inline as a
@@ -96,7 +96,7 @@ duallity = { version = "0.3", features = ["phonetic-rules"] }
 - **Concepts and proofs** — [theory/](../theory/) develops semirings, Levenshtein automata,
   composition, universal automata, and the WallBreaker wall effect from first principles, with the
   single-source-of-truth [master notation table](../theory/README.md#master-notation).
-- **Exact per-variant API** — [design/](../design/) documents each variant's 0.3.0 signatures,
+- **Exact per-variant API** — [design/](../design/) documents each variant's 4.0.0-rc.1 signatures,
   operational semantics, complexity, worked examples, and honest limitations.
 - **Internals** — [architecture/](../architecture/) covers the WFST trait surface, state encoding,
   lazy evaluation and caching, and the registries.

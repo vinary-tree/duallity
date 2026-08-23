@@ -15,16 +15,11 @@ prefix="${output_dir}/${package_name}"
 
 mkdir -p "${prefix}/bin" "${prefix}/include" \
   "${prefix}/lib/cmake/duallity" \
-  "${prefix}/lib/cmake/vinary-tree-interop" "${prefix}/lib/pkgconfig"
+  "${prefix}/lib/pkgconfig"
 cp include/duallity.h include/duallity.hpp "${prefix}/include/"
-cp ../liblevenshtein-rust/vinary-tree-interop/include/vinary_tree_interop.h "${prefix}/include/"
 cp cmake/duallityConfig.cmake cmake/duallityConfigVersion.cmake \
   "${prefix}/lib/cmake/duallity/"
-cp ../liblevenshtein-rust/cmake/vinary-tree-interopConfig.cmake \
-  ../liblevenshtein-rust/cmake/vinary-tree-interopConfigVersion.cmake \
-  "${prefix}/lib/cmake/vinary-tree-interop/"
-cp pkgconfig/duallity.pc ../liblevenshtein-rust/pkgconfig/vinary-tree-interop.pc \
-  "${prefix}/lib/pkgconfig/"
+cp pkgconfig/duallity.pc "${prefix}/lib/pkgconfig/"
 cp LICENSE README.md "${prefix}/"
 
 case "$target" in

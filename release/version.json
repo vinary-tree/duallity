@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "component": "duallity",
+  "canonical": "4.0.0-rc.1",
+  "registries": {
+    "cargo": "4.0.0-rc.1",
+    "cmake": "4.0.0-rc.1",
+    "npm": "4.0.0-rc.1",
+    "pkgConfig": "4.0.0-rc.1"
+  },
+  "dependencies": {
+    "duallity": "4.0.0-rc.1",
+    "libdictenstein": "4.0.0-rc.1",
+    "liblevenshtein": "4.0.0-rc.1",
+    "lling-llang": "4.0.0-rc.1",
+    "vinary-tree-interop": "4.0.0-rc.1",
+    "@vinary-tree/interop": "4.0.0-rc.1",
+    "@vinary-tree/vinary-tree": "4.0.0-rc.1"
+  },
+  "publication": { "distTag": "next" }
+}

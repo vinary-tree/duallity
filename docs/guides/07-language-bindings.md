@@ -216,17 +216,17 @@ reads an older, shorter provider vtable.
 
 | Component | Pinned version |
 |-----------|----------------|
-| crate `duallity` | `0.3.0` (edition 2021, **MSRV 1.95**) |
+| crate `duallity` | `4.0.0-rc.1` (edition 2021, **MSRV 1.95**) |
 | `vinary-tree-interop` | `0.1.0` (ABI version `1`) |
-| npm `@vinary-tree/duallity` | `0.3.0` |
+| npm `@vinary-tree/duallity` | `4.0.0-rc.1` |
 | npm `@vinary-tree/interop` (peer) | `0.1.0` |
-| npm `@vinary-tree/vinary-tree` (runtime) | `0.10.0` |
+| npm `@vinary-tree/vinary-tree` (runtime) | `4.0.0-rc.1` |
 | Node engine | `>= 22.14` |
 
 > **Release note.** As recorded in the
 > [bindings findings ledger (DUAL-B2)](../scientific-ledger/bindings-findings-ledger.md), the family
-> pins name `duallity 0.3.0` / `v0.3.0` ahead of the tag-and-publish event. Until that release lands,
-> resolving `duallity = "0.3"` from crates.io or the `v0.3.0` git ref will not find published
+> pins name `duallity 4.0.0-rc.1` / `v4.0.0-rc.1` ahead of the tag-and-publish event. Until that release lands,
+> resolving `duallity = "0.3"` from crates.io or the `v4.0.0-rc.1` git ref will not find published
 > artifacts; build against the in-repo tree or a path/git dependency in the meantime.
 
 ## See also

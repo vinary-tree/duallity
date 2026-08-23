@@ -70,7 +70,7 @@ bindings/c/tests/build-and-run.sh
 The script builds the four cdylibs (`--no-default-features --features ffi`) and
 compiles `family_pipeline.c` with `-std=c17 -Wall -Wextra -Werror`, wiring the
 include paths (each crate's `include/` plus
-`../liblevenshtein-rust/vinary-tree-interop/include`), the library search paths,
+`../vinary-tree-interop/include`), the library search paths,
 and the runtime rpaths. `SKIP_BUILD=1` reuses already-built cdylibs; `CC` and
 `PROFILE` (`release`|`debug`) are overridable.
 

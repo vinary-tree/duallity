@@ -108,13 +108,13 @@ misbehaving dictionary provider throws `PROVIDER_ERROR`; an out-of-range `kind`/
 
 | Component | Version |
 |-----------|---------|
-| `@vinary-tree/duallity` | `0.3.0` |
+| `@vinary-tree/duallity` | `4.0.0-rc.1` |
 | `@vinary-tree/interop` (peer) | `0.1.0` |
-| `@vinary-tree/vinary-tree` (runtime) | `0.10.0` |
+| `@vinary-tree/vinary-tree` (runtime) | `4.0.0-rc.1` |
 | Node | `>= 22.14` |
 | duallity C ABI | version `1`, revision `1` |
 
-> **Release note.** The family pins `0.3.0` ahead of the tag-and-publish event
+> **Release note.** The family pins `4.0.0-rc.1` ahead of the tag-and-publish event
 > ([DUAL-B2](../../docs/scientific-ledger/bindings-findings-ledger.md)); until that release lands, the
 > published registry artifact may lag the pin.
 

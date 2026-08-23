@@ -30,6 +30,7 @@ docs/
 | **Foreign-language bindings** | [bindings/README](bindings/README.md) — C, C++, JavaScript, TypeScript, and ClojureScript guides with executable evidence |
 | **Engineering** | [engineering/README](engineering/README.md) |
 | **Security** | [security/README](security/README.md) |
+| **Release engineering** | [releasing](releasing.md) — immutable release-branch tags, validate-only evidence, single-registry dispatch, npm promotion, and failure recovery |
 | **References** | [bibliography](references/bibliography.md) · [glossary](references/glossary.md) |
 | **Diagrams** | [diagrams/README](diagrams/README.md) — catalog + color legend |
 

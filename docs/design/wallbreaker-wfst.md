@@ -168,7 +168,7 @@ The survivors are flattened into a `ResultCharArena` (one contiguous `Vec<char>`
 `(start, len)` span per term), which is what makes the dense id scheme of Section 2.1 a simple offset
 lookup and gives `` $`O(1)`$ `` UTF-8-correct character access at any `` $`\langle r, p\rangle`$ ``.
 
-## 3. Type, bounds, and the 4.0.0-rc.1 API
+## 3. Type, bounds, and the 4.0.0-rc.2 API
 
 ```rust,ignore
 pub struct WallBreakerWfst<'a, D>

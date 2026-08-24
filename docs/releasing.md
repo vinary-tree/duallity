@@ -2,14 +2,14 @@
 
 This guide defines the release operation for the `duallity` bridge crate,
 native SDK, and `@vinary-tree/duallity` JavaScript facade. The current
-candidate is `4.0.0-rc.1`.
+candidate is `4.0.0-rc.2`.
 
 ## Immutable source graph
 
-Create `v4.0.0-rc.1` from the reviewed `release/4.0.0-rc.1` branch commit,
+Create `v4.0.0-rc.2` from the reviewed `release/4.0.0-rc.2` branch commit,
 not from the independently changing primary worktree. The tag must agree with
 `release/version.json`, `Cargo.toml`, native metadata, and the npm manifest.
-Validation checks out `llattice@v0.1.0` and the exact `v4.0.0-rc.1` tags for
+Validation checks out `llattice@v0.1.0` and the exact `v4.0.0-rc.2` tags for
 interop, libdictenstein, liblevenshtein, and lling-llang.
 
 The tag workflow tests the FFI and composition contracts, runs strict Clippy
@@ -27,19 +27,19 @@ protected job.
 ```bash
 gh workflow run release-bindings.yml \
   --repo vinary-tree/duallity \
-  --ref v4.0.0-rc.1 \
+  --ref v4.0.0-rc.2 \
   -f registry=validate-only
 
 gh workflow run release-bindings.yml \
   --repo vinary-tree/duallity \
-  --ref v4.0.0-rc.1 \
+  --ref v4.0.0-rc.2 \
   -f registry=npm
 ```
 
 Because duallity is the top Rust bridge, publish its crate only after
 libdictenstein, liblevenshtein, lling-llang, and interop resolve publicly.
 Publish npm only after `@vinary-tree/interop` and
-`@vinary-tree/vinary-tree` resolve at `4.0.0-rc.1`. npm uses trusted
+`@vinary-tree/vinary-tree` resolve at `4.0.0-rc.2`. npm uses trusted
 publishing, provenance, `next`, and the protected `npm` environment.
 
 ## Public-byte verification and recovery

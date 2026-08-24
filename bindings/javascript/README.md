@@ -108,14 +108,14 @@ misbehaving dictionary provider throws `PROVIDER_ERROR`; an out-of-range `kind`/
 
 | Component | Version |
 |-----------|---------|
-| `@vinary-tree/duallity` | `4.0.0-rc.1` |
-| `@vinary-tree/interop` (dependency) | `4.0.0-rc.1` |
-| `@vinary-tree/vinary-tree` (runtime) | `4.0.0-rc.1` |
+| `@vinary-tree/duallity` | `4.0.0-rc.2` |
+| `@vinary-tree/interop` (dependency) | `4.0.0-rc.2` |
+| `@vinary-tree/vinary-tree` (runtime) | `4.0.0-rc.2` |
 | Node | `>= 22.14` |
 | duallity C ABI | version `1`, revision `1` |
 
 > **Release policy.** Evaluate the candidate through the exact
-> `4.0.0-rc.1` version or npm's `next` tag. The package and both shared
+> `4.0.0-rc.2` version or npm's `next` tag. The package and both shared
 > dependencies are exact pins so a mixed runtime family fails during
 > resolution rather than at resource handoff.
 

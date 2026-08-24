@@ -137,7 +137,7 @@ universal states expose an *aggregate* cost at acceptance, not a locally attribu
 
 ---
 
-## 3. The 4.0.0-rc.1 API
+## 3. The 4.0.0-rc.2 API
 
 ### 3.1 Types and bounds
 

@@ -216,14 +216,14 @@ reads an older, shorter provider vtable.
 
 | Component | Pinned version |
 |-----------|----------------|
-| crate `duallity` | `4.0.0-rc.1` (edition 2021, **MSRV 1.95**) |
-| `vinary-tree-interop` | `4.0.0-rc.1` (ABI version `1`) |
-| npm `@vinary-tree/duallity` | `4.0.0-rc.1` |
-| npm `@vinary-tree/interop` (dependency) | `4.0.0-rc.1` |
-| npm `@vinary-tree/vinary-tree` (runtime) | `4.0.0-rc.1` |
+| crate `duallity` | `4.0.0-rc.2` (edition 2021, **MSRV 1.95**) |
+| `vinary-tree-interop` | `4.0.0-rc.2` (ABI version `1`) |
+| npm `@vinary-tree/duallity` | `4.0.0-rc.2` |
+| npm `@vinary-tree/interop` (dependency) | `4.0.0-rc.2` |
+| npm `@vinary-tree/vinary-tree` (runtime) | `4.0.0-rc.2` |
 | Node engine | `>= 22.14` |
 
-The crate and npm facade resolve exact `4.0.0-rc.1` family dependencies. Use
+The crate and npm facade resolve exact `4.0.0-rc.2` family dependencies. Use
 the RC's immutable source tag for source builds and the exact registry version
 or `next` dist-tag for public-package evaluation; do not mix earlier interop
 packages with this ABI-compatible but package-synchronized train.

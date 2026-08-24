@@ -83,8 +83,9 @@ jobs:
         shell: bash
         run: |
           prefix="$PWD/dist/duallity-4.0.0-rc.1-${{ matrix.target }}"
-          ../vinary-tree-interop/scripts/stage-native-package.sh dist/interop
-          interop_prefix="$PWD/dist/interop/vinary-tree-interop-4.0.0-rc.1"
+          parent=$(dirname "$GITHUB_WORKSPACE")
+          (cd "$parent/vinary-tree-interop" && scripts/stage-native-package.sh "$GITHUB_WORKSPACE/dist/interop")
+          interop_prefix="$GITHUB_WORKSPACE/dist/interop/vinary-tree-interop-4.0.0-rc.1"
           cmake -S bindings/cpp/tests/package -B target/cmake-shared \
             -DCMAKE_PREFIX_PATH="$interop_prefix;$prefix"
           cmake --build target/cmake-shared --config Release

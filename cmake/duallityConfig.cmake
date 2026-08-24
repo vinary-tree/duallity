@@ -33,21 +33,24 @@ if(NOT TARGET duallity::static)
   if(WIN32)
     set_target_properties(duallity::static PROPERTIES
       IMPORTED_LOCATION "${_DUALLITY_PREFIX}/lib/duallity.lib"
-      INTERFACE_LINK_LIBRARIES "bcrypt;userenv;ws2_32;ntdll;synchronization;advapi32;Threads::Threads"
     )
+    set_property(TARGET duallity::static APPEND PROPERTY
+      INTERFACE_LINK_LIBRARIES "bcrypt;userenv;ws2_32;ntdll;synchronization;advapi32;Threads::Threads")
   elseif(APPLE)
     find_library(_DUALLITY_ICONV_LIBRARY NAMES iconv REQUIRED)
     find_library(_DUALLITY_COREFOUNDATION_FRAMEWORK NAMES CoreFoundation REQUIRED)
     find_library(_DUALLITY_SECURITY_FRAMEWORK NAMES Security REQUIRED)
     set_target_properties(duallity::static PROPERTIES
       IMPORTED_LOCATION "${_DUALLITY_PREFIX}/lib/libduallity.a"
-      INTERFACE_LINK_LIBRARIES "${CMAKE_DL_LIBS};Threads::Threads;m;${_DUALLITY_ICONV_LIBRARY};${_DUALLITY_COREFOUNDATION_FRAMEWORK};${_DUALLITY_SECURITY_FRAMEWORK}"
     )
+    set_property(TARGET duallity::static APPEND PROPERTY
+      INTERFACE_LINK_LIBRARIES "${CMAKE_DL_LIBS};Threads::Threads;m;${_DUALLITY_ICONV_LIBRARY};${_DUALLITY_COREFOUNDATION_FRAMEWORK};${_DUALLITY_SECURITY_FRAMEWORK}")
   else()
     set_target_properties(duallity::static PROPERTIES
       IMPORTED_LOCATION "${_DUALLITY_PREFIX}/lib/libduallity.a"
-      INTERFACE_LINK_LIBRARIES "${CMAKE_DL_LIBS};Threads::Threads;m"
     )
+    set_property(TARGET duallity::static APPEND PROPERTY
+      INTERFACE_LINK_LIBRARIES "${CMAKE_DL_LIBS};Threads::Threads;m")
   endif()
 endif()
 

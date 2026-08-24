@@ -25,11 +25,27 @@ Both `wfst` and `resource` are **move-only** (copy is deleted), so a handle has 
 
 ## Install / build
 
-Put `duallity.hpp` and `duallity.h` on the include path and link the `duallity` library. `duallity.h`
-pulls in the interop header `vinary_tree_interop.h`; override the name with the `VT_INTEROP_HEADER`
-macro if your build vends it elsewhere. On Windows, define `DUALLITY_USING_DLL` when consuming a DLL.
-The header requires C++17 (`std::string_view`, `[[nodiscard]]`). Native packages and a pkg-config file
-are staged by [`scripts/stage-native-package.sh`](../../scripts/stage-native-package.sh).
+The recommended installed integration uses the versioned CMake packages:
+
+```cmake
+find_package(duallity 4.0 CONFIG REQUIRED)
+target_link_libraries(your_target PRIVATE duallity::duallity)
+target_compile_features(your_target PRIVATE cxx_std_17)
+```
+
+The config performs `find_dependency(vinary-tree-interop 4.0 CONFIG)`; place
+both package roots on `CMAKE_PREFIX_PATH` when they are not installed
+system-wide. Its imported target propagates the family ABI header and all
+platform libraries for shared and static linkage. Set
+`DUALLITY_LINKAGE=STATIC` before `find_package` to select the static archive.
+
+For a manual build, put `duallity.hpp`, `duallity.h`, and the interop header
+`vinary_tree_interop.h` on the include path, then link the `duallity`
+library. Override the interop header name with `VT_INTEROP_HEADER` if your
+build vends it elsewhere. On Windows, define `DUALLITY_USING_DLL` when
+consuming a DLL. The header requires C++17 (`std::string_view`,
+`[[nodiscard]]`). Native packages and a pkg-config file are staged by
+[`scripts/stage-native-package.sh`](../../scripts/stage-native-package.sh).
 
 ## Quickstart
 
@@ -96,7 +112,7 @@ boundary is caught, an exception here is a *reported* error, never undefined beh
 
 Negotiate with `duallity_abi_version()` (currently `1`) and `duallity_api_revision()` (currently `1`)
 at load time; refuse a major you do not understand. This binding tracks crate `duallity 4.0.0-rc.1`
-(**MSRV 1.95**) and `vinary-tree-interop 0.1.0` (ABI version `1`). The living version record is the
+(**MSRV 1.95**) and `vinary-tree-interop 4.0.0-rc.1` (ABI version `1`). The living version record is the
 [bindings findings ledger](../../docs/scientific-ledger/bindings-findings-ledger.md).
 
 ## See also

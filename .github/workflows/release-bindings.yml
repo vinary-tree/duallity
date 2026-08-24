@@ -1,8 +1,6 @@
 name: Release duallity bindings
 
 on:
-  push:
-    tags: ["v*.*.*"]
   workflow_dispatch:
     inputs:
       registry:
@@ -29,10 +27,10 @@ jobs:
         run: |
           parent=$(dirname "$GITHUB_WORKSPACE")
           git clone --depth 1 --branch v0.1.0 https://github.com/vinary-tree/llattice.git "$parent/llattice"
-          git clone --depth 1 --branch v4.0.0-rc.2 https://github.com/vinary-tree/libdictenstein.git "$parent/libdictenstein"
-          git clone --depth 1 --branch v4.0.0-rc.2 https://github.com/vinary-tree/lling-llang.git "$parent/lling-llang"
-          git clone --depth 1 --branch v4.0.0-rc.2 https://github.com/vinary-tree/liblevenshtein-rust.git "$parent/liblevenshtein-rust"
-          git clone --depth 1 --branch v4.0.0-rc.2 https://github.com/vinary-tree/vinary-tree-interop.git "$parent/vinary-tree-interop"
+          git clone --depth 1 --branch v4.0.0-rc.3 https://github.com/vinary-tree/libdictenstein.git "$parent/libdictenstein"
+          git clone --depth 1 --branch v4.0.0-rc.3 https://github.com/vinary-tree/lling-llang.git "$parent/lling-llang"
+          git clone --depth 1 --branch v4.0.0-rc.3 https://github.com/vinary-tree/liblevenshtein-rust.git "$parent/liblevenshtein-rust"
+          git clone --depth 1 --branch v4.0.0-rc.3 https://github.com/vinary-tree/vinary-tree-interop.git "$parent/vinary-tree-interop"
       - uses: dtolnay/rust-toolchain@1.95
         with: { components: clippy }
       - name: Verify immutable tag matches the package version
@@ -71,10 +69,10 @@ jobs:
         run: |
           parent=$(dirname "$GITHUB_WORKSPACE")
           git clone --depth 1 --branch v0.1.0 https://github.com/vinary-tree/llattice.git "$parent/llattice"
-          git clone --depth 1 --branch v4.0.0-rc.2 https://github.com/vinary-tree/libdictenstein.git "$parent/libdictenstein"
-          git clone --depth 1 --branch v4.0.0-rc.2 https://github.com/vinary-tree/lling-llang.git "$parent/lling-llang"
-          git clone --depth 1 --branch v4.0.0-rc.2 https://github.com/vinary-tree/liblevenshtein-rust.git "$parent/liblevenshtein-rust"
-          git clone --depth 1 --branch v4.0.0-rc.2 https://github.com/vinary-tree/vinary-tree-interop.git "$parent/vinary-tree-interop"
+          git clone --depth 1 --branch v4.0.0-rc.3 https://github.com/vinary-tree/libdictenstein.git "$parent/libdictenstein"
+          git clone --depth 1 --branch v4.0.0-rc.3 https://github.com/vinary-tree/lling-llang.git "$parent/lling-llang"
+          git clone --depth 1 --branch v4.0.0-rc.3 https://github.com/vinary-tree/liblevenshtein-rust.git "$parent/liblevenshtein-rust"
+          git clone --depth 1 --branch v4.0.0-rc.3 https://github.com/vinary-tree/vinary-tree-interop.git "$parent/vinary-tree-interop"
       - uses: dtolnay/rust-toolchain@1.95
       - run: cargo build --release --no-default-features --features ffi
       - run: scripts/stage-native-package.sh "${{ matrix.target }}" target/release dist
@@ -82,10 +80,10 @@ jobs:
       - name: Test installed CMake package with shared and static linkage
         shell: bash
         run: |
-          prefix="$PWD/dist/duallity-4.0.0-rc.2-${{ matrix.target }}"
+          prefix="$PWD/dist/duallity-4.0.0-rc.3-${{ matrix.target }}"
           parent=$(dirname "$GITHUB_WORKSPACE")
           (cd "$parent/vinary-tree-interop" && scripts/stage-native-package.sh "$GITHUB_WORKSPACE/dist/interop")
-          interop_prefix="$GITHUB_WORKSPACE/dist/interop/vinary-tree-interop-4.0.0-rc.2"
+          interop_prefix="$GITHUB_WORKSPACE/dist/interop/vinary-tree-interop-4.0.0-rc.3"
           if [[ "$RUNNER_OS" == Windows ]]; then
             cmake_prefix="$(cygpath -m "$interop_prefix");$(cygpath -m "$prefix")"
           else
@@ -167,10 +165,10 @@ jobs:
         run: |
           parent=$(dirname "$GITHUB_WORKSPACE")
           git clone --depth 1 --branch v0.1.0 https://github.com/vinary-tree/llattice.git "$parent/llattice"
-          git clone --depth 1 --branch v4.0.0-rc.2 https://github.com/vinary-tree/libdictenstein.git "$parent/libdictenstein"
-          git clone --depth 1 --branch v4.0.0-rc.2 https://github.com/vinary-tree/lling-llang.git "$parent/lling-llang"
-          git clone --depth 1 --branch v4.0.0-rc.2 https://github.com/vinary-tree/liblevenshtein-rust.git "$parent/liblevenshtein-rust"
-          git clone --depth 1 --branch v4.0.0-rc.2 https://github.com/vinary-tree/vinary-tree-interop.git "$parent/vinary-tree-interop"
+          git clone --depth 1 --branch v4.0.0-rc.3 https://github.com/vinary-tree/libdictenstein.git "$parent/libdictenstein"
+          git clone --depth 1 --branch v4.0.0-rc.3 https://github.com/vinary-tree/lling-llang.git "$parent/lling-llang"
+          git clone --depth 1 --branch v4.0.0-rc.3 https://github.com/vinary-tree/liblevenshtein-rust.git "$parent/liblevenshtein-rust"
+          git clone --depth 1 --branch v4.0.0-rc.3 https://github.com/vinary-tree/vinary-tree-interop.git "$parent/vinary-tree-interop"
       - uses: dtolnay/rust-toolchain@1.95
       - run: cargo publish --locked
         env: { CARGO_REGISTRY_TOKEN: "${{ secrets.CARGO_REGISTRY_TOKEN }}" }
@@ -178,9 +176,9 @@ jobs:
   github-release:
     needs: [native, npm-package]
     if: >-
+      github.event_name == 'workflow_dispatch' &&
       github.ref_type == 'tag' &&
-      (github.event_name == 'push' ||
-       (github.event_name == 'workflow_dispatch' && inputs.registry == 'validate-only'))
+      inputs.registry == 'validate-only'
     runs-on: ubuntu-24.04
     permissions: { contents: write }
     steps:

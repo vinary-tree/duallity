@@ -2,21 +2,22 @@
 
 This guide defines the release operation for the `duallity` bridge crate,
 native SDK, and `@vinary-tree/duallity` JavaScript facade. The current
-candidate is `4.0.0-rc.2`.
+candidate is `4.0.0-rc.3`.
 
 ## Immutable source graph
 
-Create `v4.0.0-rc.2` from the reviewed `release/4.0.0-rc.2` branch commit,
+Create `v4.0.0-rc.3` from the reviewed `release/4.0.0-rc.3` branch commit,
 not from the independently changing primary worktree. The tag must agree with
 `release/version.json`, `Cargo.toml`, native metadata, and the npm manifest.
-Validation checks out `llattice@v0.1.0` and the exact `v4.0.0-rc.2` tags for
+Validation checks out `llattice@v0.1.0` and the exact `v4.0.0-rc.3` tags for
 interop, libdictenstein, liblevenshtein, and lling-llang.
 
-The tag workflow tests the FFI and composition contracts, runs strict Clippy
-and npm tests, builds Linux x86-64 and ARM64, macOS ARM64, and Windows x86-64
-archives, relocation-tests installed CMake packages under shared and static
-linkage, packs npm, and creates a checksummed GitHub prerelease. Tag creation
-does not authorize registry publication.
+The tag creates an immutable source boundary but triggers no workflow. A
+manual `validate-only` dispatch tests the FFI and composition contracts, runs
+strict Clippy and npm tests, builds Linux x86-64 and ARM64, macOS ARM64, and
+Windows x86-64 archives, relocation-tests installed CMake packages under
+shared and static linkage, packs npm, and creates a checksummed GitHub
+prerelease. Tag creation does not authorize registry publication.
 
 ## Validate, then publish one registry
 
@@ -27,19 +28,19 @@ protected job.
 ```bash
 gh workflow run release-bindings.yml \
   --repo vinary-tree/duallity \
-  --ref v4.0.0-rc.2 \
+  --ref v4.0.0-rc.3 \
   -f registry=validate-only
 
 gh workflow run release-bindings.yml \
   --repo vinary-tree/duallity \
-  --ref v4.0.0-rc.2 \
+  --ref v4.0.0-rc.3 \
   -f registry=npm
 ```
 
 Because duallity is the top Rust bridge, publish its crate only after
 libdictenstein, liblevenshtein, lling-llang, and interop resolve publicly.
 Publish npm only after `@vinary-tree/interop` and
-`@vinary-tree/vinary-tree` resolve at `4.0.0-rc.2`. npm uses trusted
+`@vinary-tree/vinary-tree` resolve at `4.0.0-rc.3`. npm uses trusted
 publishing, provenance, `next`, and the protected `npm` environment.
 
 ## Public-byte verification and recovery
@@ -52,5 +53,5 @@ immutable `0.0.0` reservation.
 
 Tags and published versions are immutable. Use `registry=validate-only` for a
 safe rerun. If public bytes are wrong, repair the source and issue
-`4.0.0-rc.2`; never move a tag, overwrite a version, or broaden a failed
-registry run.
+the next unused candidate; never move a tag, overwrite a version, or broaden
+a failed registry run.

@@ -1,6 +1,6 @@
 [package]
 name = "duallity"
-version = "4.0.0-rc.2"
+version = "4.0.0-rc.3"
 edition = "2021"
 # Matches the libdictenstein / liblevenshtein / lling-llang path dependencies,
 # whose --all-features floor is set by sysinfo 0.39 (1.95).
@@ -14,10 +14,10 @@ categories = ["text-processing", "algorithms"]
 readme = "README.md"
 
 [dependencies]
-liblevenshtein = { path = "../liblevenshtein-rust", version = "=4.0.0-rc.2" }
-lling-llang = { path = "../lling-llang", version = "=4.0.0-rc.2", default-features = false }
-libdictenstein = { path = "../libdictenstein", version = "=4.0.0-rc.2" }
-vinary-tree-interop = { path = "../vinary-tree-interop", version = "=4.0.0-rc.2", optional = true }
+liblevenshtein = { path = "../liblevenshtein-rust", version = "=4.0.0-rc.3" }
+lling-llang = { path = "../lling-llang", version = "=4.0.0-rc.3", default-features = false }
+libdictenstein = { path = "../libdictenstein", version = "=4.0.0-rc.3" }
+vinary-tree-interop = { path = "../vinary-tree-interop", version = "=4.0.0-rc.3", optional = true }
 # Direct deps used by the relocated wfst sources
 # 2.x changed the hash algorithm, so digests differ from 1.x. Safe here: every
 # use is an in-memory index, nothing is persisted.
@@ -59,7 +59,7 @@ phonetic-rules = ["liblevenshtein/phonetic-rules"]
 [dev-dependencies]
 criterion = "0.8"
 proptest = "1.11"
-libdictenstein = { path = "../libdictenstein", version = "=4.0.0-rc.2", features = ["bindings-core"] }
+libdictenstein = { path = "../libdictenstein", version = "=4.0.0-rc.3", features = ["bindings-core"] }
 
 [[bench]]
 name = "wfst_expansion"

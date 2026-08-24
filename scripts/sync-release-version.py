@@ -71,6 +71,21 @@ def write_versions(model: dict[str, object]) -> None:
         value.setdefault("publishConfig", {})["tag"] = model["publication"]["distTag"]
     update_json("bindings/javascript/package.json", npm)
     replace(
+        "bindings/javascript/README.md",
+        r'(\| `@vinary-tree/interop`) \([^)]*\) \| `[^`]+` \|',
+        rf'\1 (dependency) | `{deps["@vinary-tree/interop"]}` |',
+    )
+    replace(
+        "docs/guides/07-language-bindings.md",
+        r'(\| `vinary-tree-interop` \| `)[^`]+(` \(ABI version `1`\) \|)',
+        rf'\g<1>{deps["vinary-tree-interop"]}\2',
+    )
+    replace(
+        "docs/guides/07-language-bindings.md",
+        r'(\| npm `@vinary-tree/interop`) \([^)]*\) \| `[^`]+` \|',
+        rf'\1 (dependency) | `{deps["@vinary-tree/interop"]}` |',
+    )
+    replace(
         "bindings/javascript/deps.cljs",
         r'"@vinary-tree/duallity" "[^"]+"',
         f'"@vinary-tree/duallity" "{canonical}"',
@@ -91,6 +106,8 @@ def validate(model: dict[str, object]) -> list[str]:
     failures: list[str] = []
     canonical = str(model["canonical"])
     component = str(model["component"])
+    deps = model["dependencies"]
+    assert isinstance(deps, dict)
     expected_registries = {"cargo": canonical, "cmake": canonical, "npm": canonical, "pkgConfig": canonical}
     if model.get("registries") != expected_registries:
         failures.append("registry spellings do not equal the canonical component version")
@@ -104,6 +121,17 @@ def validate(model: dict[str, object]) -> list[str]:
     package = json.loads((ROOT / "bindings/javascript/package.json").read_text(encoding="utf-8"))
     if package.get("version") != canonical or package.get("publishConfig", {}).get("tag") != "next":
         failures.append("npm package release identity is stale")
+    readme = (ROOT / "bindings/javascript/README.md").read_text(encoding="utf-8")
+    readme_interop = re.search(r'\| `@vinary-tree/interop` \(dependency\) \| `([^`]+)`', readme)
+    if not readme_interop or readme_interop.group(1) != deps["@vinary-tree/interop"]:
+        failures.append("JavaScript README interop pin is stale")
+    guide = (ROOT / "docs/guides/07-language-bindings.md").read_text(encoding="utf-8")
+    guide_rust_interop = re.search(r'\| `vinary-tree-interop` \| `([^`]+)`', guide)
+    guide_npm_interop = re.search(r'\| npm `@vinary-tree/interop` \(dependency\) \| `([^`]+)`', guide)
+    if not guide_rust_interop or guide_rust_interop.group(1) != deps["vinary-tree-interop"]:
+        failures.append("language-binding guide Rust interop pin is stale")
+    if not guide_npm_interop or guide_npm_interop.group(1) != deps["@vinary-tree/interop"]:
+        failures.append("language-binding guide npm interop pin is stale")
     cmake_name = "lling-llang" if component == "lling-llang" else component
     for name, path, pattern in (
         ("CMake", f"cmake/{cmake_name}ConfigVersion.cmake", r'PACKAGE_VERSION "([^"]+)"'),

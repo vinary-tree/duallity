@@ -109,14 +109,15 @@ misbehaving dictionary provider throws `PROVIDER_ERROR`; an out-of-range `kind`/
 | Component | Version |
 |-----------|---------|
 | `@vinary-tree/duallity` | `4.0.0-rc.1` |
-| `@vinary-tree/interop` (peer) | `0.1.0` |
+| `@vinary-tree/interop` (dependency) | `4.0.0-rc.1` |
 | `@vinary-tree/vinary-tree` (runtime) | `4.0.0-rc.1` |
 | Node | `>= 22.14` |
 | duallity C ABI | version `1`, revision `1` |
 
-> **Release note.** The family pins `4.0.0-rc.1` ahead of the tag-and-publish event
-> ([DUAL-B2](../../docs/scientific-ledger/bindings-findings-ledger.md)); until that release lands, the
-> published registry artifact may lag the pin.
+> **Release policy.** Evaluate the candidate through the exact
+> `4.0.0-rc.1` version or npm's `next` tag. The package and both shared
+> dependencies are exact pins so a mixed runtime family fails during
+> resolution rather than at resource handoff.
 
 ## See also
 

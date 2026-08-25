@@ -100,7 +100,7 @@
       }
     }
   },
-  "packageVersion": "4.0.0-rc.3",
+  "packageVersion": "4.0.0-rc.4",
   "abiVersion": 1,
   "apiRevision": 1,
   "cPrefix": "duallity_",
@@ -214,13 +214,13 @@
   ],
   "javascript": {
     "package": "@vinary-tree/duallity",
-    "version": "4.0.0-rc.3",
+    "version": "4.0.0-rc.4",
     "engines": {
       "node": ">=22.14"
     },
     "dependencies": {
-      "@vinary-tree/interop": "4.0.0-rc.3",
-      "@vinary-tree/vinary-tree": "4.0.0-rc.3"
+      "@vinary-tree/interop": "4.0.0-rc.4",
+      "@vinary-tree/vinary-tree": "4.0.0-rc.4"
     },
     "exports": {
       ".": {
@@ -268,12 +268,12 @@
     ]
   },
   "release": {
-    "canonical": "4.0.0-rc.3",
+    "canonical": "4.0.0-rc.4",
     "registries": {
-      "cargo": "4.0.0-rc.3",
-      "cmake": "4.0.0-rc.3",
-      "npm": "4.0.0-rc.3",
-      "pkgConfig": "4.0.0-rc.3"
+      "cargo": "4.0.0-rc.4",
+      "cmake": "4.0.0-rc.4",
+      "npm": "4.0.0-rc.4",
+      "pkgConfig": "4.0.0-rc.4"
     },
     "distTag": "next"
   }

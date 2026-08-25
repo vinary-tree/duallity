@@ -149,7 +149,7 @@ The full mapping (adapters flatten to `duallity::*`; dictionaries move to `libdi
 
 ## 6. Version matrix and MSRV
 
-duallity **4.0.0-rc.3** (edition 2021) is built against the versions declared in its
+duallity **4.0.0-rc.4** (edition 2021) is built against the versions declared in its
 [`Cargo.toml`](../../Cargo.toml) and pinned by its own `Cargo.lock`:
 
 | Dependency | Version requirement |

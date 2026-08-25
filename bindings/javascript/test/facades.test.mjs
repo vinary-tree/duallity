@@ -7,7 +7,7 @@ const packageJson = JSON.parse(await readFile(new URL("package.json", root)));
 
 test("all duallity facades select the shared umbrella runtime", () => {
   assert.equal(packageJson.name, "@vinary-tree/duallity");
-  assert.equal(packageJson.dependencies["@vinary-tree/vinary-tree"], "4.0.0-rc.3");
+  assert.equal(packageJson.dependencies["@vinary-tree/vinary-tree"], "4.0.0-rc.4");
   for (const entry of [".", "./typescript", "./clojurescript", "./wasm", "./wasi"]) {
     assert.ok(packageJson.exports[entry]);
   }

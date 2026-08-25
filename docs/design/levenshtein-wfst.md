@@ -183,7 +183,7 @@ output. Test `test_levenshtein_wfst_merge_and_split_reaches_final_state` pins th
 
 ---
 
-## 3. The 4.0.0-rc.3 API
+## 3. The 4.0.0-rc.4 API
 
 ### 3.1 Type and bounds
 

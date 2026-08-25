@@ -42,7 +42,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # The retired upstream identities that must never appear in publishable files.
 # Assembled from fragments so this gate does not flag itself when other repos'
 # identity scans (which walk sibling `scripts/` trees) read this file.
-FORBIDDEN_IDENTITIES = ("f1r3" + "fly", "universal-auto" + "mata", "universal_auto" + "mata")
+FORBIDDEN_IDENTITIES = (
+    "f1r3" + "fly",
+    "universal-auto" + "mata",
+    "universal_auto" + "mata",
+)
 
 SKIP_DIR_PARTS = {
     ".build",
@@ -79,8 +83,12 @@ class Report:
             lines.append(f"{marker}  {check['id']:<22} {check['detail']}")
         failed = len(self.failures)
         lines.append("-" * 78)
-        verdict = "all bindings checks passed" if failed == 0 else "BINDINGS GATE FAILED"
-        lines.append(f"{verdict}: {len(self.checks) - failed}/{len(self.checks)} checks passed, {failed} failed")
+        verdict = (
+            "all bindings checks passed" if failed == 0 else "BINDINGS GATE FAILED"
+        )
+        lines.append(
+            f"{verdict}: {len(self.checks) - failed}/{len(self.checks)} checks passed, {failed} failed"
+        )
         return "\n".join(lines)
 
     def render_json(self) -> str:
@@ -97,7 +105,9 @@ class Report:
 
 def read_text(report: Report, check_id: str, path: Path) -> str | None:
     if not path.is_file():
-        report.add(check_id, False, f"required file is missing: {path.relative_to(ROOT)}")
+        report.add(
+            check_id, False, f"required file is missing: {path.relative_to(ROOT)}"
+        )
         return None
     return path.read_text(encoding="utf-8")
 
@@ -124,30 +134,45 @@ def header_enum_values(source: str, name: str, prefix: str) -> dict[str, int] | 
     values: dict[str, int] = {}
     for enumerator, value in re.findall(r"([A-Z0-9_]+)\s*=\s*(\d+)", match.group(1)):
         if enumerator.startswith(prefix):
-            values[enumerator[len(prefix):]] = int(value)
+            values[enumerator[len(prefix) :]] = int(value)
     return values
 
 
-def match_arm_values(source: str, function_name: str, enum_path: str) -> dict[str, int] | None:
+def match_arm_values(
+    source: str, function_name: str, enum_path: str
+) -> dict[str, int] | None:
     match = re.search(rf"fn {function_name}\(value: u32\)(.*?)\n\}}", source, re.S)
     if match is None:
         return None
     return {
         screaming_snake(variant): int(value)
-        for value, variant in re.findall(rf"(\d+)\s*=>\s*Ok\({enum_path}::(\w+)\)", match.group(1))
+        for value, variant in re.findall(
+            rf"(\d+)\s*=>\s*Ok\({enum_path}::(\w+)\)", match.group(1)
+        )
     }
 
 
-def compare_maps(report: Report, check_id: str, subject: str, expected: dict[str, int], actual: dict[str, int] | None, source: str) -> None:
+def compare_maps(
+    report: Report,
+    check_id: str,
+    subject: str,
+    expected: dict[str, int],
+    actual: dict[str, int] | None,
+    source: str,
+) -> None:
     if actual is None:
         report.add(check_id, False, f"{subject}: could not parse {source}")
         return
     if actual == expected:
-        report.add(check_id, True, f"{subject}: {len(expected)} values agree with {source}")
+        report.add(
+            check_id, True, f"{subject}: {len(expected)} values agree with {source}"
+        )
         return
     missing = sorted(set(expected) - set(actual))
     extra = sorted(set(actual) - set(expected))
-    drifted = sorted(key for key in set(expected) & set(actual) if expected[key] != actual[key])
+    drifted = sorted(
+        key for key in set(expected) & set(actual) if expected[key] != actual[key]
+    )
     report.add(
         check_id,
         False,
@@ -167,10 +192,16 @@ def check_symbols(report: Report, model: dict) -> None:
         return
 
     exported = set(
-        re.findall(r'pub\s+(?:unsafe\s+)?extern\s+"C"\s+fn\s+(duallity_[a-z0-9_]+)\s*\(', ffi)
+        re.findall(
+            r'pub\s+(?:unsafe\s+)?extern\s+"C"\s+fn\s+(duallity_[a-z0-9_]+)\s*\(', ffi
+        )
     )
     if exported == modeled:
-        report.add("SYM-1-ffi", True, f"src/ffi.rs exports exactly the {len(modeled)} modeled symbols")
+        report.add(
+            "SYM-1-ffi",
+            True,
+            f"src/ffi.rs exports exactly the {len(modeled)} modeled symbols",
+        )
     else:
         report.add(
             "SYM-1-ffi",
@@ -180,7 +211,11 @@ def check_symbols(report: Report, model: dict) -> None:
 
     declared = set(re.findall(r"\b(duallity_[a-z0-9_]+)\s*\(", header))
     if declared == modeled:
-        report.add("SYM-2-header", True, f"include/duallity.h declares exactly the {len(modeled)} modeled symbols")
+        report.add(
+            "SYM-2-header",
+            True,
+            f"include/duallity.h declares exactly the {len(modeled)} modeled symbols",
+        )
     else:
         report.add(
             "SYM-2-header",
@@ -191,23 +226,43 @@ def check_symbols(report: Report, model: dict) -> None:
     referenced = set(re.findall(r"\b(duallity_[a-z0-9_]+)\s*\(", hpp))
     undeclared = sorted(referenced - declared)
     if undeclared:
-        report.add("SYM-3-hpp", False, f"include/duallity.hpp references undeclared symbols: {undeclared}")
+        report.add(
+            "SYM-3-hpp",
+            False,
+            f"include/duallity.hpp references undeclared symbols: {undeclared}",
+        )
     else:
-        report.add("SYM-3-hpp", True, f"include/duallity.hpp references only declared symbols ({len(referenced)} used)")
+        report.add(
+            "SYM-3-hpp",
+            True,
+            f"include/duallity.hpp references only declared symbols ({len(referenced)} used)",
+        )
     if '#include "duallity.h"' in hpp:
-        report.add("SYM-4-hpp-include", True, "include/duallity.hpp includes duallity.h")
+        report.add(
+            "SYM-4-hpp-include", True, "include/duallity.hpp includes duallity.h"
+        )
     else:
-        report.add("SYM-4-hpp-include", False, "include/duallity.hpp must include duallity.h")
+        report.add(
+            "SYM-4-hpp-include", False, "include/duallity.hpp must include duallity.h"
+        )
     for marker in (
         "#ifndef VT_INTEROP_HEADER",
         '#define VT_INTEROP_HEADER "vinary_tree_interop.h"',
         "#include VT_INTEROP_HEADER",
     ):
         if marker not in header:
-            report.add("SYM-5-interop", False, f"include/duallity.h is missing the overridable interop include: {marker}")
+            report.add(
+                "SYM-5-interop",
+                False,
+                f"include/duallity.h is missing the overridable interop include: {marker}",
+            )
             break
     else:
-        report.add("SYM-5-interop", True, "include/duallity.h consumes the overridable shared interop header")
+        report.add(
+            "SYM-5-interop",
+            True,
+            "include/duallity.h consumes the overridable shared interop header",
+        )
 
 
 # ── ENUM: enum and constant parity ───────────────────────────────────────────
@@ -221,17 +276,32 @@ def check_enums(report: Report, model: dict) -> None:
         return
 
     enums = model["enums"]
-    status_model = {name: int(value) for name, value in enums["status"]["values"].items()}
-    algorithm_model = {name: int(value) for name, value in enums["algorithm"]["values"].items()}
-    kind_model = {name: int(value) for name, value in enums["wfstKind"]["values"].items()}
+    status_model = {
+        name: int(value) for name, value in enums["status"]["values"].items()
+    }
+    algorithm_model = {
+        name: int(value) for name, value in enums["algorithm"]["values"].items()
+    }
+    kind_model = {
+        name: int(value) for name, value in enums["wfstKind"]["values"].items()
+    }
 
-    compare_maps(report, "ENUM-1-status-rust", "DuallityStatus", status_model, rust_enum_values(ffi, "DuallityStatus"), "src/ffi.rs")
+    compare_maps(
+        report,
+        "ENUM-1-status-rust",
+        "DuallityStatus",
+        status_model,
+        rust_enum_values(ffi, "DuallityStatus"),
+        "src/ffi.rs",
+    )
     compare_maps(
         report,
         "ENUM-2-status-header",
         "DuallityStatus",
         status_model,
-        header_enum_values(header, enums["status"]["cType"], enums["status"]["cPrefix"]),
+        header_enum_values(
+            header, enums["status"]["cType"], enums["status"]["cPrefix"]
+        ),
         "include/duallity.h",
     )
     compare_maps(
@@ -247,10 +317,19 @@ def check_enums(report: Report, model: dict) -> None:
         "ENUM-4-algorithm-header",
         "DuallityAlgorithm",
         algorithm_model,
-        header_enum_values(header, enums["algorithm"]["cType"], enums["algorithm"]["cPrefix"]),
+        header_enum_values(
+            header, enums["algorithm"]["cType"], enums["algorithm"]["cPrefix"]
+        ),
         "include/duallity.h",
     )
-    compare_maps(report, "ENUM-5-kind-rust", "WfstKind", kind_model, rust_enum_values(bindings, "WfstKind"), "src/bindings.rs")
+    compare_maps(
+        report,
+        "ENUM-5-kind-rust",
+        "WfstKind",
+        kind_model,
+        rust_enum_values(bindings, "WfstKind"),
+        "src/bindings.rs",
+    )
     compare_maps(
         report,
         "ENUM-6-kind-mapping",
@@ -264,7 +343,9 @@ def check_enums(report: Report, model: dict) -> None:
         "ENUM-7-kind-header",
         "DuallityWfstKind",
         kind_model,
-        header_enum_values(header, enums["wfstKind"]["cType"], enums["wfstKind"]["cPrefix"]),
+        header_enum_values(
+            header, enums["wfstKind"]["cType"], enums["wfstKind"]["cPrefix"]
+        ),
         "include/duallity.h",
     )
 
@@ -275,12 +356,20 @@ def check_enums(report: Report, model: dict) -> None:
         rust_match = re.search(rf"pub const {constant}: u32 = (\d+);", ffi)
         header_match = re.search(rf"#define {constant} (\d+)u", header)
         if rust_match is None or header_match is None:
-            report.add(check_id, False, f"{constant} is missing from src/ffi.rs or include/duallity.h")
+            report.add(
+                check_id,
+                False,
+                f"{constant} is missing from src/ffi.rs or include/duallity.h",
+            )
             continue
         rust_value = int(rust_match.group(1))
         header_value = int(header_match.group(1))
         if rust_value == header_value == model_value:
-            report.add(check_id, True, f"{constant} = {model_value} in model, src/ffi.rs, and include/duallity.h")
+            report.add(
+                check_id,
+                True,
+                f"{constant} = {model_value} in model, src/ffi.rs, and include/duallity.h",
+            )
         else:
             report.add(
                 check_id,
@@ -324,11 +413,15 @@ def check_javascript(report: Report, model: dict) -> None:
         "Cargo.toml": cargo["package"]["version"],
     }
     if len(set(versions.values())) == 1:
-        report.add("JS-2-version", True, f"one version everywhere: {package['version']}")
+        report.add(
+            "JS-2-version", True, f"one version everywhere: {package['version']}"
+        )
     else:
         report.add("JS-2-version", False, f"version drift: {versions}")
     if cargo["package"]["name"] == model["packages"]["cratesIo"]:
-        report.add("JS-3-crate", True, f"crates.io package is {cargo['package']['name']}")
+        report.add(
+            "JS-3-crate", True, f"crates.io package is {cargo['package']['name']}"
+        )
     else:
         report.add(
             "JS-3-crate",
@@ -339,7 +432,11 @@ def check_javascript(report: Report, model: dict) -> None:
     modeled_exports = set(js_model["exports"])
     actual_exports = set(package.get("exports", {}))
     if modeled_exports == actual_exports:
-        report.add("JS-4-export-map", True, f"export map has exactly the {len(modeled_exports)} modeled subpaths")
+        report.add(
+            "JS-4-export-map",
+            True,
+            f"export map has exactly the {len(modeled_exports)} modeled subpaths",
+        )
     else:
         report.add(
             "JS-4-export-map",
@@ -354,15 +451,21 @@ def check_javascript(report: Report, model: dict) -> None:
             if not (js_root / candidate).is_file():
                 unresolved.append(f"{subpath} -> {candidate}")
     if unresolved:
-        report.add("JS-5-export-files", False, f"export targets do not resolve: {unresolved}")
+        report.add(
+            "JS-5-export-files", False, f"export targets do not resolve: {unresolved}"
+        )
     else:
-        report.add("JS-5-export-files", True, "every export-map target resolves to a file")
+        report.add(
+            "JS-5-export-files", True, "every export-map target resolves to a file"
+        )
 
     types_target = package.get("types")
     if types_target and (js_root / types_target).is_file():
         report.add("JS-6-types", True, f"types entry resolves: {types_target}")
     else:
-        report.add("JS-6-types", False, f"types entry missing or unresolved: {types_target!r}")
+        report.add(
+            "JS-6-types", False, f"types entry missing or unresolved: {types_target!r}"
+        )
 
     loose = {
         name: version
@@ -370,11 +473,21 @@ def check_javascript(report: Report, model: dict) -> None:
         if name.startswith("@vinary-tree/") and not EXACT_VERSION.match(version)
     }
     if loose:
-        report.add("JS-7-exact-pins", False, f"@vinary-tree/* dependencies must be exact-pinned: {loose}")
+        report.add(
+            "JS-7-exact-pins",
+            False,
+            f"@vinary-tree/* dependencies must be exact-pinned: {loose}",
+        )
     else:
-        report.add("JS-7-exact-pins", True, "every @vinary-tree/* dependency is exact-pinned")
+        report.add(
+            "JS-7-exact-pins", True, "every @vinary-tree/* dependency is exact-pinned"
+        )
     if package.get("dependencies", {}) == js_model["dependencies"]:
-        report.add("JS-8-dep-model", True, f"dependency pins match the model: {js_model['dependencies']}")
+        report.add(
+            "JS-8-dep-model",
+            True,
+            f"dependency pins match the model: {js_model['dependencies']}",
+        )
     else:
         report.add(
             "JS-8-dep-model",
@@ -387,7 +500,11 @@ def check_javascript(report: Report, model: dict) -> None:
     if dts is not None:
         dts_names, dts_default = esm_export_names(dts)
         if facade_names <= dts_names and dts_default:
-            report.add("JS-9-dts", True, f"index.d.ts exports {sorted(facade_names)} and a default")
+            report.add(
+                "JS-9-dts",
+                True,
+                f"index.d.ts exports {sorted(facade_names)} and a default",
+            )
         else:
             report.add(
                 "JS-9-dts",
@@ -422,23 +539,38 @@ def check_javascript(report: Report, model: dict) -> None:
         if problems:
             report.add(check_id, False, f"facades/{facade}: {'; '.join(problems)}")
         else:
-            report.add(check_id, True, f"facades/{facade} exports {sorted(names)} over {expected_runtime}")
+            report.add(
+                check_id,
+                True,
+                f"facades/{facade} exports {sorted(names)} over {expected_runtime}",
+            )
 
     for index, facade in enumerate(("typescript.mjs", "clojurescript.mjs"), start=13):
         check_id = f"JS-{index}-{facade.split('.', maxsplit=1)[0]}"
         source = read_text(report, check_id, js_root / "facades" / facade)
         if source is None:
             continue
-        if 'export * from "./native.mjs"' in source and 'export { default } from "./native.mjs"' in source:
-            report.add(check_id, True, f"facades/{facade} re-exports the native surface")
+        if (
+            'export * from "./native.mjs"' in source
+            and 'export { default } from "./native.mjs"' in source
+        ):
+            report.add(
+                check_id, True, f"facades/{facade} re-exports the native surface"
+            )
         else:
             names, has_default = esm_export_names(source)
             if facade_names <= names and has_default:
                 report.add(check_id, True, f"facades/{facade} exports {sorted(names)}")
             else:
-                report.add(check_id, False, f"facades/{facade} neither re-exports native.mjs nor exports {sorted(facade_names)}")
+                report.add(
+                    check_id,
+                    False,
+                    f"facades/{facade} neither re-exports native.mjs nor exports {sorted(facade_names)}",
+                )
 
-    for index, facade in enumerate(("native.cjs", "typescript.cjs", "clojurescript.cjs"), start=15):
+    for index, facade in enumerate(
+        ("native.cjs", "typescript.cjs", "clojurescript.cjs"), start=15
+    ):
         check_id = f"JS-{index}-{facade.split('.', maxsplit=1)[0]}-cjs"
         source = read_text(report, check_id, js_root / "facades" / facade)
         if source is None:
@@ -449,9 +581,17 @@ def check_javascript(report: Report, model: dict) -> None:
         literal = re.search(r"module\.exports\s*=\s*\{([^}]*)\}", source)
         exported = set(re.findall(r"[\w$]+", literal.group(1))) if literal else set()
         if literal and facade_names <= exported and "default" in exported:
-            report.add(check_id, True, f"facades/{facade} exports {sorted(facade_names)} and default")
+            report.add(
+                check_id,
+                True,
+                f"facades/{facade} exports {sorted(facade_names)} and default",
+            )
         else:
-            report.add(check_id, False, f"facades/{facade} module.exports lacks {sorted(facade_names | {'default'})}")
+            report.add(
+                check_id,
+                False,
+                f"facades/{facade} module.exports lacks {sorted(facade_names | {'default'})}",
+            )
 
     cljs_relative = js_model["exports"]["./cljs/vinary_tree/duallity.cljs"]["file"]
     cljs = read_text(report, "JS-18-cljs", js_root / cljs_relative)
@@ -466,18 +606,36 @@ def check_javascript(report: Report, model: dict) -> None:
         if problems:
             report.add("JS-18-cljs", False, f"{cljs_relative}: {'; '.join(problems)}")
         else:
-            report.add("JS-18-cljs", True, f"{cljs_relative} defines {js_model['cljsFunctions']} in {namespace}")
+            report.add(
+                "JS-18-cljs",
+                True,
+                f"{cljs_relative} defines {js_model['cljsFunctions']} in {namespace}",
+            )
         cljs_map = package.get("cljs", {}).get("namespaces", {})
         if cljs_map.get(namespace) == "./" + cljs_relative:
-            report.add("JS-19-cljs-map", True, f"package.json cljs namespace map pins {namespace}")
+            report.add(
+                "JS-19-cljs-map",
+                True,
+                f"package.json cljs namespace map pins {namespace}",
+            )
         else:
-            report.add("JS-19-cljs-map", False, f"package.json cljs namespace map drift: {cljs_map}")
+            report.add(
+                "JS-19-cljs-map",
+                False,
+                f"package.json cljs namespace map drift: {cljs_map}",
+            )
 
     deps_cljs = read_text(report, "JS-20-deps-cljs", js_root / "deps.cljs")
     if deps_cljs is not None:
-        pin = re.search(rf'"{re.escape(js_model["package"])}"\s+"([0-9][0-9A-Za-z.+-]*)"', deps_cljs)
+        pin = re.search(
+            rf'"{re.escape(js_model["package"])}"\s+"([0-9][0-9A-Za-z.+-]*)"', deps_cljs
+        )
         if pin and pin.group(1) == model["packageVersion"]:
-            report.add("JS-20-deps-cljs", True, f"deps.cljs pins {js_model['package']} {pin.group(1)}")
+            report.add(
+                "JS-20-deps-cljs",
+                True,
+                f"deps.cljs pins {js_model['package']} {pin.group(1)}",
+            )
         else:
             report.add(
                 "JS-20-deps-cljs",
@@ -488,9 +646,17 @@ def check_javascript(report: Report, model: dict) -> None:
     published = set(package.get("files", []))
     required_published = {"index.d.ts", "facades/", "cljs/", "deps.cljs"}
     if required_published <= published:
-        report.add("JS-21-files", True, f"package.json files covers {sorted(required_published)}")
+        report.add(
+            "JS-21-files",
+            True,
+            f"package.json files covers {sorted(required_published)}",
+        )
     else:
-        report.add("JS-21-files", False, f"package.json files is missing {sorted(required_published - published)}")
+        report.add(
+            "JS-21-files",
+            False,
+            f"package.json files is missing {sorted(required_published - published)}",
+        )
 
 
 # ── MSRV: badge guard ────────────────────────────────────────────────────────
@@ -500,7 +666,9 @@ def check_msrv(report: Report) -> None:
     cargo = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))
     rust_version = cargo["package"].get("rust-version")
     if rust_version is None:
-        report.add("MSRV-1-badge", False, "Cargo.toml lacks a rust-version to compare against")
+        report.add(
+            "MSRV-1-badge", False, "Cargo.toml lacks a rust-version to compare against"
+        )
         return
     readme = read_text(report, "MSRV-1-badge", ROOT / "README.md")
     if readme is None:
@@ -509,14 +677,20 @@ def check_msrv(report: Report) -> None:
     if badge is None:
         report.add("MSRV-1-badge", False, "README.md has no shields.io rustc badge")
     elif badge.group(1) == rust_version:
-        report.add("MSRV-1-badge", True, f"README rustc badge {badge.group(1)}+ matches rust-version {rust_version}")
+        report.add(
+            "MSRV-1-badge",
+            True,
+            f"README rustc badge {badge.group(1)}+ matches rust-version {rust_version}",
+        )
     else:
         report.add(
             "MSRV-1-badge",
             False,
             f"README rustc badge says {badge.group(1)}+ but Cargo.toml rust-version is {rust_version}",
         )
-    for prose in re.finditer(r"Minimum supported Rust version: \*\*([0-9.]+)\*\*", readme):
+    for prose in re.finditer(
+        r"Minimum supported Rust version: \*\*([0-9.]+)\*\*", readme
+    ):
         if prose.group(1) != rust_version:
             report.add(
                 "MSRV-2-prose",
@@ -525,7 +699,11 @@ def check_msrv(report: Report) -> None:
             )
             break
     else:
-        report.add("MSRV-2-prose", True, f"README MSRV prose agrees with rust-version {rust_version}")
+        report.add(
+            "MSRV-2-prose",
+            True,
+            f"README MSRV prose agrees with rust-version {rust_version}",
+        )
 
 
 # ── ID: identity guard ───────────────────────────────────────────────────────
@@ -557,9 +735,17 @@ def check_identity(report: Report) -> None:
             if forbidden in source:
                 offenders.append(f"{path.relative_to(ROOT)}: {forbidden}")
     if offenders:
-        report.add("ID-1-identity", False, f"foreign identity strings in publishable files: {offenders}")
+        report.add(
+            "ID-1-identity",
+            False,
+            f"foreign identity strings in publishable files: {offenders}",
+        )
     else:
-        report.add("ID-1-identity", True, f"no foreign identity strings across {scanned} publishable files")
+        report.add(
+            "ID-1-identity",
+            True,
+            f"no foreign identity strings across {scanned} publishable files",
+        )
 
 
 # ── main ─────────────────────────────────────────────────────────────────────
@@ -576,7 +762,11 @@ def main() -> int:
         report.add("MODEL-0", False, "bindings/api.json is missing")
     else:
         model = json.loads(model_path.read_text(encoding="utf-8"))
-        report.add("MODEL-0", True, f"loaded binding model for {model['name']} {model['packageVersion']}")
+        report.add(
+            "MODEL-0",
+            True,
+            f"loaded binding model for {model['name']} {model['packageVersion']}",
+        )
         check_symbols(report, model)
         check_enums(report, model)
         check_javascript(report, model)

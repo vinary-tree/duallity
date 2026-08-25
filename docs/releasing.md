@@ -29,6 +29,10 @@ A manual dispatch must target the immutable tag. `validate-only` enables no
 registry uploader; `npm` and `crates-io` each enable only their matching
 protected job.
 
+The checksummed GitHub prerelease is also a repository mutation. Its
+`github-release` environment requires an operator review and a `v*` tag policy;
+it stores no secret and gates only the job-scoped `GITHUB_TOKEN`.
+
 The canonical RC.4 source predates crates.io Trusted Publishing and therefore
 cannot consume the package-level GitHub OIDC trust. Append-only corrective
 source `v4.0.0-rc.4-release.1` changes only release authority, authentication,

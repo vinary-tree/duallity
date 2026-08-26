@@ -530,9 +530,9 @@ def check_javascript(report: Report, model: dict) -> None:
         if "assertDictionaryResource" not in source:
             problems.append("missing dictionary interface guard")
         expected_runtime = {
-            "native.mjs": model["wasm"]["umbrellaPackage"],
-            "wasm.mjs": model["wasm"]["umbrellaPackage"] + "/wasm",
-            "wasi.mjs": model["wasm"]["umbrellaPackage"] + "/wasi",
+            "native.mjs": model["wasm"]["runtimePackage"],
+            "wasm.mjs": model["wasm"]["runtimePackage"] + "/wasm",
+            "wasi.mjs": model["wasm"]["runtimePackage"] + "/wasi",
         }[facade]
         if f'from "{expected_runtime}"' not in source:
             problems.append(f"does not import the shared runtime {expected_runtime}")

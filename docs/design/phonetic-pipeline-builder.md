@@ -76,7 +76,7 @@ m_1 \le m_2 \iff \bigl(m_1.\texttt{total\_cost},\ m_1.\texttt{term}\bigr)
 \texttt{total\_cost} = \texttt{phonetic\_cost} + \texttt{edit\_cost}.
 ```
 
-## 3. API surface (duallity 4.0.0-rc.4)
+## 3. API surface (duallity 4.0.0-rc.5)
 
 `PhoneticPipelineBuilder`, `PhoneticPipelineConfig`, and `PhoneticMatch` are exported from the crate
 root with **no feature gate** (`src/composed_phonetic.rs`); the two build exits that produce

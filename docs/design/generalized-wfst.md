@@ -191,7 +191,7 @@ is `` $`O(1)`$ `` from the stored byte offset.
 The dictionary paths and query segments are cached by width within a single expansion (`DictPathCache`,
 `QuerySegmentCache`), so operations that share an arity reuse one traversal.
 
-## 3. Type, bounds, and the 4.0.0-rc.4 API
+## 3. Type, bounds, and the 4.0.0-rc.5 API
 
 ```rust,ignore
 pub struct GeneralizedWfst<D>

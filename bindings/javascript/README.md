@@ -40,11 +40,11 @@ TypeScript declarations ship in [`index.d.ts`](index.d.ts). A ClojureScript name
 ## Install
 
 ```sh
-npm install @vinary-tree/duallity @vinary-tree/interop
+npm install @vinary-tree/duallity @vinary-tree/vinary-tree-interop
 ```
 
-Requires **Node 22.14 or newer**. The package depends on `@vinary-tree/vinary-tree` (the umbrella
-runtime) and peers on `@vinary-tree/interop`. Entry points: native N-API (the Node default), `./wasm`,
+Requires **Node 22.14 or newer**. The package depends on `@vinary-tree/javascript-runtime` (the shared
+runtime) and `@vinary-tree/vinary-tree-interop`. Entry points: native N-API (the Node default), `./wasm`,
 and `./wasi`; a `./typescript` and a `./clojurescript` facade are also exported.
 
 ## Quickstart
@@ -108,14 +108,14 @@ misbehaving dictionary provider throws `PROVIDER_ERROR`; an out-of-range `kind`/
 
 | Component | Version |
 |-----------|---------|
-| `@vinary-tree/duallity` | `4.0.0-rc.4` |
-| `@vinary-tree/interop` (dependency) | `4.0.0-rc.4` |
-| `@vinary-tree/vinary-tree` (runtime) | `4.0.0-rc.4` |
+| `@vinary-tree/duallity` | `4.0.0-rc.5` |
+| `@vinary-tree/vinary-tree-interop` (dependency) | `4.0.0-rc.5` |
+| `@vinary-tree/javascript-runtime` (runtime) | `4.0.0-rc.5` |
 | Node | `>= 22.14` |
 | duallity C ABI | version `1`, revision `1` |
 
 > **Release policy.** Evaluate the candidate through the exact
-> `4.0.0-rc.4` version or npm's `next` tag. The package and both shared
+> `4.0.0-rc.5` version or npm's `next` tag. The package and both shared
 > dependencies are exact pins so a mixed runtime family fails during
 > resolution rather than at resource handoff.
 
@@ -152,7 +152,7 @@ guard with private handle fields or move a resource between workers/runtimes.
 
 | Symptom | Likely cause and response |
 |---|---|
-| different-runtime `TypeError` | Deduplicate the umbrella runtime and use only one of native, WebAssembly, or WASI in a resource domain. |
+| different-runtime `TypeError` | Deduplicate the shared runtime and use only one of native, WebAssembly, or WASI in a resource domain. |
 | incompatible-resource error | Supply a Unicode-scalar `vt.dictionary.v1` object from the same runtime. |
 | invalid selector/distance | Check the nine kind strings and each kind's represented maximum distance. |
 | native module load failure | Verify Node version, OS/CPU artifact, exact family pins, and reinstall the package. |

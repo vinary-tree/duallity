@@ -1,5 +1,5 @@
-import { duallity } from "@vinary-tree/vinary-tree/wasi";
-import { assertDictionaryResource, assertSameRuntime } from "@vinary-tree/interop";
+import { duallity } from "@vinary-tree/javascript-runtime/wasi";
+import { assertDictionaryResource, assertSameRuntime } from "@vinary-tree/vinary-tree-interop";
 
 export const runtimeIdentity = duallity.runtimeIdentity;
 export function wfst(dictionary, query, maximumDistance, algorithm, kind) {

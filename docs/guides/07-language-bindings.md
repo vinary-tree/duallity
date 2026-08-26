@@ -56,10 +56,10 @@ a Windows DLL. A pkg-config file and staged native packages are produced by
 **JavaScript.** Install the scoped package and the interop peer:
 
 ```sh
-npm install @vinary-tree/duallity @vinary-tree/interop
+npm install @vinary-tree/duallity @vinary-tree/vinary-tree-interop
 ```
 
-The facade depends on `@vinary-tree/vinary-tree` (the umbrella native/WASM runtime) and requires
+The facade depends on `@vinary-tree/javascript-runtime` (the shared native/WASM runtime) and requires
 **Node 22.14 or newer**. It exposes native (N-API), WASM, and WASI-preview-1 entry points; Node
 defaults to the native N-API build.
 
@@ -216,14 +216,14 @@ reads an older, shorter provider vtable.
 
 | Component | Pinned version |
 |-----------|----------------|
-| crate `duallity` | `4.0.0-rc.4` (edition 2021, **MSRV 1.95**) |
-| `vinary-tree-interop` | `4.0.0-rc.4` (ABI version `1`) |
-| npm `@vinary-tree/duallity` | `4.0.0-rc.4` |
-| npm `@vinary-tree/interop` (dependency) | `4.0.0-rc.4` |
-| npm `@vinary-tree/vinary-tree` (runtime) | `4.0.0-rc.4` |
+| crate `duallity` | `4.0.0-rc.5` (edition 2021, **MSRV 1.95**) |
+| `vinary-tree-interop` | `4.0.0-rc.5` (ABI version `1`) |
+| npm `@vinary-tree/duallity` | `4.0.0-rc.5` |
+| npm `@vinary-tree/vinary-tree-interop` (dependency) | `4.0.0-rc.5` |
+| npm `@vinary-tree/javascript-runtime` (runtime) | `4.0.0-rc.5` |
 | Node engine | `>= 22.14` |
 
-The crate and npm facade resolve exact `4.0.0-rc.4` family dependencies. Use
+The crate and npm facade resolve exact `4.0.0-rc.5` family dependencies. Use
 the RC's immutable source tag for source builds and the exact registry version
 or `next` dist-tag for public-package evaluation; do not mix earlier interop
 packages with this ABI-compatible but package-synchronized train.

@@ -25,8 +25,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/checkout-dev-siblings
-        with:
-          lling-llang-ref: ${{ startsWith(github.ref_name, 'release/') && github.ref_name || 'master' }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -55,8 +53,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/checkout-dev-siblings
-        with:
-          lling-llang-ref: ${{ startsWith(github.ref_name, 'release/') && github.ref_name || 'master' }}
       - uses: dtolnay/rust-toolchain@stable
       - name: Build four cdylibs, compile and run the C family pipeline
         run: bindings/c/tests/build-and-run.sh
@@ -79,8 +75,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/checkout-dev-siblings
-        with:
-          lling-llang-ref: ${{ startsWith(github.ref_name, 'release/') && github.ref_name || 'master' }}
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: rust-src
@@ -100,8 +94,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/checkout-dev-siblings
-        with:
-          lling-llang-ref: ${{ startsWith(github.ref_name, 'release/') && github.ref_name || 'master' }}
       # Docker actions mount only this repository and therefore hide sibling
       # path dependencies. Run cargo-deny in the host runner namespace.
       - uses: taiki-e/install-action@cargo-deny

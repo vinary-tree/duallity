@@ -13,7 +13,7 @@ use vinary_tree_interop::VtResource;
 /// Stable duallity C ABI version.
 pub const DUALLITY_ABI_VERSION: u32 = 1;
 /// Additive project API revision.
-pub const DUALLITY_API_REVISION: u32 = 1;
+pub const DUALLITY_API_REVISION: u32 = 2;
 
 /// Status returned by duallity C functions.
 #[repr(u32)]
@@ -187,6 +187,37 @@ pub extern "C" fn duallity_wfst_new(
         *slot = Box::into_raw(Box::new(DuallityWfst { resource }));
         Ok(())
     })
+}
+
+/// Pointer-form constructor for FFIs that cannot pass C aggregates by value.
+///
+/// # Safety
+/// `dictionary` must be null or point to a readable `VtResource` for this
+/// call. The pointed-to resource remains borrowed; construction captures its
+/// own immutable dictionary snapshot.
+#[no_mangle]
+pub unsafe extern "C" fn duallity_wfst_new_ref(
+    dictionary: *const VtResource,
+    query_data: *const u8,
+    query_len: usize,
+    maximum_distance: usize,
+    algorithm_value: u32,
+    kind_value: u32,
+    out_wfst: *mut *mut DuallityWfst,
+) -> DuallityStatus {
+    if dictionary.is_null() {
+        set_error("dictionary is null");
+        return DuallityStatus::NullPointer;
+    }
+    duallity_wfst_new(
+        unsafe { *dictionary },
+        query_data,
+        query_len,
+        maximum_distance,
+        algorithm_value,
+        kind_value,
+        out_wfst,
+    )
 }
 
 /// Free a duallity WFST handle. Null is accepted.

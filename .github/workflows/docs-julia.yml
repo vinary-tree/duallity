@@ -1,0 +1,56 @@
+name: Publish Julia API documentation
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - .github/actions/checkout-dev-siblings/action.yml
+      - .github/workflows/docs-julia.yml
+      - bindings/api.json
+      - bindings/julia/Duallity/**
+      - include/duallity.h
+      - src/bindings.rs
+      - src/ffi.rs
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: duallity-julia-docs
+  cancel-in-progress: true
+
+jobs:
+  documenter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/checkout-dev-siblings
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.12'
+      - name: Build the documented native surface
+        run: cargo build --no-default-features --features julia-bindings
+      - name: Instantiate local package dependencies
+        env:
+          JULIA_DEPOT_PATH: ${{ github.workspace }}/target/julia-depot
+        run: |
+          julia --project=bindings/julia/Duallity/docs -e '
+            using Pkg
+            Pkg.develop([
+              Pkg.PackageSpec(path="../vinary-tree-interop/bindings/julia/VinaryTreeInterop"),
+              Pkg.PackageSpec(path="bindings/julia/Duallity"),
+            ])
+            Pkg.instantiate()
+          '
+      - name: Build and deploy strict API documentation
+        env:
+          DUALLITY_LIBRARY: ${{ github.workspace }}/target/debug/libduallity.so
+          DUALLITY_DOCS_BUILD: ${{ github.workspace }}/target/julia-docs
+          DUALLITY_DOCS_DEPLOY: '1'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JULIA_DEPOT_PATH: ${{ github.workspace }}/target/julia-depot
+        run: >-
+          julia --project=bindings/julia/Duallity/docs
+          bindings/julia/Duallity/docs/make.jl

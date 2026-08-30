@@ -19,6 +19,8 @@ Check groups (stable ids):
           d.ts/mjs/cjs/cljs surfaces export the same names; every
           @vinary-tree/* dependency is exact-pinned; versions agree with
           Cargo.toml and the model.
+  JR-*    Julia/Raku package identity, version, generated ABI enum/constant,
+          and native-symbol parity against the same binding model.
   MSRV-*  the README rustc badge (and MSRV prose) must equal Cargo.toml's
           `rust-version`.
   ID-*    identity guard: no foreign project identity strings in any
@@ -53,6 +55,7 @@ SKIP_DIR_PARTS = {
     "_build",
     ".cpcache",
     ".gradle",
+    ".precomp",
     "__pycache__",
     "bin",
     "build",
@@ -61,6 +64,9 @@ SKIP_DIR_PARTS = {
     "obj",
     "target",
 }
+
+JULIA_ROOT = ROOT / "bindings" / "julia" / "Duallity"
+RAKU_ROOT = ROOT / "bindings" / "raku"
 
 
 class Report:
@@ -659,6 +665,145 @@ def check_javascript(report: Report, model: dict) -> None:
         )
 
 
+# ── JR: Julia and Raku parity ───────────────────────────────────────────────
+
+
+def check_julia_raku(report: Report, model: dict) -> None:
+    cargo = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))
+    version = cargo["package"]["version"]
+    julia_project_text = read_text(
+        report, "JR-1-julia-project", JULIA_ROOT / "Project.toml"
+    )
+    raku_meta_text = read_text(report, "JR-2-raku-meta", RAKU_ROOT / "META6.json")
+    julia_generated = read_text(
+        report, "JR-3-julia-generated", JULIA_ROOT / "src" / "GeneratedAbi.jl"
+    )
+    raku_generated = read_text(
+        report,
+        "JR-4-raku-generated",
+        RAKU_ROOT / "lib" / "Duallity" / "GeneratedAbi.rakumod",
+    )
+    julia_facade = read_text(
+        report, "JR-5-julia-symbols", JULIA_ROOT / "src" / "Duallity.jl"
+    )
+    raku_facade = read_text(
+        report, "JR-6-raku-symbols", RAKU_ROOT / "lib" / "Duallity.rakumod"
+    )
+    if any(
+        value is None
+        for value in (
+            julia_project_text,
+            raku_meta_text,
+            julia_generated,
+            raku_generated,
+            julia_facade,
+            raku_facade,
+        )
+    ):
+        return
+
+    julia_project = tomllib.loads(julia_project_text)
+    raku_meta = json.loads(raku_meta_text)
+    if (
+        julia_project.get("name") == model["packages"]["julia"]
+        and julia_project.get("version") == version
+    ):
+        report.add(
+            "JR-1-julia-project",
+            True,
+            f"Julia package {julia_project['name']} is version {version}",
+        )
+    else:
+        report.add(
+            "JR-1-julia-project",
+            False,
+            f"Julia identity/version drift: {julia_project.get('name')} {julia_project.get('version')}",
+        )
+    if raku_meta.get("name") == model["packages"]["zef"] and raku_meta.get(
+        "version"
+    ) == version:
+        report.add(
+            "JR-2-raku-meta", True, f"Raku package {raku_meta['name']} is version {version}"
+        )
+    else:
+        report.add(
+            "JR-2-raku-meta",
+            False,
+            f"Raku identity/version drift: {raku_meta.get('name')} {raku_meta.get('version')}",
+        )
+
+    abi = int(model["abiVersion"])
+    api = int(model["apiRevision"])
+    julia_constants = (
+        f"const ABI_VERSION = UInt32({abi})" in julia_generated
+        and f"const API_REVISION = UInt32({api})" in julia_generated
+    )
+    raku_constants = (
+        f"our constant ABI-VERSION is export = {abi};" in raku_generated
+        and f"our constant API-REVISION is export = {api};" in raku_generated
+    )
+    report.add(
+        "JR-3-julia-generated",
+        julia_constants,
+        f"Julia generated ABI/API constants {'agree' if julia_constants else 'DRIFT'} ({abi}/{api})",
+    )
+    report.add(
+        "JR-4-raku-generated",
+        raku_constants,
+        f"Raku generated ABI/API constants {'agree' if raku_constants else 'DRIFT'} ({abi}/{api})",
+    )
+
+    modeled = {item["name"] for item in model["cFunctions"]}
+    julia_symbols = set(re.findall(r"native\(:(duallity_[a-z0-9_]+)\)", julia_facade))
+    raku_symbols = set(re.findall(r"symbol\('(duallity_[a-z0-9_]+)'\)", raku_facade))
+    julia_required = {
+        "duallity_abi_version",
+        "duallity_api_revision",
+        "duallity_last_error_message",
+        "duallity_wfst_new",
+        "duallity_wfst_free",
+        "duallity_wfst_resource",
+    }
+    raku_required = (julia_required - {"duallity_wfst_new"}) | {
+        "duallity_wfst_new_ref"
+    }
+    julia_ok = julia_symbols == julia_required and julia_symbols <= modeled
+    raku_ok = raku_symbols == raku_required and raku_symbols <= modeled
+    report.add(
+        "JR-5-julia-symbols",
+        julia_ok,
+        f"Julia native symbol set {'agrees' if julia_ok else 'DRIFT'}: {sorted(julia_symbols)}",
+    )
+    report.add(
+        "JR-6-raku-symbols",
+        raku_ok,
+        f"Raku native symbol set {'agrees' if raku_ok else 'DRIFT'}: {sorted(raku_symbols)}",
+    )
+
+    for check_id, enum_name, values in (
+        ("JR-7-status-enums", "status", model["enums"]["status"]["values"]),
+        ("JR-8-algorithm-enums", "algorithm", model["enums"]["algorithm"]["values"]),
+        ("JR-9-kind-enums", "wfstKind", model["enums"]["wfstKind"]["values"]),
+    ):
+        missing: list[str] = []
+        for name, value in values.items():
+            julia_name = {
+                "status": f"STATUS_{name}",
+                "algorithm": f"ALGORITHM_{name}",
+                "wfstKind": f"WFST_{name}",
+            }[enum_name]
+            raku_name = name.replace("_", "-")
+            if not re.search(rf"\b{re.escape(julia_name)}\s*=\s*{value}\b", julia_generated):
+                missing.append(f"Julia:{julia_name}={value}")
+            if not re.search(rf"\b{re.escape(raku_name)}\s*=>\s*{value}\b", raku_generated):
+                missing.append(f"Raku:{raku_name}={value}")
+        report.add(
+            check_id,
+            not missing,
+            f"{len(values)} {enum_name} values agree" if not missing else f"enum drift: {missing}",
+        )
+
+
 # ── MSRV: badge guard ────────────────────────────────────────────────────────
 
 
@@ -727,7 +872,7 @@ def check_identity(report: Report) -> None:
     offenders: list[str] = []
     scanned = 0
     for path in files:
-        if any(part in SKIP_DIR_PARTS for part in path.parts):
+        if any(part in SKIP_DIR_PARTS for part in path.relative_to(ROOT).parts):
             continue
         scanned += 1
         source = path.read_text(encoding="utf-8", errors="ignore").lower()
@@ -770,6 +915,7 @@ def main() -> int:
         check_symbols(report, model)
         check_enums(report, model)
         check_javascript(report, model)
+        check_julia_raku(report, model)
     check_msrv(report)
     check_identity(report)
 

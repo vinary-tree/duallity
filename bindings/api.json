@@ -23,7 +23,9 @@
   },
   "packages": {
     "cratesIo": "duallity",
-    "npm": "@vinary-tree/duallity"
+    "npm": "@vinary-tree/duallity",
+    "julia": "Duallity",
+    "zef": "Duallity"
   },
   "supportTiers": {
     "tier1": [
@@ -31,7 +33,9 @@
       "cpp",
       "javascript",
       "typescript",
-      "clojurescript"
+      "clojurescript",
+      "julia",
+      "raku"
     ]
   },
   "documentation": {
@@ -97,12 +101,52 @@
           "Executable conformance evidence",
           "Maintainer workflow"
         ]
+      },
+      "julia": {
+        "languages": [
+          "Julia"
+        ],
+        "guide": "bindings/julia/Duallity/README.md",
+        "example": "bindings/julia/Duallity/test/runtests.jl",
+        "requiredHeadings": [
+          "Install",
+          "Quickstart",
+          "Ownership & memory model",
+          "Errors",
+          "Concurrency",
+          "Zero-copy paths",
+          "Security and provider trust",
+          "Troubleshooting",
+          "Version compatibility",
+          "Executable conformance evidence",
+          "Maintainer workflow"
+        ]
+      },
+      "raku": {
+        "languages": [
+          "Raku"
+        ],
+        "guide": "bindings/raku/README.md",
+        "example": "bindings/raku/t/01-conformance.rakutest",
+        "requiredHeadings": [
+          "Install",
+          "Quickstart",
+          "Ownership & memory model",
+          "Errors",
+          "Concurrency",
+          "Zero-copy paths",
+          "Security and provider trust",
+          "Troubleshooting",
+          "Version compatibility",
+          "Executable conformance evidence",
+          "Maintainer workflow"
+        ]
       }
     }
   },
   "packageVersion": "4.0.0-rc.5",
   "abiVersion": 1,
-  "apiRevision": 1,
+  "apiRevision": 2,
   "cPrefix": "duallity_",
   "cHeader": "duallity.h",
   "cppHeader": "duallity.hpp",
@@ -197,6 +241,10 @@
     },
     {
       "name": "duallity_wfst_new",
+      "rustModule": "ffi"
+    },
+    {
+      "name": "duallity_wfst_new_ref",
       "rustModule": "ffi"
     },
     {

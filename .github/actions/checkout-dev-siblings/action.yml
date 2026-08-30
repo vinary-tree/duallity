@@ -1,5 +1,6 @@
 name: Checkout development siblings
-description: Recreate the Vinary Tree sibling source graph for Cargo path dependencies
+description: >
+  Recreate the Vinary Tree sibling source graph for Cargo path dependencies
 inputs:
   ref:
     description: >
@@ -8,6 +9,13 @@ inputs:
       overridden.
     required: false
     default: master
+  coordinated-ref:
+    description: >
+      Optional feature branch selected for each sibling where that exact
+      remote branch exists. Repositories without it use their configured
+      fallback. Release workflows do not set this input.
+    required: false
+    default: ""
   llattice-ref:
     description: llattice Git ref
     required: false
@@ -35,6 +43,7 @@ runs:
       shell: bash
       env:
         BASELINE_REF: ${{ inputs.ref }}
+        COORDINATED_REF: ${{ inputs.coordinated-ref }}
         LLATTICE_REF: ${{ inputs.llattice-ref }}
         LIBDICTENSTEIN_REF: ${{ inputs.libdictenstein-ref }}
         LIBLEVENSHTEIN_REF: ${{ inputs.liblevenshtein-ref }}
@@ -55,6 +64,12 @@ runs:
           local ref="$2"
           if [[ -z "$ref" ]]; then
             ref="$development_ref"
+          fi
+          if [[ -n "$COORDINATED_REF" ]] &&
+             git ls-remote --exit-code --heads \
+               "https://github.com/vinary-tree/$repository.git" \
+               "$COORDINATED_REF" >/dev/null 2>&1; then
+            ref="$COORDINATED_REF"
           fi
           git check-ref-format --branch "$ref" >/dev/null
           echo "::group::Cloning $repository @ $ref"

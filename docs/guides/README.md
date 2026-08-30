@@ -1,6 +1,6 @@
 # Guides
 
-Task-oriented documentation for **duallity 0.3**: install the crate, pick a WFST variant, compose a
+Task-oriented documentation for **duallity 4.0.0-rc.5**: install the crate, pick a WFST variant, compose a
 multi-stage pipeline, do phonetic matching, and tune performance. These guides are the *how-to* layer.
 They build on the concepts in [theory](../theory/) and the exact per-variant API in [design](../design/),
 but you can follow them front to back without reading those first — every guide cross-links back to the
@@ -26,7 +26,7 @@ Start from what you are trying to do; the strip below routes you to the one guid
 | "I want sound-alike (phonetic) matching." | [04 · Phonetic matching](04-phonetic-matching.md) | rule-based `RewriteWfst` vs. regex-based `PhoneticWfst`; the English / German / French rule sets. |
 | "It works, but I need it faster or smaller." | [05 · Performance and tuning](05-performance-and-tuning.md) | cache policy, LRU eviction, lazy costs, and eager WallBreaker construction. |
 | "I want fzf V2 ranking over a shared-prefix dictionary." | [06 · fzf dictionary ranking](06-fzf-dictionary-ranking.md) | `FzfScorer`, the balanced DFS visitor, exact scores, and the Arctic WFST exit. |
-| "I want to call duallity from C, C++, or JavaScript." | [07 · Language bindings](07-language-bindings.md) | the seven-function C ABI and the JS/TS/cljs facade: ownership, error totality, concurrency, zero-copy paths, and version pins. |
+| "I want to call duallity from C, C++, JavaScript, Julia, or Raku." | [07 · Language bindings](07-language-bindings.md) | the eight-function C ABI and its C++, JS/TS/cljs, Julia, and Raku facades: ownership, error totality, concurrency, zero-copy paths, and version pins. |
 
 ### The full guide index
 
@@ -38,13 +38,14 @@ Start from what you are trying to do; the strip below routes you to the one guid
 | 04 | [Phonetic matching](04-phonetic-matching.md) | Rewrite rules vs. phonetic regex; the English / German / French rule sets. |
 | 05 | [Performance and tuning](05-performance-and-tuning.md) | Cache policy, eviction, lazy costs, eager WallBreaker construction. |
 | 06 | [fzf dictionary ranking](06-fzf-dictionary-ranking.md) | Rank a character dictionary with prefix-shared FuzzyMatchV2 columns. |
-| 07 | [Language bindings](07-language-bindings.md) | Call the C ABI and the JavaScript facade: ownership, error totality, concurrency, zero-copy. |
+| 07 | [Language bindings](07-language-bindings.md) | Call the C ABI and its C++, JavaScript-family, Julia, and Raku facades: ownership, error totality, concurrency, zero-copy. |
 
 ---
 
 ## Install
 
-duallity 0.3 is built against **liblevenshtein 0.9**, **lling-llang 0.2**, and **libdictenstein 0.2**.
+duallity 4.0.0-rc.5 is built against exact **liblevenshtein 4.0.0-rc.5**,
+**lling-llang 4.0.0-rc.5**, and **libdictenstein 4.0.0-rc.5** candidates.
 The three companions map cleanly onto the three responsibilities in the pipeline: `libdictenstein`
 holds the dictionary, `liblevenshtein` supplies the fuzzy-matching automata, and `lling-llang` provides
 the weighted-transducer algebra (`Wfst`, the tropical semiring, `compose`). duallity is the thin adapter
@@ -52,10 +53,10 @@ that presents the first two *as* the third.
 
 ```toml
 [dependencies]
-duallity = "0.3"
-liblevenshtein = "0.9"
-lling-llang = "0.2"
-libdictenstein = "0.2"
+duallity = "=4.0.0-rc.5"
+liblevenshtein = "=4.0.0-rc.5"
+lling-llang = "=4.0.0-rc.5"
+libdictenstein = "=4.0.0-rc.5"
 ```
 
 You only need to name the companions explicitly in `[dependencies]` when your own code references their

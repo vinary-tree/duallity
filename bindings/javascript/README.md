@@ -6,7 +6,7 @@ Given a dictionary resource and a query, it captures the dictionary once and ret
 WFST resource that hands off in `` $`O(1)`$ `` to `@vinary-tree/lling-llang` composition — no
 serialization, no full state-space materialization.
 
-It is a thin skin over the seven-function `duallity_*` C ABI documented in
+It is a thin skin over the eight-function `duallity_*` C ABI documented in
 [docs/architecture/06](../../docs/architecture/06-resource-abi-and-bindings.md); this README is the
 JavaScript-specific guide. The task-oriented cross-language walkthrough is
 [docs/guides/07 · Language bindings](../../docs/guides/07-language-bindings.md).
@@ -112,7 +112,7 @@ misbehaving dictionary provider throws `PROVIDER_ERROR`; an out-of-range `kind`/
 | `@vinary-tree/vinary-tree-interop` (dependency) | `4.0.0-rc.5` |
 | `@vinary-tree/javascript-runtime` (runtime) | `4.0.0-rc.5` |
 | Node | `>= 22.14` |
-| duallity C ABI | version `1`, revision `1` |
+| duallity C ABI | version `1`, revision `2` |
 
 > **Release policy.** Evaluate the candidate through the exact
 > `4.0.0-rc.5` version or npm's `next` tag. The package and both shared

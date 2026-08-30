@@ -1,7 +1,7 @@
 # duallity — C++ binding
 
 A header-only **RAII** (**R**esource **A**cquisition **I**s **I**nitialization) wrapper over duallity's
-seven-function C ABI. It turns a dictionary resource into a lazy, composable **WFST** (**W**eighted
+eight-function C ABI. It turns a dictionary resource into a lazy, composable **WFST** (**W**eighted
 **F**inite-**S**tate **T**ransducer) resource with move-only handles and exception-based errors, so
 lifetimes are managed by scope rather than by hand.
 
@@ -110,7 +110,7 @@ boundary is caught, an exception here is a *reported* error, never undefined beh
 
 ## Version compatibility
 
-Negotiate with `duallity_abi_version()` (currently `1`) and `duallity_api_revision()` (currently `1`)
+Negotiate with `duallity_abi_version()` (currently `1`) and `duallity_api_revision()` (currently `2`)
 at load time; refuse a major you do not understand. This binding tracks crate `duallity 4.0.0-rc.5`
 (**MSRV 1.95**) and `vinary-tree-interop 4.0.0-rc.5` (ABI version `1`). The living version record is the
 [bindings findings ledger](../../docs/scientific-ledger/bindings-findings-ledger.md).

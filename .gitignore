@@ -1,6 +1,7 @@
 # ─── Rust / Cargo ─────────────────────────────────────────────────────────────
 /target
 **/*.rs.bk
+**/.precomp/
 # NOTE: Cargo.lock is intentionally TRACKED — duallity builds standalone (it is
 # not a workspace member) and pins its path-dependency resolution.
 

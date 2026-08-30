@@ -3,7 +3,7 @@
 The C17/C23 facade adapts an immutable Unicode-scalar `vt.dictionary.v1`
 snapshot into one of nine lazy edit/phonetic weighted finite-state transducers
 (WFSTs) and exports the result as `vt.scalar-wfst.1`. The project surface has
-seven `duallity_*` functions in [`duallity.h`](../../include/duallity.h); the
+eight `duallity_*` functions in [`duallity.h`](../../include/duallity.h); the
 normative semantics are in the
 [resource ABI reference](../../docs/architecture/06-resource-abi-and-bindings.md).
 
@@ -38,6 +38,7 @@ distances, terms, post-capture mutation isolation, and a zero retain ledger.
 | Element | Contract |
 |---|---|
 | `duallity_wfst_new` | Borrows a dictionary resource for the call, captures one immutable snapshot, validates the query/selectors, and returns an owned WFST handle. |
+| `duallity_wfst_new_ref` | Provides identical semantics through a pointer to the borrowed dictionary aggregate for foreign-function interfaces that cannot pass `VtResource` by value. |
 | `DuallityAlgorithm` | Standard, optimal-string-alignment transposition, merge-and-split, or unrestricted Damerau-Levenshtein; consumed only by the Levenshtein kind. |
 | `DuallityWfstKind` | Levenshtein; three universal; four generalized including phonetic; or FZF. Each advertises its exact weight domain. |
 | `duallity_wfst_resource` | Returns one independently retained `vt.scalar-wfst.1` resource. |

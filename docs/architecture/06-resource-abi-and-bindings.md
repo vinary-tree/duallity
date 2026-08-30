@@ -4,7 +4,7 @@
 > [architecture/02](02-wfst-trait-surface.md) (the `Wfst` / `LazyWfst` / `StateSource` surface), and
 > [architecture/05](05-registries-and-interning.md) (the shared registries a captured revision backs).
 >
-> **Defines:** the shared vinary-tree **resource ABI** duallity speaks, the seven-function
+> **Defines:** the shared vinary-tree **resource ABI** duallity speaks, the eight-function
 > `duallity_*` **C ABI**, the totality of its status codes, the nine automaton **kinds** and the
 > algorithms they select, the **capture-once** rule, the **double-adapter** bridge (duallity implements
 > *both* libdictenstein's `Dictionary`/`DictionaryNode` traits *and* lling-llang's `ScalarWfstProvider`),
@@ -51,9 +51,9 @@ Because duallity is the *only* place liblevenshtein, libdictenstein, and lling-l
 ([architecture/01](01-crate-family-and-dependency-graph.md)), it is the only place this two-interface
 adaptation can live.
 
-## 2. The seven-function C ABI
+## 2. The eight-function C ABI
 
-The stable surface is seven `extern "C"` functions in [`src/ffi.rs`](../../src/ffi.rs), declared in
+The stable surface is eight `extern "C"` functions in [`src/ffi.rs`](../../src/ffi.rs), declared in
 [`include/duallity.h`](../../include/duallity.h) and wrapped by the RAII C++ facade in
 [`include/duallity.hpp`](../../include/duallity.hpp). The surface is deliberately minimal: **construct**,
 **hand back the resource**, **free**, plus reference-count and diagnostic helpers.
@@ -61,9 +61,10 @@ The stable surface is seven `extern "C"` functions in [`src/ffi.rs`](../../src/f
 | Function | Purpose | Returns | Panics across the boundary? | Complexity |
 |----------|---------|---------|-----------------------------|------------|
 | `duallity_abi_version()` | the stable ABI version (`1`) | `uint32_t` | no — trivial | `` $`O(1)`$ `` |
-| `duallity_api_revision()` | the additive API revision (`1`) | `uint32_t` | no — trivial | `` $`O(1)`$ `` |
+| `duallity_api_revision()` | the additive API revision (`2`) | `uint32_t` | no — trivial | `` $`O(1)`$ `` |
 | `duallity_last_error_message()` | this thread's last boundary error | `const char*` | no — thread-local read | `` $`O(1)`$ `` |
 | `duallity_wfst_new(...)` | capture a dictionary revision and build a lazy WFST | `DuallityStatus` | **no** — `catch_unwind` maps a panic to `PANIC` | `` $`O(1)`$ `` in `` $`\lvert D \rvert`$ `` |
+| `duallity_wfst_new_ref(...)` | pointer-form equivalent of `duallity_wfst_new` for FFIs that cannot pass a C aggregate by value | `DuallityStatus` | **no** — delegates through the same contained constructor | `` $`O(1)`$ `` in `` $`\lvert D \rvert`$ `` |
 | `duallity_wfst_resource(wfst, out)` | hand back a **new retained** `vt.scalar-wfst.1` resource | `DuallityStatus` | **no** — `catch_unwind` | `` $`O(1)`$ `` |
 | `duallity_wfst_free(wfst)` | free a handle (null accepted) | `void` | no — a `Box` drop | `` $`O(1)`$ `` amortized |
 | `duallity_resource_release(res)` | release one `VtResource` retain (null-safe) | `void` | no — a vtable `release` call | `` $`O(1)`$ `` amortized |
@@ -77,13 +78,13 @@ easy mistake:
   underlying `vt.scalar-wfst.1` resource. It is released **only** by `duallity_resource_release`, once
   per resource obtained. Crucially, that resource is *not* the `DuallityWfst*` handle: it may outlive
   the handle, and freeing the handle does **not** release resources already handed out.
-- The `dictionary` argument to `duallity_wfst_new` is **borrowed** for the duration of the call only.
+- The `dictionary` argument to either constructor is **borrowed** for the duration of the call only.
   duallity takes its own retain of the *snapshot* (§5); the caller keeps ownership of the argument and
   releases it on its own schedule.
 
 **Thread-safety.** `duallity_last_error_message` returns a pointer into **thread-local** storage; the
 message is valid until the next `duallity_*` call **on the same thread**, and each thread sees only its
-own last error. All seven functions are safe to call concurrently on distinct handles/resources; the
+own last error. All eight functions are safe to call concurrently on distinct handles/resources; the
 produced `vt.scalar-wfst.1` resource is itself safe for concurrent expansion (§6). Freeing or releasing
 the *same* handle/resource from two threads at once is a use-after-free the caller must avoid, exactly
 as for any reference-counted handle.
@@ -283,7 +284,7 @@ constructed state visible to the caller.
 ## 9. Versioning
 
 Two constants describe the surface. `DUALLITY_ABI_VERSION` (`1`) is the *breaking* layout/behavior
-version; `DUALLITY_API_REVISION` (`1`) is the *additive* revision, bumped when a backward-compatible
+version; `DUALLITY_API_REVISION` (`2`) is the *additive* revision, bumped when a backward-compatible
 function or enum value is added. Underneath, the interop crate's `VT_ABI_VERSION` and the
 per-interface versions (`VT_DICTIONARY_INTERFACE_VERSION`, `VT_WFST_INTERFACE_VERSION`) evolve
 additively via a `struct_size` prefix on every vtable, so a newer consumer can safely read an older,

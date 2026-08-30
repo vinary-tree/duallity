@@ -58,7 +58,7 @@ docs/
 4. [theory/06 · WallBreaker](theory/06-wallbreaker-and-the-wall-effect.md) and [theory/07 · Regular-language limits](theory/07-regular-language-limits.md)
 
 **Binding author (≈45 min)** — call duallity from C, C++, or JavaScript:
-1. [architecture/06 · The resource ABI and language bindings](architecture/06-resource-abi-and-bindings.md) — the seven-function C ABI, the nine kinds, capture-once, and the double adapter
+1. [architecture/06 · The resource ABI and language bindings](architecture/06-resource-abi-and-bindings.md) — the eight-function C ABI, the nine kinds, capture-once, and the double adapter
 2. [guides/07 · Language bindings](guides/07-language-bindings.md) — the nine-section per-language guide
 3. the [binding hub](bindings/README.md), then the per-language C, C++, or JavaScript-family guide
 4. [security/threat-model](security/threat-model.md) — why a foreign dictionary is untrusted input

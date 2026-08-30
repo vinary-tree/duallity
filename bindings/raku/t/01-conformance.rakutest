@@ -1,0 +1,102 @@
+use v6.d;
+use Test;
+
+module DictionaryFixture {
+    use Libdictenstein;
+    our sub create(--> Mu:D) {
+        my $dictionary = dynamic-dawg;
+        $dictionary.insert-batch([cat => Nil, cot => Nil, dog => Nil]);
+        $dictionary
+    }
+}
+
+module ComposerFixture {
+    use Lling::Llang;
+    our sub mapper(--> Mu:D) {
+        my $builder = WfstBuilder.new(size-hint => 1);
+        my $state = $builder.add-state;
+        $builder.set-start($state).set-final($state);
+        for <a c o t> -> $character {
+            $builder.add-arc($state, $character, $character.uc, $state);
+        }
+        $builder.build
+    }
+    our sub product(Mu:D $left, Mu:D $right --> Mu:D) {
+        compose($left, $right)
+    }
+}
+
+module InteropFixture {
+    use Vinary::Tree::Interop;
+    our sub unicode-scalar(--> UnitDomain:D) { UNICODE-SCALAR }
+    our sub tropical(--> WeightDomain:D) { TROPICAL-F64 }
+    our sub arctic(--> WeightDomain:D) { ARCTIC-F64 }
+}
+
+use Duallity;
+
+sub language(Mu:D $graph --> Map:D) {
+    my %accepted;
+    my @stack = [$graph.start, '', 0e0],;
+    my $visited = 0;
+    while @stack {
+        my ($identifier, $output, $weight) = @stack.pop.List;
+        die 'WFST traversal did not converge' if ++$visited > 100_000;
+        my $info = $graph.state-info($identifier);
+        next unless $info.defined;
+        if $info.final {
+            my $candidate = $weight + $info.final-weight;
+            %accepted{$output} = %accepted{$output}:exists
+                ?? (%accepted{$output} min $candidate) !! $candidate;
+        }
+        for $graph.arcs($identifier) -> $arc {
+            my $suffix = $arc.output.defined ?? $arc.output.chr !! '';
+            @stack.push([$arc.target, $output ~ $suffix, $weight + $arc.weight]);
+        }
+    }
+    %accepted.Map
+}
+
+is abi-version(), ABI-VERSION, 'native and Raku ABI versions agree';
+ok api-revision() >= API-REVISION, 'native API revision satisfies the facade';
+
+my $dictionary = DictionaryFixture::create;
+my $view = $dictionary.snapshot;
+for WfstKind.enums.values.sort -> $kind {
+    my $graph = wfst($view, 'cat', maximum-distance => 1,
+        kind => WfstKind($kind));
+    is $graph.unit-domain, InteropFixture::unicode-scalar,
+        "kind $kind preserves Unicode labels";
+    my $expected = WfstKind($kind) == FZF
+        ?? InteropFixture::arctic()
+        !! InteropFixture::tropical();
+    is $graph.weight-domain, $expected, "kind $kind exposes its semiring";
+    $graph.close;
+}
+for Algorithm.enums.values.sort -> $algorithm {
+    my $graph = wfst($view, 'cat', maximum-distance => 1,
+        algorithm => Algorithm($algorithm));
+    ok $graph.start >= 0, "algorithm $algorithm constructs a graph";
+    $graph.close;
+}
+
+my $graph = wfst($view, 'cat', maximum-distance => 1);
+$view.close;
+$dictionary.DELETE-KEY('cot');
+$dictionary.ASSIGN-KEY('cab', Nil);
+is-deeply language($graph), Map.new(cat => 0e0, cot => 1e0),
+    'adapter retains the query-start dictionary revision';
+
+my $mapper = ComposerFixture::mapper;
+my $product = ComposerFixture::product($graph, $mapper);
+my $snapshot = $product.snapshot;
+$product.close;
+$graph.close;
+$mapper.close;
+is-deeply language($snapshot), Map.new(CAT => 0e0, COT => 1e0),
+    'duallity output composes with lling-llang without materialization';
+is $snapshot.start, 0, 'composed snapshot remains live after source close';
+$snapshot.close;
+$dictionary.close;
+
+done-testing;

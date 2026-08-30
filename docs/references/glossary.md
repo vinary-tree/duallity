@@ -6,7 +6,7 @@ single source of truth; this glossary is the prose mirror.
 
 | Term | Definition |
 |------|------------|
-| **ABI (Application Binary Interface)** | The compiled-artifact contract — struct layout, calling convention, and symbol set — that lets independently built libraries interoperate without shared source. duallity's stable C ABI is the seven `duallity_*` functions ([architecture/06](../architecture/06-resource-abi-and-bindings.md)). |
+| **ABI (Application Binary Interface)** | The compiled-artifact contract — struct layout, calling convention, and symbol set — that lets independently built libraries interoperate without shared source. duallity's stable C ABI is the eight `duallity_*` functions ([architecture/06](../architecture/06-resource-abi-and-bindings.md)). |
 | **acceptance / accepting state** | A WFST state that ends a valid input/output relation and carries a *final weight*. For a Levenshtein WFST, a state `` $`(d, (i, e))`$ `` is accepting iff the dictionary node `` $`d`$ `` is final and `` $`e + (n - i) \le k`$ ``. |
 | **alphabet (`` $`\Sigma`$ ``)** | The set of symbols. duallity works per Unicode scalar (`char`), so `` $`\Sigma \subseteq \texttt{char}`$ ``. |
 | **arctic semiring** | The max-plus semiring `` $`(\mathbb{R} \cup \{-\infty\},\ \max,\ +,\ -\infty,\ 0)`$ ``; the fzf kind scores in it (higher is better) and its resource advertises `VtWeightDomain::ArcticF64`, in contrast to the tropical (min-plus) kinds. |

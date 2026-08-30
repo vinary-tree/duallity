@@ -11,11 +11,11 @@
     "Duallity::GeneratedAbi": "lib/Duallity/GeneratedAbi.rakumod"
   },
   "depends": [
+    "Lling-Llang:ver<4.0.0.rc.5>:auth<zef:vinary-tree>",
     "Vinary-Tree-Interop:ver<4.0.0.rc.5>:auth<zef:vinary-tree>"
   ],
   "test-depends": [
     "Libdictenstein:ver<4.0.0.rc.5>:auth<zef:vinary-tree>",
-    "Lling-Llang:ver<4.0.0.rc.5>:auth<zef:vinary-tree>",
     "Test"
   ],
   "tags": [

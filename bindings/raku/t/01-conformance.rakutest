@@ -88,7 +88,7 @@ is-deeply language($graph), Map.new(cat => 0e0, cot => 1e0),
     'adapter retains the query-start dictionary revision';
 
 my $mapper = ComposerFixture::mapper;
-my $product = ComposerFixture::product($graph, $mapper);
+my $product = product-automaton($graph, $mapper);
 my $snapshot = $product.snapshot;
 $product.close;
 $graph.close;
@@ -98,5 +98,17 @@ is-deeply language($snapshot), Map.new(CAT => 0e0, COT => 1e0),
 is $snapshot.start, 0, 'composed snapshot remains live after source close';
 $snapshot.close;
 $dictionary.close;
+
+my $first = ComposerFixture::mapper;
+my $second = ComposerFixture::mapper;
+my $third = ComposerFixture::mapper;
+my $triple = product-automaton($first, $second, $third);
+ok $triple.start >= 0, 'multi-input product owns its composed frontier';
+ok $first.start >= 0 && $second.start >= 0 && $third.start >= 0,
+    'product construction leaves caller-owned inputs open';
+$triple.close;
+$third.close;
+$second.close;
+$first.close;
 
 done-testing;

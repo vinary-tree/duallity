@@ -20,6 +20,10 @@ returns one independently owned lazy graph. C<$dictionary> is a Vinary Tree
 C<Resource> or C<Dictionary> implementing C<vt.dictionary.v1> with Unicode
 scalar units.
 
+=item C<product-automaton($first, $second, *@rest)> composes two or more
+query, normalization, grammar, or language-model WFSTs through lling-llang and
+returns one owned lazy product.
+
 =item C<Algorithm> provides C<STANDARD>, C<TRANSPOSITION>,
 C<MERGE-AND-SPLIT>, and C<DAMERAU-LEVENSHTEIN>.
 
@@ -44,8 +48,9 @@ $dictionary.close;
 
 Construction captures one immutable dictionary snapshot in constant time with
 respect to dictionary size. Closing or mutating the source cannot alter the
-graph. C<Lling::Llang::compose> retains both operands and expands only reachable
-product states. Close every returned graph deterministically.
+graph. C<product-automaton> retains caller-owned operands, closes internal
+intermediate products eagerly, and expands only reachable product states.
+Close its returned graph deterministically; the original operands remain open.
 
 =head1 Failure, concurrency, and security
 

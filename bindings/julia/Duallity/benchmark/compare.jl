@@ -19,5 +19,17 @@ end
 
 println("iterations=$iterations total_seconds=$elapsed ns_per_adapter=",
     elapsed * 1e9 / iterations)
+
+left = wfst(view, "candidate-5000"; maximum_distance=2)
+right = wfst(view, "candidate-5001"; maximum_distance=2)
+product_elapsed = @elapsed for _ in 1:iterations
+    product = product_automaton(left, right)
+    VTI.start(product)
+    close(product)
+end
+println("iterations=$iterations total_seconds=$product_elapsed ns_per_product=",
+    product_elapsed * 1e9 / iterations)
+close(right)
+close(left)
 close(view)
 close(dictionary)

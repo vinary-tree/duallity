@@ -1,6 +1,7 @@
 module Duallity
 
 using Libdl
+import LlingLlang
 import VinaryTreeInterop
 
 const VTI = VinaryTreeInterop
@@ -21,6 +22,7 @@ export ABI_VERSION,
     abi_version,
     api_revision,
     wfst,
+    product_automaton,
     ALGORITHM_STANDARD,
     ALGORITHM_TRANSPOSITION,
     ALGORITHM_MERGE_AND_SPLIT,
@@ -136,6 +138,30 @@ function wfst(dictionary::Union{VTI.Resource,VTI.Dictionary},
         adopted_wfst(output[])
     finally
         ccall(native(:duallity_wfst_free), Cvoid, (Ptr{Cvoid},), output[])
+    end
+end
+
+"""
+    product_automaton(first, second, rest...)
+
+Compose two or more WFST resources lazily through lling-llang and return one
+owned product automaton. Caller-owned inputs remain open. For three or more
+inputs, each temporary product is closed immediately after the next product
+has retained its state.
+"""
+function product_automaton(first, second, rest...)
+    current = LlingLlang.compose(first, second)
+    completed = false
+    try
+        for operand in rest
+            next = LlingLlang.compose(current, operand)
+            close(current)
+            current = next
+        end
+        completed = true
+        current
+    finally
+        completed || close(current)
     end
 end
 

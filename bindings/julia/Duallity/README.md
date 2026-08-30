@@ -69,7 +69,7 @@ for character in ['a', 'c', 'o', 't']
 end
 uppercase_graph = LL.build!(mapper)
 
-product = LL.compose(graph, uppercase_graph)
+product = product_automaton(graph, uppercase_graph)
 try
     first_page = VTI.arcs(product, VTI.start(product))
 finally
@@ -77,6 +77,10 @@ finally
     close(uppercase_graph)
 end
 ```
+
+Pass additional WFSTs to construct a larger product in one call. Duallity
+leaves caller-owned operands open, closes internal intermediate products as
+soon as the next product retains them, and returns one owned graph.
 
 ### Algorithms and adapter kinds
 

@@ -54,10 +54,14 @@ for <a c o t> -> $character {
     $mapper.add-arc($state, $character, $character.uc, $state);
 }
 my $uppercase = $mapper.build;
-my $product = compose($graph, $uppercase);
+my $product = product-automaton($graph, $uppercase);
 $product.close;
 $uppercase.close;
 ```
+
+Additional operands build a larger lazy product in the same call. Duallity
+leaves caller-owned inputs open, closes intermediate products eagerly, and
+returns one owned C<Wfst>.
 
 ### Complete selector surface
 

@@ -88,7 +88,7 @@ end
     @test language(graph) == Dict("cat" => 0.0, "cot" => 1.0)
 
     mapper = case_mapper(['a', 'c', 'o', 't'])
-    product = LL.compose(graph, mapper)
+    product = product_automaton(graph, mapper)
     snapshot = VTI.snapshot(product)
     close(product)
     close(graph)
@@ -96,6 +96,24 @@ end
     @test language(snapshot) == Dict("CAT" => 0.0, "COT" => 1.0)
     close(snapshot)
     close(dictionary)
+end
+
+@testset "multi-input product preserves caller ownership" begin
+    first = case_mapper(['a', 'b'])
+    second = case_mapper(['A', 'B'])
+    third = case_mapper(['A', 'B'])
+    product = product_automaton(first, second, third)
+    try
+        @test length(VTI.arcs(product, VTI.start(product))) == 2
+        @test VTI.start(first) >= 0
+        @test VTI.start(second) >= 0
+        @test VTI.start(third) >= 0
+    finally
+        close(product)
+        close(third)
+        close(second)
+        close(first)
+    end
 end
 
 @testset "argument and ownership failures" begin

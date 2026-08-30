@@ -704,14 +704,30 @@ def check_julia_raku(report: Report, model: dict) -> None:
 
     julia_project = tomllib.loads(julia_project_text)
     raku_meta = json.loads(raku_meta_text)
+    julia_dependencies = julia_project.get("deps", {})
+    julia_compat = julia_project.get("compat", {})
+    julia_extras = julia_project.get("extras", {})
+    julia_targets = julia_project.get("targets", {})
+    julia_graph_ok = (
+        julia_dependencies.get("LlingLlang")
+        == "c0d6310b-ae37-4a72-96a5-37e0f0aef4be"
+        and julia_dependencies.get("VinaryTreeInterop")
+        == "8d6503e5-4d65-4bd8-a8ee-293a0149584e"
+        and julia_compat.get("LlingLlang") == "4"
+        and julia_compat.get("VinaryTreeInterop") == "4"
+        and julia_extras.get("Libdictenstein")
+        == "bafc558c-9074-40dc-b084-d73291979eb7"
+        and set(julia_targets.get("test", [])) == {"Libdictenstein", "Test"}
+    )
     if (
         julia_project.get("name") == model["packages"]["julia"]
         and julia_project.get("version") == version
+        and julia_graph_ok
     ):
         report.add(
             "JR-1-julia-project",
             True,
-            f"Julia package {julia_project['name']} is version {version}",
+            f"Julia package {julia_project['name']} and product dependencies are {version}",
         )
     else:
         report.add(
@@ -721,11 +737,11 @@ def check_julia_raku(report: Report, model: dict) -> None:
         )
     raku_family_version = version.replace("-rc.", ".rc.")
     raku_dependencies = {
+        f"Lling-Llang:ver<{raku_family_version}>:auth<zef:vinary-tree>",
         f"Vinary-Tree-Interop:ver<{raku_family_version}>:auth<zef:vinary-tree>"
     }
     raku_test_dependencies = {
         f"Libdictenstein:ver<{raku_family_version}>:auth<zef:vinary-tree>",
-        f"Lling-Llang:ver<{raku_family_version}>:auth<zef:vinary-tree>",
         "Test",
     }
     if (

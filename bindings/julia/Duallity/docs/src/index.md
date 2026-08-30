@@ -7,6 +7,10 @@ materializing the accepted language. The package
 defines the nine adapter kinds, four edit algorithms, ownership, composition,
 concurrency, security, and executable examples.
 
+Use `product_automaton(first, second, rest...)` to join multiple query,
+normalization, grammar, or language-model WFSTs through lling-llang while
+keeping caller-owned operands open.
+
 ## Public API
 
 ```@autodocs

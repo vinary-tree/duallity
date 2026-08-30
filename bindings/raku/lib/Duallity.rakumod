@@ -54,6 +54,14 @@ module InteropAccess {
     our sub wrap(Resource:D $resource --> Wfst:D) { wfst($resource, :take) }
 }
 
+module CompositionAccess {
+    use Lling::Llang;
+
+    our sub product(Mu:D $first, Mu:D $second --> Mu:D) {
+        compose($first, $second)
+    }
+}
+
 class X::Duallity is Exception {
     has Status:D $.status is required;
     has Str:D $.operation is required;
@@ -143,6 +151,28 @@ sub wfst(
     ), 'wfst-new');
     LEAVE duallity-wfst-free($output);
     adopt-wfst($output)
+}
+
+sub product-automaton(
+    InteropAccess::WfstType:D $first,
+    InteropAccess::WfstType:D $second,
+    *@rest,
+    --> InteropAccess::WfstType:D
+) is export {
+    my InteropAccess::WfstType $current;
+    my Bool $completed = False;
+    LEAVE $current.close if $current.defined && !$completed;
+
+    $current = CompositionAccess::product($first, $second);
+    for @rest -> $operand {
+        die 'every product operand must be a Wfst resource'
+            unless $operand ~~ InteropAccess::WfstType:D;
+        my $next = CompositionAccess::product($current, $operand);
+        $current.close;
+        $current = $next;
+    }
+    $completed = True;
+    $current
 }
 
 INIT {

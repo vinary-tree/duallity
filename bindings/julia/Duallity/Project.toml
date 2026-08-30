@@ -5,16 +5,17 @@ version = "4.0.0-rc.5"
 
 [deps]
 Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
+LlingLlang = "c0d6310b-ae37-4a72-96a5-37e0f0aef4be"
 VinaryTreeInterop = "8d6503e5-4d65-4bd8-a8ee-293a0149584e"
 
 [compat]
+LlingLlang = "4"
 VinaryTreeInterop = "4"
 julia = "1.10"
 
 [extras]
 Libdictenstein = "bafc558c-9074-40dc-b084-d73291979eb7"
-LlingLlang = "c0d6310b-ae37-4a72-96a5-37e0f0aef4be"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Libdictenstein", "LlingLlang", "Test"]
+test = ["Libdictenstein", "Test"]

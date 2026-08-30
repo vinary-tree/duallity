@@ -719,17 +719,32 @@ def check_julia_raku(report: Report, model: dict) -> None:
             False,
             f"Julia identity/version drift: {julia_project.get('name')} {julia_project.get('version')}",
         )
-    if raku_meta.get("name") == model["packages"]["zef"] and raku_meta.get(
-        "version"
-    ) == version:
+    raku_family_version = version.replace("-rc.", ".rc.")
+    raku_dependencies = {
+        f"Vinary-Tree-Interop:ver<{raku_family_version}>:auth<zef:vinary-tree>"
+    }
+    raku_test_dependencies = {
+        f"Libdictenstein:ver<{raku_family_version}>:auth<zef:vinary-tree>",
+        f"Lling-Llang:ver<{raku_family_version}>:auth<zef:vinary-tree>",
+        "Test",
+    }
+    if (
+        raku_meta.get("name") == model["packages"]["zef"]
+        and raku_meta.get("version") == version
+        and set(raku_meta.get("depends", [])) == raku_dependencies
+        and set(raku_meta.get("test-depends", [])) == raku_test_dependencies
+    ):
         report.add(
-            "JR-2-raku-meta", True, f"Raku package {raku_meta['name']} is version {version}"
+            "JR-2-raku-meta",
+            True,
+            f"Raku package {raku_meta['name']} and coordinated pins are {version}",
         )
     else:
         report.add(
             "JR-2-raku-meta",
             False,
-            f"Raku identity/version drift: {raku_meta.get('name')} {raku_meta.get('version')}",
+            "Raku identity, version, or coordinated dependency pins drifted: "
+            f"{raku_meta.get('name')} {raku_meta.get('version')}",
         )
 
     abi = int(model["abiVersion"])
@@ -764,9 +779,7 @@ def check_julia_raku(report: Report, model: dict) -> None:
         "duallity_wfst_free",
         "duallity_wfst_resource",
     }
-    raku_required = (julia_required - {"duallity_wfst_new"}) | {
-        "duallity_wfst_new_ref"
-    }
+    raku_required = (julia_required - {"duallity_wfst_new"}) | {"duallity_wfst_new_ref"}
     julia_ok = julia_symbols == julia_required and julia_symbols <= modeled
     raku_ok = raku_symbols == raku_required and raku_symbols <= modeled
     report.add(
@@ -793,14 +806,20 @@ def check_julia_raku(report: Report, model: dict) -> None:
                 "wfstKind": f"WFST_{name}",
             }[enum_name]
             raku_name = name.replace("_", "-")
-            if not re.search(rf"\b{re.escape(julia_name)}\s*=\s*{value}\b", julia_generated):
+            if not re.search(
+                rf"\b{re.escape(julia_name)}\s*=\s*{value}\b", julia_generated
+            ):
                 missing.append(f"Julia:{julia_name}={value}")
-            if not re.search(rf"\b{re.escape(raku_name)}\s*=>\s*{value}\b", raku_generated):
+            if not re.search(
+                rf"\b{re.escape(raku_name)}\s*=>\s*{value}\b", raku_generated
+            ):
                 missing.append(f"Raku:{raku_name}={value}")
         report.add(
             check_id,
             not missing,
-            f"{len(values)} {enum_name} values agree" if not missing else f"enum drift: {missing}",
+            f"{len(values)} {enum_name} values agree"
+            if not missing
+            else f"enum drift: {missing}",
         )
 
 

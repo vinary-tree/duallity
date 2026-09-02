@@ -1,7 +1,7 @@
 {
   "name": "@vinary-tree/duallity",
   "version": "4.0.0-rc.6",
-  "description": "Modular JavaScript, TypeScript, and ClojureScript bindings for duallity",
+  "description": "Turn fuzzy dictionary queries into lazy weighted transducers that compose with phonetic rewrites, grammars, language models, and custom lling-llang pipelines.",
   "author": {
     "name": "Dylon Edwards",
     "email": "dylon.devo@gmail.com"

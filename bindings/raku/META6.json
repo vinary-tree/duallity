@@ -1,7 +1,7 @@
 {
   "name": "Duallity",
   "version": "4.0.0-rc.6",
-  "description": "Composable fuzzy-query automata over Vinary Tree dictionaries",
+  "description": "Turn fuzzy dictionary queries into lazy weighted transducers that compose with phonetic rewrites, grammars, language models, and custom lling-llang pipelines.",
   "auth": "zef:vinary-tree",
   "api": "1",
   "license": "Apache-2.0",

@@ -5,11 +5,17 @@
   "coordinates": {
     "npmPackage": "@vinary-tree/duallity"
   },
+  "metadata": {
+    "summary": "Compose fuzzy dictionary search with phonetics, grammars, and language models",
+    "description": "Turn fuzzy dictionary queries into lazy weighted transducers that compose with phonetic rewrites, grammars, language models, and custom lling-llang pipelines."
+  },
   "registries": {
     "cargo": "4.0.0-rc.6",
     "cmake": "4.0.0-rc.6",
+    "julia": "4.0.0-rc.6",
     "npm": "4.0.0-rc.6",
-    "pkgConfig": "4.0.0-rc.6"
+    "pkgConfig": "4.0.0-rc.6",
+    "zef": "4.0.0-rc.6"
   },
   "dependencies": {
     "duallity": "4.0.0-rc.6",

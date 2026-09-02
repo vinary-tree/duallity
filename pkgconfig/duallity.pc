@@ -4,7 +4,7 @@ libdir=${prefix}/lib
 includedir=${prefix}/include
 
 Name: duallity
-Description: Lazy dictionary-backed edit and phonetic WFST adapters
+Description: Compose fuzzy dictionary search with phonetics, grammars, and language models
 Version: 4.0.0-rc.6
 Requires: vinary-tree-interop = 4.0.0-rc.6
 Libs: -L${libdir} -lduallity

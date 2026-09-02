@@ -101,13 +101,20 @@ def write_versions(model: dict[str, object]) -> None:
     canonical = str(model["canonical"])
     component = str(model["component"])
     coordinates = model["coordinates"]
+    metadata = model["metadata"]
     deps = model["dependencies"]
     publication = model["publication"]
     assert isinstance(coordinates, dict)
+    assert isinstance(metadata, dict)
     assert isinstance(deps, dict)
     assert isinstance(publication, dict)
     npm_package = str(coordinates["npmPackage"])
     replace("Cargo.toml", r'^version = "[^"]+"$', f'version = "{canonical}"')
+    replace(
+        "Cargo.toml",
+        r'^description = "[^"]+"$',
+        f'description = "{metadata["description"]}"',
+    )
     for name in ("liblevenshtein", "libdictenstein", "lling-llang", "llattice"):
         if name in deps and re.search(
             rf"^{re.escape(name)} = ", (ROOT / "Cargo.toml").read_text(), re.MULTILINE
@@ -132,6 +139,7 @@ def write_versions(model: dict[str, object]) -> None:
         )
 
     def api(value: dict) -> None:
+        value["productDescription"] = metadata["description"]
         value["packages"]["npm"] = npm_package
         value["interop"]["npm"] = NPM_INTEROP_PACKAGE
         value["packageVersion"] = canonical
@@ -155,6 +163,7 @@ def write_versions(model: dict[str, object]) -> None:
     def npm(value: dict) -> None:
         value["name"] = npm_package
         value["version"] = canonical
+        value["description"] = metadata["description"]
         value["dependencies"] = {
             NPM_INTEROP_PACKAGE: deps[NPM_INTEROP_PACKAGE],
             NPM_RUNTIME_PACKAGE: deps[NPM_RUNTIME_PACKAGE],
@@ -171,6 +180,7 @@ def write_versions(model: dict[str, object]) -> None:
     def raku(value: dict) -> None:
         value["name"] = "Duallity"
         value["version"] = canonical
+        value["description"] = metadata["description"]
         value["depends"] = [
             raku_dependency("Vinary-Tree-Interop", str(deps["vinary-tree-interop"]))
         ]
@@ -224,6 +234,11 @@ def write_versions(model: dict[str, object]) -> None:
     replace(f"pkgconfig/{component}.pc", r"^Version: \S+$", f"Version: {canonical}")
     replace(
         f"pkgconfig/{component}.pc",
+        r"^Description: .+$",
+        f"Description: {metadata['summary']}",
+    )
+    replace(
+        f"pkgconfig/{component}.pc",
         r"^Requires: vinary-tree-interop (?:>=|=) \S+$",
         f"Requires: vinary-tree-interop = {deps['vinary-tree-interop']}",
     )
@@ -238,10 +253,17 @@ def validate(model: dict[str, object]) -> list[str]:
     canonical = str(model["canonical"])
     component = str(model["component"])
     coordinates = model.get("coordinates")
+    metadata = model.get("metadata")
     deps = model["dependencies"]
     publication = model.get("publication")
     if coordinates != {"npmPackage": NPM_PACKAGE}:
         failures.append(f"npm package coordinate must be exactly {NPM_PACKAGE}")
+    expected_metadata = {
+        "summary": "Compose fuzzy dictionary search with phonetics, grammars, and language models",
+        "description": "Turn fuzzy dictionary queries into lazy weighted transducers that compose with phonetic rewrites, grammars, language models, and custom lling-llang pipelines.",
+    }
+    if metadata != expected_metadata:
+        failures.append("canonical package metadata is missing or has drifted")
     if not isinstance(publication, dict):
         failures.append("publication model is missing")
         publication = {}
@@ -295,8 +317,10 @@ def validate(model: dict[str, object]) -> list[str]:
     expected_registries = {
         "cargo": canonical,
         "cmake": canonical,
+        "julia": canonical,
         "npm": canonical,
         "pkgConfig": canonical,
+        "zef": canonical,
     }
     if model.get("registries") != expected_registries:
         failures.append(
@@ -306,6 +330,12 @@ def validate(model: dict[str, object]) -> list[str]:
     package_match = re.search(r'^version = "([^"]+)"$', cargo, re.MULTILINE)
     if not package_match or package_match.group(1) != canonical:
         failures.append("Cargo package version is stale")
+    cargo_description = re.search(r'^description = "([^"]+)"$', cargo, re.MULTILINE)
+    if (
+        not cargo_description
+        or cargo_description.group(1) != expected_metadata["description"]
+    ):
+        failures.append("Cargo package description is stale")
     cargo_lock = (ROOT / "Cargo.lock").read_text(encoding="utf-8")
     for package, version in {
         "duallity": canonical,
@@ -323,6 +353,7 @@ def validate(model: dict[str, object]) -> list[str]:
     api = json.loads((ROOT / "bindings/api.json").read_text(encoding="utf-8"))
     if (
         api.get("packageVersion") != canonical
+        or api.get("productDescription") != expected_metadata["description"]
         or api.get("javascript", {}).get("version") != canonical
         or api.get("packages", {}).get("npm") != NPM_PACKAGE
         or api.get("javascript", {}).get("package") != NPM_PACKAGE
@@ -338,6 +369,7 @@ def validate(model: dict[str, object]) -> list[str]:
     if (
         package.get("name") != NPM_PACKAGE
         or package.get("version") != canonical
+        or package.get("description") != expected_metadata["description"]
         or package.get("publishConfig", {}).get("tag") != "next"
         or package.get("dependencies") != expected_npm_dependencies
     ):
@@ -345,7 +377,10 @@ def validate(model: dict[str, object]) -> list[str]:
     julia = tomllib.loads(
         (ROOT / "bindings/julia/Duallity/Project.toml").read_text(encoding="utf-8")
     )
-    if julia.get("name") != "Duallity" or julia.get("version") != canonical:
+    if (
+        julia.get("name") != "Duallity"
+        or julia.get("version") != expected_registries["julia"]
+    ):
         failures.append("Julia package release identity is stale")
     raku = json.loads((ROOT / "bindings/raku/META6.json").read_text(encoding="utf-8"))
     expected_raku_dependencies = [
@@ -358,7 +393,8 @@ def validate(model: dict[str, object]) -> list[str]:
     ]
     if (
         raku.get("name") != "Duallity"
-        or raku.get("version") != canonical
+        or raku.get("version") != expected_registries["zef"]
+        or raku.get("description") != expected_metadata["description"]
         or raku.get("depends") != expected_raku_dependencies
         or raku.get("test-depends") != expected_raku_test_dependencies
     ):
@@ -396,6 +432,9 @@ def validate(model: dict[str, object]) -> list[str]:
         )
         if not match or match.group(1) != canonical:
             failures.append(f"{name} version is stale")
+    pkgconfig = (ROOT / f"pkgconfig/{component}.pc").read_text(encoding="utf-8")
+    if f"Description: {expected_metadata['summary']}" not in pkgconfig:
+        failures.append("pkg-config description is stale")
     return failures
 
 

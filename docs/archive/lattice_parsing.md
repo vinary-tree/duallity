@@ -50,7 +50,7 @@ Candidates: ["the cat don't like me",
 
 Parsing each candidate individually with a CFG (Tier 2) for grammatical correction would be prohibitively expensive:
 
-- **100 candidates × O(n³) parsing = Wasteful redundancy**
+- **100 candidates × $`\mathcal{O}(n^{3})`$ parsing = Wasteful redundancy**
 - Most candidates share prefixes like "the cat"
 - Reparsing "the cat" 100 times is inefficient
 
@@ -74,7 +74,7 @@ Key papers:
 
 ### Concrete Example
 
-Consider correcting "teh cat" with Levenshtein distance ≤ 1:
+Consider correcting "teh cat" with Levenshtein distance $`\le 1`$:
 
 ```
 FST Input:  "teh cat"
@@ -117,9 +117,9 @@ If we parse each candidate individually:
 - "cat" is parsed **3 times** (candidates 1, 4, 7)
 - etc.
 
-**Total parsing work**: 9 × O(2³) = 9 × O(8) = O(72) operations
+**Total parsing work**: 9 × $`\mathcal{O}(2^{3})`$ = 9 × $`\mathcal{O}(8)`$ = $`\mathcal{O}(72)`$ operations
 
-With lattice parsing: **O(6) operations** (parse each unique word once)
+With lattice parsing: **$`\mathcal{O}(6)`$ operations** (parse each unique word once)
 
 ### Why Not Just Deduplicate?
 
@@ -164,10 +164,10 @@ Node 2: END
 
 **Definition**: A lattice L = (V, E, w, s, t) consists of:
 - V = {v₀, v₁, ..., vₙ} = set of nodes (positions)
-- E ⊆ V × V = set of directed edges
-- w: E → Σ* = edge labeling function (assigns word to each edge)
-- s ∈ V = unique start node
-- t ∈ V = unique terminal node
+- $`E \subseteq V \times V`$ = set of directed edges
+- $`w : E \to \Sigma^{\ast}`$ = edge-labeling function (assigns a word to each edge)
+- $`s \in V`$ = unique start node
+- $`t \in V`$ = unique terminal node
 
 **Properties**:
 - **Acyclic**: No directed cycles (ensures finite parsing)
@@ -176,7 +176,7 @@ Node 2: END
 
 ### Path Enumeration
 
-Each path π = (s, v₁, e₁, v₂, e₂, ..., eₖ, t) from start to end represents a candidate sentence:
+Each path $`\pi = (s, v_1, e_1, v_2, e_2, \ldots, e_k, t)`$ from start to end represents a candidate sentence:
 
 ```
 sentence(π) = w(e₁) · w(e₂) · ... · w(eₖ)
@@ -199,10 +199,10 @@ Path 4: START →[tea]→ Node1 →[cat]→ END  ⇒ "tea cat"
 | Lattice | 6 edges | None (each word stored 1×) |
 
 For N words with K corrections each:
-- String list: **O(Kᴺ × N)** space
-- Lattice: **O(K × N)** space
+- String list: **$`\mathcal{O}(K^{N} \times N)`$** space
+- Lattice: **$`\mathcal{O}(K \times N)`$** space
 
-**Space savings**: Exponential reduction from O(Kᴺ) to O(KN)
+**Space savings**: Exponential reduction from $`\mathcal{O}(K^{N})`$ to $`\mathcal{O}(KN)`$
 
 ---
 
@@ -212,11 +212,11 @@ For N words with K corrections each:
 
 #### Context-Free Grammars (CFG)
 
-A CFG G = (N, Σ, P, S) consists of:
+A CFG $`G = (N, \Sigma, P, S)`$ consists of:
 - N = set of non-terminals {S, NP, VP, ...}
-- Σ = set of terminals (words) {the, cat, likes, ...}
+- $`\Sigma = \{\texttt{the}, \texttt{cat}, \texttt{likes}, \ldots\}`$ = set of terminals (words)
 - P = set of production rules {S → NP VP, NP → Det N, ...}
-- S ∈ N = start symbol
+- $`S \in N`$ = start symbol
 
 **String derivation**: S ⇒* w means string w can be derived from S
 
@@ -224,7 +224,7 @@ A CFG G = (N, Σ, P, S) consists of:
 
 **Traditional string parsing**: Given G and string w, determine if S ⇒* w
 
-**Lattice parsing**: Given G and lattice L, determine which paths π in L satisfy S ⇒* sentence(π)
+**Lattice parsing**: Given $`G`$ and lattice $`L`$, determine which paths $`\pi`$ in $`L`$ satisfy $`S \Rightarrow^{\ast} \mathrm{sentence}(\pi)`$.
 
 ### Lattice as Finite Automaton
 
@@ -239,7 +239,7 @@ L_NFA = (Q, Σ, δ, q₀, F)
   F = {t} (accept states)
 ```
 
-**Language of lattice**: L(L_NFA) = {sentence(π) | π is path from s to t}
+**Language of lattice**: $`L(L_{\mathrm{NFA}}) = \{\mathrm{sentence}(\pi) \mid \pi \text{ is a path from } s \text{ to } t\}`$
 
 This view connects lattice parsing to automata-theoretic techniques.
 
@@ -248,25 +248,25 @@ This view connects lattice parsing to automata-theoretic techniques.
 #### String Parsing (Earley/CYK)
 
 For string w of length n:
-- **Earley parser**: O(n³) worst case, O(n²) average for unambiguous grammars
-- **CYK parser**: O(n³ |G|) where |G| = grammar size
+- **Earley parser**: $`\mathcal{O}(n^{3})`$ worst case, $`\mathcal{O}(n^{2})`$ average for unambiguous grammars
+- **CYK parser**: $`\mathcal{O}(n^{3} \lvert G \rvert)`$ where |G| = grammar size
 
 #### Lattice Parsing
 
 For lattice L = (V, E, w, s, t):
-- **Nodes**: |V| = O(n) where n = average path length
-- **Edges**: |E| = O(K × n) where K = branching factor
-- **Parsing complexity**: O(|V| + |E|) × O(n²) = **O(n³)** (same as single string!)
+- **Nodes**: |V| = $`\mathcal{O}(n)`$ where n = average path length
+- **Edges**: |E| = $`\mathcal{O}(K \times n)`$ where K = branching factor
+- **Parsing complexity**: $`\mathcal{O}(\lvert V \rvert + \lvert E \rvert)`$ × $`\mathcal{O}(n^{2})`$ = **$`\mathcal{O}(n^{3})`$** (same as single string!)
 
 **Key insight**: Lattice parsing has same asymptotic complexity as string parsing, but with **much better constant factors** due to memoization.
 
 #### Speedup Factor
 
 For K corrections per word over n words:
-- String enumeration: **O(Kⁿ × n³)** (parse Kⁿ strings)
-- Lattice parsing: **O(Kn × n²)** (parse one lattice)
+- String enumeration: **$`\mathcal{O}(K^{n} \times n^{3})`$** (parse Kⁿ strings)
+- Lattice parsing: **$`\mathcal{O}(Kn \times n^{2})`$** (parse one lattice)
 
-**Speedup**: O(Kⁿ × n³) / O(Kn × n²) = **O(Kⁿ⁻¹ × n)** (exponential!)
+**Speedup**: $`\mathcal{O}(K^{n} \times n^{3})`$ / $`\mathcal{O}(Kn \times n^{2})`$ = **$`\mathcal{O}(K^{n-1} \times n)`$** (exponential!)
 
 Practical measurements: **3-10× speedup** on real-world lattices with K=5-10, n=5-15
 
@@ -358,11 +358,11 @@ START──[the]──┬──[small]──┬──[cat]──END
 Paths: 2 ("the cat", "the small cat")
 ```
 
-**Epsilon (ε) edges**: Represent word insertions/deletions (empty transitions).
+**Epsilon ($`\varepsilon`$) edges**: Represent word insertions/deletions (empty transitions).
 
 ### Example 7: Realistic FST Output
 
-Input: "teh cat dont lik me" after FST correction (distance ≤ 1)
+Input: "teh cat dont lik me" after FST correction (distance $`\le 1`$)
 
 ```
        ┌──[the]─┐        ┌──[don't]──┐        ┌──[like]─┐
@@ -380,7 +380,7 @@ Edges: 3 + 1 + 3 + 1 + 3 + 1 = 12
 
 ### Key Observations
 
-1. **Linear growth**: Edges grow as O(K × n), not O(Kⁿ)
+1. **Linear growth**: Edges grow as $`\mathcal{O}(K \times n)`$, not $`\mathcal{O}(K^{n})`$
 2. **Shared prefixes**: Common prefixes parsed once
 3. **Shared suffixes**: Common suffixes parsed once
 4. **Natural representation**: Lattice directly represents FST output structure
@@ -400,8 +400,8 @@ The standard **Earley parser** can be adapted for lattice parsing with two key m
 
 #### Data Structures
 
-**Earley state**: `[A → α • β, i, j]`
-- A → α β is a grammar rule
+**Earley state**: $`[A \to \alpha \mathbin{\bullet} \beta, i, j]`$
+- $`A \to \alpha\beta`$ is a grammar rule
 - • (dot) marks current parse position
 - i = start position in input
 - j = current position in input
@@ -448,7 +448,7 @@ Chart[2]: [N → "cat" •, 1, 2]          (Scan "cat")
 
 #### Modified Data Structures
 
-**Lattice Earley state**: `[A → α • β, v_i, v_j]`
+**Lattice Earley state**: $`[A \to \alpha \mathbin{\bullet} \beta, v_i, v_j]`$
 - v_i = start node in lattice
 - v_j = current node in lattice
 
@@ -960,7 +960,7 @@ impl PruningEarleyParser {
 **Test corpus**: 1000 sentences from real user queries with typos
 
 **FST configuration**:
-- Levenshtein distance ≤ 2
+- Levenshtein distance $`\le 2`$
 - Dictionary: 100,000 words
 - Phonetic patterns: 50 rules
 
@@ -1035,7 +1035,7 @@ impl PruningEarleyParser {
 
 Misspelled: **"teh cat sit"**
 
-Corrections (distance ≤ 1):
+Corrections (distance $`\le 1`$):
 - "teh" → ["the", "tea", "ten"]
 - "cat" → ["cat", "can", "car"]
 - "sit" → ["sit", "sat", "set"]
@@ -1251,7 +1251,7 @@ fn path_count_dp(lattice: &Lattice) -> usize {
 }
 ```
 
-**Complexity**: O(|V| + |E|) - linear, not exponential!
+**Complexity**: $`\mathcal{O}(\lvert V \rvert + \lvert E \rvert)`$ - linear, not exponential!
 
 ### Lattice Builder
 
@@ -1453,9 +1453,9 @@ impl<'a> TransducerQuery<'a> {
 
 Lattice parsing is a fundamental technique for efficient grammatical error correction in the liblevenshtein-rust three-tier architecture. By representing the exponential space of spelling correction candidates as a compact DAG, we achieve:
 
-- **Linear space complexity**: O(K × n) instead of O(K^n)
+- **Linear space complexity**: $`\mathcal{O}(K \times n)`$ instead of $`\mathcal{O}(K^n)`$
 - **3-10× practical speedup** via memoization
-- **Same asymptotic parsing complexity**: O(n³) as single-string parsing
+- **Same asymptotic parsing complexity**: $`\mathcal{O}(n^{3})`$ as single-string parsing
 - **Natural FST integration**: Lattice directly represents FST output structure
 
 The technique generalizes standard chart parsers (Earley, CYK) with minimal modifications:

@@ -22,10 +22,10 @@ Every diagram colors concepts identically so the reader builds one consistent me
 | **duallity** | the WFST adapters (this crate) | `#D6EAF8` (blue) |
 | **lling-llang** | the WFST algebra (`Wfst`, semirings, `compose`) | `#FCF3CF` (yellow) |
 | **output / results** | ranked corrections, matches | `#E8DAEF` (purple) |
-| **query side / input tape** | the misspelled input `` $`q`$ `` | `#FDEBD0` (warm orange) |
-| **dictionary side / output tape** | the candidate term `` $`w`$ `` | `#D1F2EB` (teal) |
+| **query side / input tape** | the misspelled input $`q`$ | `#FDEBD0` (warm orange) |
+| **dictionary side / output tape** | the candidate term $`w`$ | `#D1F2EB` (teal) |
 | **weight / cost** | tropical-weight annotations | `#EAECEE` (gray) |
-| **epsilon / free step** | epsilon transition (`` $`\bar{1} = 0`$ ``) | `#F2F3F4` (light gray, dashed) |
+| **epsilon / free step** | epsilon transition ($`\bar{1} = 0`$) | `#F2F3F4` (light gray, dashed) |
 | **final / accepting** | accepting state, final weight | `#F9E79F` (gold border) |
 
 Resource-ABI concepts (used in the binding and trust-boundary diagrams). These three hexes are
@@ -43,10 +43,10 @@ Operation edge colors (used in the edit-lattice and state diagrams):
 
 | Edit operation | Color | Cost |
 |---|---|---|
-| **match** | `#2ECC71` (green) | `` $`0`$ `` |
-| **substitute** | `#E74C3C` (red) | `` $`1`$ `` |
-| **insert** (epsilon on input tape) | `#3498DB` (blue) | `` $`1`$ `` |
-| **delete** (epsilon on output tape) | `#E67E22` (orange) | `` $`1`$ `` |
+| **match** | `#2ECC71` (green) | $`0`$ |
+| **substitute** | `#E74C3C` (red) | $`1`$ |
+| **insert** (epsilon on input tape) | `#3498DB` (blue) | $`1`$ |
+| **delete** (epsilon on output tape) | `#E67E22` (orange) | $`1`$ |
 
 ## Catalog
 

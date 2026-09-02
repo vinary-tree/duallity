@@ -7,8 +7,8 @@ transducer* you can fold into an lling-llang pipeline ([theory/04](../theory/04-
 
 <img src="../diagrams/composition-pipeline.svg" alt="A query and a dictionary become a Levenshtein WFST, composed with a downstream transducer, and searched by shortest path" width="820"/>
 
-The diagram traces the whole story below: the query `` $`q`$ `` (orange, input tape) and the dictionary
-`` $`D`$ `` (green) become a `LevenshteinWfst` (blue); `compose` (yellow) folds it against a downstream
+The diagram traces the whole story below: the query $`q`$ (orange, input tape) and the dictionary
+$`D`$ (green) become a `LevenshteinWfst` (blue); `compose` (yellow) folds it against a downstream
 transducer; and a shortest-path search reads out ranked corrections (purple).
 
 ---
@@ -37,14 +37,14 @@ let lev = LevenshteinWfst::new(&dict, "helo", 2);
 ```
 
 `lev` *is* a `Wfst<char, TropicalWeight>`. Its accepting paths are exactly the dictionary terms within
-edit distance `` $`k = 2`$ `` of `"helo"`, each weighted by its edit distance
+edit distance $`k = 2`$ of `"helo"`, each weighted by its edit distance
 ([theory/02](../theory/02-edit-distance-and-levenshtein-automata.md)). For this dictionary that set is:
 
 | Dictionary term | Edit from `"helo"` | Distance |
 |---|---|---|
-| `hello` | insert one `l` (`helo → hello`) | `` $`1`$ `` |
-| `help` | substitute `o → p` (`helo → help`) | `` $`1`$ `` |
-| `world` | four edits — outside the `` $`k = 2`$ `` band | excluded |
+| `hello` | insert one `l` ($`\texttt{helo} \to \texttt{hello}`$) | $`1`$ |
+| `help` | substitute $`\texttt{o} \to \texttt{p}`$ ($`\texttt{helo} \to \texttt{help}`$) | $`1`$ |
+| `world` | four edits — outside the $`k = 2`$ band | excluded |
 
 ### 2. Compose with a downstream transducer
 
@@ -54,7 +54,7 @@ dictionary side, teal) against the downstream stage's **input** tape, and sums t
 tropical semiring ([theory/04](../theory/04-composition.md)).
 
 Suppose `language_model` is a user-supplied `Wfst<char, TropicalWeight>` that relabels each term to
-itself and adds a unigram cost — say `hello` costs `` $`0.5`$ `` and `help` costs `` $`2.0`$ ``
+itself and adds a unigram cost — say `hello` costs $`0.5`$ and `help` costs $`2.0`$
 (`help` is the rarer word here). Then:
 
 ```rust,ignore
@@ -90,28 +90,28 @@ correction; see [theory/01 §3](../theory/01-semirings-and-wfsts.md)):
 ['h', 'e', 'l', 'o'] -> ['h', 'e', 'l', 'p']       (weight 3.0)
 ```
 
-- `hello`: edit distance `` $`1`$ `` `` $`+`$ `` language-model cost `` $`0.5`$ `` `` $`= 1.5`$ `` — the
+- `hello`: edit distance $`1`$ $`+`$ language-model cost $`0.5`$ $`= 1.5`$ — the
   top correction.
-- `help`: edit distance `` $`1`$ `` `` $`+`$ `` language-model cost `` $`2.0`$ `` `` $`= 3.0`$ ``.
+- `help`: edit distance $`1`$ $`+`$ language-model cost $`2.0`$ $`= 3.0`$.
 
 Swap in a different downstream stage and only the second summand changes; the edit distances are fixed
 by the Levenshtein automaton. That separation — a fuzzy geometry (edits) plus a domain score
-(the downstream) combined by one associative `` $`+`$ `` — is the point of modelling the matcher as a
+(the downstream) combined by one associative $`+`$ — is the point of modelling the matcher as a
 transducer.
 
 ---
 
 ## What the weights mean
 
-> **The weight is a tropical `` $`(\min, +)`$ `` cost — lower is better.** duallity works in the
-> **tropical semiring** `` $`\mathbb{T} = (\mathbb{R} \cup \{+\infty\},\ \min,\ +,\ +\infty,\ 0)`$ ``
-> ([theory/01](../theory/01-semirings-and-wfsts.md)). Weights *add* along a path (`` $`\otimes = +`$ ``)
-> and *minimize* across alternative paths (`` $`\oplus = \min`$ ``), so the weight of a correction is
+> **The weight is a tropical $`(\min, +)`$ cost — lower is better.** duallity works in the
+> **tropical semiring** $`\mathbb{T} = (\mathbb{R} \cup \{+\infty\},\ \min,\ +,\ +\infty,\ 0)`$
+> ([theory/01](../theory/01-semirings-and-wfsts.md)). Weights *add* along a path ($`\otimes = +`$)
+> and *minimize* across alternative paths ($`\oplus = \min`$), so the weight of a correction is
 > the sum of its per-stage costs and the best correction is the one of least total weight.
 >
-> **Mind the naming gotcha.** In lling-llang, `TropicalWeight::zero()` is the value **`` $`+\infty`$ ``**
-> (the additive identity `` $`\bar{0}`$ ``, meaning "no path / forbidden") and `TropicalWeight::one()`
-> is the value **`` $`0`$ ``** (the multiplicative identity `` $`\bar{1}`$ ``, "a free step"). The method
+> **Mind the naming gotcha.** In lling-llang, `TropicalWeight::zero()` is the value **$`+\infty`$**
+> (the additive identity $`\bar{0}`$, meaning "no path / forbidden") and `TropicalWeight::one()`
+> is the value **$`0`$** (the multiplicative identity $`\bar{1}`$, "a free step"). The method
 > names follow the *algebraic* role, not the numeric value
 > ([master notation](../theory/README.md#semirings-and-weights)). Read the numeric cost with
 > `weight.value()`.
@@ -125,7 +125,7 @@ transducer.
 > ([architecture/04](../architecture/04-lazy-evaluation-and-caching.md)). The **immutable** `Wfst`
 > accessors — `transitions(&self, s)`, `is_final(&self, s)`, `final_weight(&self, s)` — only *read the
 > cache*: for a state that has never been expanded they return an **empty slice**, **`false`**, and the
-> `` $`\bar{0} = +\infty`$ `` weight, respectively (`empty_char_transitions()` in the wrappers; the
+> $`\bar{0} = +\infty`$ weight, respectively (`empty_char_transitions()` in the wrappers; the
 > lling-llang source even comments that immutable access "requires mutable access in practice"). Drive
 > expansion first through the **mutable** `LazyWfst` surface:
 
@@ -177,7 +177,7 @@ assert_eq!(lev.max_distance(), 2usize);              // max_distance() -> usize
 ### Damerau–Levenshtein and OCR arities — `with_algorithm`
 
 `with_algorithm` selects the metric. Adjacent transposition (`Algorithm::Transposition`, for swaps like
-`tset → test`) and fixed OCR merge/split edits (`Algorithm::MergeAndSplit`) are available directly.
+$`\texttt{tset} \to \texttt{test}`$) and fixed OCR merge/split edits (`Algorithm::MergeAndSplit`) are available directly.
 
 ```rust,ignore
 use duallity::LevenshteinWfst;
@@ -190,7 +190,7 @@ let _lev = LevenshteinWfst::with_algorithm(&dict, "tset", 2, Algorithm::Transpos
 
 ### Rule-based phonetics — `RewriteWfst` (no feature needed)
 
-`RewriteWfst` applies literal rules like `ph → f` and composes in front of a Levenshtein matcher. Its
+`RewriteWfst` applies literal rules like $`\texttt{ph} \to \texttt{f}`$ and composes in front of a Levenshtein matcher. Its
 constructors return `Result<_, InvalidWeightError>` because rule costs are validated to be finite and
 non-negative.
 

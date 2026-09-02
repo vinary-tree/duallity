@@ -40,16 +40,16 @@ newly discovered children (a **write**). The protocol below is the shape of
 
 Presented as literate pseudocode (Knuth): the prose fixes the interface, the chunk gives the steps.
 
-- **Input.** a dictionary-node id `` $`d`$ ``, an automaton-state id `` $`a`$ ``, and the shared node
-  registry `` $`R`$ `` behind `Arc<RwLock>`.
-- **Output.** the triple `` $`(\textit{is\_final},\ \textit{final\_weight},\ \textit{transitions})`$ ``
-  for the product state `` $`(d, a)`$ ``.
-- **Invariant.** `` $`R`$ `` is **append-only**: once a `key → id` mapping exists it is never removed
+- **Input.** a dictionary-node id $`d`$, an automaton-state id $`a`$, and the shared node
+  registry $`R`$ behind `Arc<RwLock>`.
+- **Output.** the triple $`(\textit{is\_final},\ \textit{final\_weight},\ \textit{transitions})`$
+  for the product state $`(d, a)`$.
+- **Invariant.** $`R`$ is **append-only**: once a `key → id` mapping exists it is never removed
   or reassigned, and ids are dense and monotonically minted. Hence any id read under a read lock stays
-  valid for the life of the WFST, and a concurrent writer can only *extend* `` $`R`$ ``, never
+  valid for the life of the WFST, and a concurrent writer can only *extend* $`R`$, never
   invalidate a prior reader's resolution.
 - **Complexity.** one read-lock acquisition + at most one write-lock acquisition per call; the write
-  lock is held only across the child-edge loop, `` $`O(\deg(d))`$ `` in the node's out-degree.
+  lock is held only across the child-edge loop, $`\mathcal{O}(\deg(d))`$ in the node's out-degree.
 
 ```text
 ⟨compute transitions for product state (d, a)⟩ ≡
@@ -77,7 +77,7 @@ Two properties make this cheap:
   is in the registry and every later visit is read-only (step 8's `register` short-circuits to the
   existing id). Under parallel query processing against a warm registry, contention approaches zero.
 - **The node is cloned, not borrowed across the write.** Step 4 releases the read lock before step 7
-  takes the write lock, so the crate never holds a read and a write guard on `` $`R`$ `` simultaneously
+  takes the write lock, so the crate never holds a read and a write guard on $`R`$ simultaneously
   — there is no lock-upgrade and no self-deadlock.
 
 ## 3. The lock lifecycle

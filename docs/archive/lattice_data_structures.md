@@ -342,12 +342,12 @@ edges: [Edge₀, Edge₁, ..., Edgeₘ]
        (src, tgt, label, weight)
 ```
 
-**Space complexity**: O(|V| + |E|)
+**Space complexity**: $`\mathcal{O}(\lvert V \rvert + \lvert E \rvert)`$
 
 **Access patterns**:
-- Forward traversal (following edges): O(1) via `node.outgoing`
-- Backward traversal (predecessors): O(1) via `node.incoming`
-- Random edge access: O(1) via `lattice.edge(edge_id)`
+- Forward traversal (following edges): $`\mathcal{O}(1)`$ via `node.outgoing`
+- Backward traversal (predecessors): $`\mathcal{O}(1)`$ via `node.incoming`
+- Random edge access: $`\mathcal{O}(1)`$ via `lattice.edge(edge_id)`
 
 ### Alternative: Adjacency Matrix
 
@@ -367,14 +367,14 @@ pub struct DenseLattice {
 }
 ```
 
-**Space complexity**: O(|V|²)
+**Space complexity**: $`\mathcal{O}(\lvert V \rvert^{2})`$
 
 **Trade-offs**:
-- Pro: O(1) edge existence check
+- Pro: $`\mathcal{O}(1)`$ edge existence check
 - Con: Wasteful for sparse graphs (typical K=5-10 branching factor)
 - Con: Poor cache locality
 
-**Recommendation**: Use adjacency list (Lattice) unless |E| ≈ |V|² (very dense)
+**Recommendation**: Use an adjacency list (Lattice) unless $`\lvert E \rvert \approx \lvert V \rvert^2`$ (very dense).
 
 ---
 
@@ -799,10 +799,10 @@ For a lattice with N nodes, E edges, K vocabulary size:
 
 | Structure | Size per Element | Total Size |
 |-----------|-----------------|------------|
-| `Node` | 8 + 2×8×avg_degree ≈ 40 bytes | O(N × D) |
-| `Edge` | 24 bytes (4×4 + metadata) | O(E) |
-| `Vocabulary` | K × avg_word_len | O(K × L) |
-| `Chart` | 16 + state_size × states | O(E × S) |
+| `Node` | $`8 + 2 \times 8 \times \texttt{avg\_degree} \approx 40`$ bytes | $`\mathcal{O}(N \times D)`$ |
+| `Edge` | 24 bytes (4×4 + metadata) | $`\mathcal{O}(E)`$ |
+| `Vocabulary` | K × avg_word_len | $`\mathcal{O}(K \times L)`$ |
+| `Chart` | 16 + state_size × states | $`\mathcal{O}(E \times S)`$ |
 
 Where:
 - D = average degree (typically 5-10)
@@ -826,7 +826,7 @@ Where:
 pub outgoing: SmallVec<[EdgeId; 8]>,
 ```
 
-**Benefit**: Avoids heap allocation for 99% of nodes (typical degree ≤8)
+**Benefit**: Avoids heap allocation for 99% of nodes (typical degree $`\le 8`$)
 
 **Space savings**: 8 bytes (pointer) vs. 64 bytes (inline array) for small nodes
 
@@ -900,7 +900,7 @@ pub fn topological_sort(lattice: &Lattice) -> Vec<NodeId> {
 }
 ```
 
-**Complexity**: O(|V| + |E|)
+**Complexity**: $`\mathcal{O}(\lvert V \rvert + \lvert E \rvert)`$
 
 ### Path Counting (Dynamic Programming)
 
@@ -924,7 +924,7 @@ pub fn path_count_dp(lattice: &Lattice) -> usize {
 }
 ```
 
-**Complexity**: O(|V| + |E|)
+**Complexity**: $`\mathcal{O}(\lvert V \rvert + \lvert E \rvert)`$
 
 ### Cycle Detection (DFS)
 
@@ -970,7 +970,7 @@ pub fn is_acyclic(lattice: &Lattice) -> bool {
 }
 ```
 
-**Complexity**: O(|V| + |E|)
+**Complexity**: $`\mathcal{O}(\lvert V \rvert + \lvert E \rvert)`$
 
 ---
 
@@ -1206,6 +1206,6 @@ This document specifies the core data structures for lattice parsing:
 - Lazy path iteration (avoid exponential enumeration)
 - Chart memoization (avoid redundant parsing)
 
-**Memory efficiency**: O(K × n) space for K corrections over n words, vs. O(K^n) for string enumeration.
+**Memory efficiency**: $`\mathcal{O}(K \times n)`$ space for K corrections over n words, vs. $`\mathcal{O}(K^n)`$ for string enumeration.
 
 See [lattice_parsing.md](./lattice_parsing.md) for pedagogical explanation and [cfg_grammar_correction.md](./cfg_grammar_correction.md) for grammar integration.

@@ -13,15 +13,15 @@ implements `Wfst<char, TropicalWeight>`, any of them can be a stage.
 
 `lling_llang::composition::compose(t1, t2)` returns a **lazy** `LazyComposition` that matches `t1`'s
 **output** tape against `t2`'s **input** tape (the *matched-tape rule*), and combines their weights in
-the shared semiring. In general, for input `` $`x`$ ``, output `` $`z`$ ``, and every intermediate tape
-`` $`y`$ ``:
+the shared semiring. In general, for input $`x`$, output $`z`$, and every intermediate tape
+$`y`$:
 
 ```math
 (T_1 \circ T_2)(x, z) \;=\; \bigoplus_{y}\,\bigl[\, T_1(x, y) \otimes T_2(y, z) \,\bigr].
 ```
 
-In duallity's **tropical** semiring (`` $`\oplus = \min`$ ``, `` $`\otimes = +`$ ``) this specializes to
-a shortest-path fold — the composition weight of `` $`(x, z)`$ `` is the least total cost over all
+In duallity's **tropical** semiring ($`\oplus = \min`$, $`\otimes = +`$) this specializes to
+a shortest-path fold — the composition weight of $`(x, z)`$ is the least total cost over all
 intermediates:
 
 ```math
@@ -59,14 +59,14 @@ let pipeline = compose(compose(rewrite, lev), language_model);
 ```
 
 The weight of a complete accepting path is the sum of the per-stage tropical costs — phonetic-rewrite
-cost `` $`+`$ `` edit distance `` $`+`$ `` language-model score.
+cost $`+`$ edit distance $`+`$ language-model score.
 
 ---
 
 ## 2. A three-stage worked example, with per-stage weight math
 
-Take `Rewrite ∘ Levenshtein ∘ LanguageModel`. A user types `"photo"`; the dictionary holds `{ "foto",
-"fotos" }`; the caller supplies a `language_model` that relabels each term to itself with a unigram
+Take $`\textsf{Rewrite} \circ \textsf{Levenshtein} \circ \textsf{LanguageModel}`$. A user types
+`"photo"`; the dictionary contains `"foto"` and `"fotos"`; the caller supplies a `language_model` that relabels each term to itself with a unigram
 cost. The **matched-tape rule** ties the stages together: `rewrite`'s output must equal `lev`'s query
 tape (`"foto"`), and `lev`'s output (a dictionary term) must equal `language_model`'s input.
 
@@ -90,24 +90,26 @@ The surviving best path — input `"photo"`, output `"foto"` — decomposes as o
 
 | Stage | Transducer | Contribution | Weight |
 |---|---|---|---|
-| 1 | `rewrite` | apply `ph → f`: `"photo" → "foto"` | `` $`0.1`$ `` |
-| 2 | `lev` | `"foto"` matches term `"foto"` exactly | `` $`0.0`$ `` |
-| 3 | `language_model` | unigram cost of `"foto"` | `` $`0.5`$ `` |
-| | | **total** `` $`= 0.1 + 0.0 + 0.5`$ `` | **`` $`0.6`$ ``** |
+| 1 | `rewrite` | apply $`\texttt{ph} \to \texttt{f}`$: $`\texttt{"photo"} \to \texttt{"foto"}`$ | $`0.1`$ |
+| 2 | `lev` | `"foto"` matches term `"foto"` exactly | $`0.0`$ |
+| 3 | `language_model` | unigram cost of `"foto"` | $`0.5`$ |
+| | | **total** $`= 0.1 + 0.0 + 0.5`$ | **$`0.6`$** |
 
-The runner-up, output `"fotos"`, pays `` $`0.1`$ `` (rewrite) `` $`+`$ `` `` $`1.0`$ `` (one insert)
-`` $`+`$ `` `` $`1.0`$ `` (its unigram cost) `` $`= 2.1`$ ``, so `"foto"` at `` $`0.6`$ `` is returned
-first. Each `` $`+`$ `` is one `` $`\otimes`$ `` step; the `min` that picks `"foto"` over `"fotos"` is
-the `` $`\oplus`$ ``.
+The runner-up, output `"fotos"`, pays $`0.1`$ (rewrite) $`+`$ $`1.0`$ (one insert)
+$`+`$ $`1.0`$ (its unigram cost) $`= 2.1`$, so `"foto"` at $`0.6`$ is returned
+first. Each $`+`$ is one $`\otimes`$ step; the `min` that picks `"foto"` over `"fotos"` is
+the $`\oplus`$.
 
 ---
 
 ## 3. `LazyWfstWrapper` — driving a `StateSource`
 
-A [`StateSource`](../architecture/02-wfst-trait-surface.md#3-statesource--the-computation-kernel) is the
-**immutable computation kernel**: a pure `compute_state(&self, s) -> LazyState`. It is what composition
-is built around — `compose` visits product states and calls `compute_state` through a shared reference,
-never needing `&mut` ([architecture/04 §7](../architecture/04-lazy-evaluation-and-caching.md#7-the-immutable--mutable-split)).
+A [`StateSource`](../architecture/02-wfst-trait-surface.md#3-statesource-and-directstatesource--managed-and-direct-computation)
+is the **immutable managed computation kernel**:
+`compute_state(&self, ExpansionRequest) -> StateExpansion`. Composition visits product states through
+a shared reference while lling-llang supplies snapshot identity, attempt numbering, and cooperative
+cancellation. duallity's `DirectStateSource::expand_state(s)` exposes the same deterministic automaton
+kernel to specialized caches and lifecycle-aware callers.
 Wrap a bare `StateSource` in a `LazyWfstWrapper` to get a `Wfst` / `LazyWfst` you can compose or expand;
 the wrapper layers a cache policy over the same state ids the source computes.
 
@@ -121,7 +123,9 @@ let source   = LevenshteinStateSource::new(&dict, "helo", 2);   // max_distance:
 let mut wfst = LazyWfstWrapper::new(source);            // now a Wfst<char, TropicalWeight>
 
 let start = wfst.start();
-let edges = wfst.transitions_lazy(start);               // drive expansion (mutable path)
+let status = wfst.expand(start).expect("start state expands");
+assert!(status.is_terminal());
+let edges = wfst.transitions(start);                    // read after checked expansion
 assert!(!edges.is_empty());
 ```
 
@@ -132,7 +136,7 @@ Both give you a composable `Wfst`; the choice is about *what you already hold*.
 | Approach | You write | Use when | Notes |
 |---|---|---|---|
 | **Direct** — a variant is already a `Wfst` | `compose(RewriteWfst, LevenshteinWfst)` | you hold a variant type (the common case) | `LevenshteinWfst`, `RewriteWfst`, `GeneralizedWfst`, `WallBreakerWfst`, … all implement `Wfst` + `LazyWfst`. |
-| **Wrapped** — you hold a bare kernel | `compose(LazyWfstWrapper::new(source), other)` | you hold a `StateSource` (e.g. `LevenshteinStateSource`) and want a `Wfst` | The wrapper is exactly the adapter `compose` uses over the immutable `compute_state` kernel; set its cache policy with `LazyWfstWrapper::with_cache_policy`. |
+| **Wrapped** — you hold a bare kernel | `compose(LazyWfstWrapper::new(source), other)` | you hold a `StateSource` (e.g. `LevenshteinStateSource`) and want a `Wfst` | The wrapper owns snapshots, attempts, cancellation, lifecycle state, and caching around the immutable source; set its cache policy with `LazyWfstWrapper::with_cache_policy`. |
 
 ---
 
@@ -168,7 +172,7 @@ exhaustion (the `u32` `VocabId` space is finite; the infallible `intern` returns
 A composed transducer's accepting paths, ranked by tropical weight, **are** the best corrections: the
 minimum-weight path is the best answer ([theory/01 §3](../theory/01-semirings-and-wfsts.md)).
 `accepting_paths()` yields them **best-first** (lowest weight first), so the first item is the top
-correction and you can stop early for top-`` $`N`$ ``:
+correction and you can stop early for top-$`N`$:
 
 ```rust,ignore
 let mut composed = compose(rewrite, lev);
@@ -193,7 +197,7 @@ and `path.weight.value()` for the total tropical cost.
 ## 6. WallBreaker is eager and borrows its dictionary
 
 > ⚠️ **WallBreaker is a *view over a finished answer*, not an incremental searcher.**
-> `WallBreakerWfst<'a, D>` **borrows** its dictionary (the `` $`'a`$ `` lifetime bounds the transducer
+> `WallBreakerWfst<'a, D>` **borrows** its dictionary (the $`'a`$ lifetime bounds the transducer
 > and any composition over it), and `new` / `with_algorithm` / `build` run the **entire** WallBreaker
 > query *eagerly at construction*, pre-registering the finite result-chain forest
 > ([design/wallbreaker-wfst](../design/wallbreaker-wfst.md);
@@ -224,7 +228,7 @@ the other matchers — see the [backend × variant matrix](02-choosing-a-variant
 
 ## See also
 
-- [theory/04 · Composition](../theory/04-composition.md) — the math: the `` $`\varepsilon`$ ``-filtered
+- [theory/04 · Composition](../theory/04-composition.md) — the math: the $`\varepsilon`$-filtered
   lazy product, the matched-tape rule, and why a fuzzy matcher must *be* a WFST to participate.
 - [design/phonetic-pipeline-builder](../design/phonetic-pipeline-builder.md) — a builder that *emits*
   pipeline stages (`build_rewrite_wfst` / `build_phonetic_nfa` / `build`).

@@ -231,7 +231,7 @@ c → s / _[eiy] [0.2]   # Before e, i, y
 c → k / _[aou] [0.2]   # Before a, o, u
 ```
 
-**Rule 3: gh → ∅ (silent)**:
+**Rule 3: $`\texttt{gh} \to \varepsilon`$ (silent)**:
 ```regex
 gh → ∅ / _# [0.3]      # Word-final (high, night)
 gh → ∅ / _C [0.3]      # Before consonant (daughter)
@@ -268,7 +268,7 @@ wr → r / #_ [0.3]      # write, wrong
 
 **Base Cases**:
 
-**1. Empty String (ε)**:
+**1. Empty String ($`\varepsilon`$)**:
 ```
   (start) --ε--> ((accept))
 ```
@@ -346,7 +346,7 @@ c: (4) --c--> (5)
 
 2. **Subset states**: Each DFA state corresponds to a set of NFA states.
 
-3. **Transition function**: δ_DFA(S, a) = ε-closure(∪ δ_NFA(s, a) for s ∈ S)
+3. **Transition function**: $`\delta_{\mathrm{DFA}}(S, a) = \varepsilon\text{-closure}(\bigcup_{s \in S} \delta_{\mathrm{NFA}}(s, a))`$
 
 4. **Start state**: ε-closure(start_NFA)
 
@@ -408,7 +408,7 @@ Transitions:
 
 ### Contextual Rules Implementation
 
-**Challenge**: Context like `c → s / _[ei]` requires lookahead/lookbehind.
+**Challenge**: Context like $`\texttt{c} \to \texttt{s / \_[ei]}`$ requires lookahead/lookbehind.
 
 **Solution**: Augmented NFA with context predicates.
 
@@ -497,7 +497,7 @@ struct ProductState {
 **Accept Condition**:
 - `q_nfa` is accepting in NFA
 - `q_lev` is accepting in Levenshtein
-- `edit_count ≤ max_distance`
+- $`\texttt{edit\_count} \le \texttt{max\_distance}`$
 
 ### Example: Phonetic + Edit Distance
 
@@ -518,7 +518,7 @@ Transitions:
   3 --> ACCEPT
 ```
 
-**Levenshtein**: edit_distance("fone", dictionary) ≤ 2
+**Levenshtein**: $`\texttt{edit\_distance}(\texttt{"fone"}, \texttt{dictionary}) \le 2`$
 
 **Product Automaton** (simplified):
 ```
@@ -597,7 +597,7 @@ Definition apply_rule (r : PhRule) (phones : list Phone) : list Phone :=
 
 **Verified Properties**:
 1. **Well-formedness**: All rules preserve phone sequence validity
-2. **Bounded expansion**: Output length ≤ input length + k
+2. **Bounded expansion**: output length $`\le`$ input length $`+ k`$
 3. **Termination**: Rule application always terminates
 4. **Idempotence**: Applying rule twice = applying once (for some rules)
 5. **Non-confluence**: Order matters (some rules don't commute)
@@ -660,8 +660,8 @@ pub fn compile_verified_rules(rules: &[VerifiedRule]) -> Result<PhoneticNFA, Err
 **Argument**:
 1. **Well-formedness**: NFA construction preserves language structure
 2. **Bounded expansion**: NFA states encode length constraints
-3. **Termination**: NFA recognition is always O(n), guaranteed termination
-4. **Idempotence**: Can encode as NFA property (check if L(NFA) = L(NFA ∘ NFA))
+3. **Termination**: NFA recognition is always $`\mathcal{O}(n)`$, guaranteed termination
+4. **Idempotence**: Can encode as an NFA property (check whether $`L(\mathrm{NFA}) = L(\mathrm{NFA} \circ \mathrm{NFA})`$)
 5. **Non-confluence**: NFA alternation explicitly models rule ordering
 
 **Testing Equivalence**:
@@ -686,9 +686,9 @@ mod tests {
 
 | Aspect | NFA | DFA |
 |--------|-----|-----|
-| States | O(\|pattern\|) | O(2^{\|pattern\|}) worst case |
-| Construction | O(\|pattern\|) | O(2^{\|pattern\|}) worst case |
-| Recognition | O(\|input\| · \|states\|) | O(\|input\|) |
+| States | $`\mathcal{O}(\lvert \textit{pattern} \rvert)`$ | $`\mathcal{O}(2^{\lvert \textit{pattern} \rvert})`$ worst case |
+| Construction | $`\mathcal{O}(\lvert \textit{pattern} \rvert)`$ | $`\mathcal{O}(2^{\lvert \textit{pattern} \rvert})`$ worst case |
+| Recognition | $`\mathcal{O}(\lvert \textit{input} \rvert \cdot \lvert Q \rvert)`$ | $`\mathcal{O}(\lvert \textit{input} \rvert)`$ |
 | Memory | Small | Large (but constant per input) |
 | Parallelism | Multiple active states | Single active state |
 
@@ -820,20 +820,20 @@ impl MemoizedIntersection {
 ### Complexity Analysis
 
 **NFA Construction** (Thompson's):
-- **Time**: O(|pattern|) (linear in pattern length)
-- **Space**: O(|pattern|) states
+- **Time**: $`\mathcal{O}(\lvert \textit{pattern} \rvert)`$ (linear in pattern length)
+- **Space**: $`\mathcal{O}(\lvert \textit{pattern} \rvert)`$ states
 
 **NFA Recognition**:
-- **Time**: O(|input| · |states|) = O(|input| · |pattern|)
-- **Space**: O(|states|) for current state set
+- **Time**: $`\mathcal{O}(\lvert \textit{input} \rvert \cdot \lvert Q \rvert)`$ = $`\mathcal{O}(\lvert \textit{input} \rvert \cdot \lvert \textit{pattern} \rvert)`$
+- **Space**: $`\mathcal{O}(\lvert Q \rvert)`$ for current state set
 
 **NFA → DFA** (Subset construction):
-- **Time**: O(2^|states|) worst case, O(|states|²) average
-- **Space**: O(2^|states|) worst case
+- **Time**: $`\mathcal{O}(2^{\lvert Q \rvert})`$ worst case, $`\mathcal{O}(\lvert Q \rvert^{2})`$ average
+- **Space**: $`\mathcal{O}(2^{\lvert Q \rvert})`$ worst case
 
-**NFA ∩ Levenshtein** (Product automaton):
-- **Time**: O(|input| · |NFA states| · |Lev states| · max_distance)
-- **Space**: O(|NFA states| · |Lev states| · max_distance)
+**$`\mathrm{NFA} \cap \mathrm{Levenshtein}`$** (product automaton):
+- **Time**: $`\mathcal{O}(\lvert \textit{input} \rvert \cdot \lvert Q_{\mathrm{NFA}} \rvert \cdot \lvert Q_{\mathrm{Lev}} \rvert \cdot \texttt{max\_distance})`$
+- **Space**: $`\mathcal{O}(\lvert Q_{\mathrm{NFA}} \rvert \cdot \lvert Q_{\mathrm{Lev}} \rvert \cdot \texttt{max\_distance})`$
 
 **Practical Performance Envelope**:
 - **NFA compilation**: <1ms per rule (one-time cost)
@@ -852,25 +852,25 @@ epsilon closure computation).
 
 The optimizer applies four passes in order:
 
-1. **Epsilon Elimination** - O(|Q|² × |δ|)
+1. **Epsilon Elimination** - $`\mathcal{O}(\lvert Q \rvert^{2} \times \lvert \delta \rvert)`$
    - Computes epsilon closure for all states
    - Adds direct transitions bypassing epsilon edges
    - Marks states as final if their epsilon closure contains a final state
    - Preserves anchor transitions (anchors are not epsilon transitions)
 
-2. **Unreachable State Removal** - O(|Q| + |δ|)
+2. **Unreachable State Removal** - $`\mathcal{O}(\lvert Q \rvert + \lvert \delta \rvert)`$
    - BFS from start state to find reachable states
    - Removes unreachable states and their transitions
    - Renumbers states to maintain contiguous IDs
 
-3. **Dead State Removal** - O(|Q| + |δ|)
+3. **Dead State Removal** - $`\mathcal{O}(\lvert Q \rvert + \lvert \delta \rvert)`$
    - Builds reverse transition graph
    - Backward BFS from all final states
    - Removes states that cannot reach any final state
 
 4. **Transition Deduplication**
    - Removes duplicate transitions created during epsilon elimination
-   - Uses hash set for O(1) duplicate detection
+   - Uses hash set for $`\mathcal{O}(1)`$ duplicate detection
 
 ### Configuration
 
@@ -915,7 +915,7 @@ println!("Epsilon transitions eliminated: {}", stats.epsilon_transitions_elimina
 
 | Metric | Before Optimization | After Optimization |
 |--------|--------------------|--------------------|
-| Epsilon transitions | O(n) | 0 |
+| Epsilon transitions | $`\mathcal{O}(n)`$ | 0 |
 | State count | 100% | 70-90% |
 | Transition count | 100% | 70-85% |
 | Match runtime | Epsilon closure per step | Direct transitions |
@@ -955,7 +955,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ### Example 2: Contextual Rule
 
-**Pattern**: `c → s / _[ei]`
+**Pattern**: $`\texttt{c} \to \texttt{s / \_[ei]}`$
 
 **Rust Implementation**:
 ```rust

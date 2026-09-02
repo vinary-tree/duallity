@@ -1,7 +1,7 @@
 # duallity — C++ binding
 
 A header-only **RAII** (**R**esource **A**cquisition **I**s **I**nitialization) wrapper over duallity's
-seven-function C ABI. It turns a dictionary resource into a lazy, composable **WFST** (**W**eighted
+eight-function C ABI. It turns a dictionary resource into a lazy, composable **WFST** (**W**eighted
 **F**inite-**S**tate **T**ransducer) resource with move-only handles and exception-based errors, so
 lifetimes are managed by scope rather than by hand.
 
@@ -95,7 +95,7 @@ after you release `dict`.
 and the `DuallityStatus`. The status mapping is **total**
 ([error-mapping totality](../../docs/guides/07-language-bindings.md#5-error-mapping-totality)):
 `INCOMPATIBLE_RESOURCE` for a non-`UnicodeScalar` dictionary or stale ABI, `PROVIDER_ERROR` for a
-misbehaving provider, `INVALID_ARGUMENT` for an out-of-range selector or a `` $`k > 255`$ `` distance on
+misbehaving provider, `INVALID_ARGUMENT` for an out-of-range selector or a $`k > 255`$ distance on
 a universal/generalized kind, and `PANIC` if a Rust panic was caught at the boundary. Because the
 boundary is caught, an exception here is a *reported* error, never undefined behavior.
 
@@ -104,15 +104,15 @@ boundary is caught, an exception here is a *reported* error, never undefined beh
 - **Distinct handles are independent**; do not free/release the *same* handle from two threads.
 - **The produced resource is reentrant** — concurrent expansion shares the registries and snapshot
   behind reference-counted structural sharing.
-- **Capture and handoff are `` $`O(1)`$ ``**; expansion is lazy and provider buffers are leased for the
+- **Capture and handoff are $`\mathcal{O}(1)`$**; expansion is lazy and provider buffers are leased for the
   duration of one callback ([architecture/06 §7](../../docs/architecture/06-resource-abi-and-bindings.md#7-provider-fault-handling-and-validation)).
 - `duallity_last_error_message()` is thread-local, so `error::what()` reflects this thread's failure.
 
 ## Version compatibility
 
-Negotiate with `duallity_abi_version()` (currently `1`) and `duallity_api_revision()` (currently `1`)
-at load time; refuse a major you do not understand. This binding tracks crate `duallity 4.0.0-rc.4`
-(**MSRV 1.95**) and `vinary-tree-interop 4.0.0-rc.4` (ABI version `1`). The living version record is the
+Negotiate with `duallity_abi_version()` (currently `1`) and `duallity_api_revision()` (currently `2`)
+at load time; refuse a major you do not understand. This binding tracks crate `duallity 4.0.0-rc.6`
+(**MSRV 1.95**) and `vinary-tree-interop 4.0.0-rc.6` (ABI version `1`). The living version record is the
 [bindings findings ledger](../../docs/scientific-ledger/bindings-findings-ledger.md).
 
 ## See also

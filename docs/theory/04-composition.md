@@ -246,7 +246,7 @@ $`\otimes`$-accumulated weight. `lling_llang`'s `AcceptingPathIterator` is exact
 min-heap keyed by partial-path weight, popping the cheapest partial path and pushing its lazily
 computed successors.
 
-A one-line cost bound: the search performs $`O(\lvert \mathcal{E}\rvert \log \lvert \mathcal{E}\rvert)`$
+A one-line cost bound: the search performs $`\mathcal{O}(\lvert \mathcal{E}\rvert \log \lvert \mathcal{E}\rvert)`$
 heap operations over the set $`\mathcal{E}`$ of *explored* product states, never touching the rest of
 the grid.
 
@@ -410,14 +410,16 @@ search over lazily computed states. Theorem 4.2 closes the gap.
 **Proof.** Two independent facts combine.
 
 *(a) Referential transparency: lazy $`=`$ eager.* The product kernel is exposed through
-`lling_llang`'s `StateSource::compute_state(&self, state) -> LazyState` and, for the product,
-`LazyComposition::compute_state(&self, state)` — both take `&self` (a shared, immutable borrow of the
-operands) and read no external mutable state. Hence `compute_state` is a *pure* function of the state
-id: for a fixed pair of immutable operands it is deterministic and side-effect-free, and the
+`lling_llang`'s `StateSource::compute_state(&self, ExpansionRequest) -> StateExpansion` and, for the
+product, `LazyComposition::compute_state(&self, request)` — both take `&self` (a shared, immutable
+borrow of the operands). Once request cancellation and snapshot identity are fixed, the returned
+expansion is a *pure* function of the state id: for a fixed pair of immutable operands it is
+deterministic and side-effect-free, and the
 `LazyWfstWrapper` cache is pure *memoization* (caching a pure function changes *when* work happens, not
 *what* it returns; chapter [architecture/04](../architecture/04-lazy-evaluation-and-caching.md)). Let
 $`G`$ be the full (eager) filtered product graph of § 3 and $`G_{\mathrm{lazy}}`$ the subgraph induced
-by the states the search expands. Because `compute_state(p)` depends only on $`p`$, the arcs it returns
+by the states the search expands. Because a successful `compute_state(p)` depends only on $`p`$ and
+the stable source snapshot, the arcs it returns
 for an expanded $`p`$ are *identical* — same targets, same labels, same weights — to $`p`$'s arcs in
 $`G`$. Therefore $`G_{\mathrm{lazy}}`$ is an **induced subgraph** of $`G`$: every explored path is a
 $`G`$-path of equal weight, and conversely every $`G`$-path is discoverable, since each of its states
@@ -490,12 +492,12 @@ is the plain sum of per-stage costs. A worked end-to-end pipeline appears in
 
 ---
 
-## 9. Worked example: `RewriteWfst ∘ LevenshteinWfst`
+## 9. Worked example: $`\texttt{RewriteWfst} \circ \texttt{LevenshteinWfst}`$
 
 We correct the misspelling `fone` to the dictionary word `phone`, and watch the composition weight
 come out to exactly $`0.1`$ — the cost of a single phonetic rewrite, with a *free* fuzzy match on top.
 
-**Stage $`T_1`$ — a rewrite WFST.** One rule, `f → ph`, at cost $`0.1`$, with identity pass-through for
+**Stage $`T_1`$ — a rewrite WFST.** One rule, $`\texttt{f} \to \texttt{ph}`$, at cost $`0.1`$, with identity pass-through for
 every other character (chapter [03](03-levenshtein-as-transducer.md); `RewriteWfst`):
 
 ```rust,ignore
@@ -516,10 +518,11 @@ assert_eq!(best.outputs.iter().collect::<String>(), "phone");   // writes z = "p
 assert!((best.weight.value() - 0.1).abs() < 1e-9);              // weight 0.1
 ```
 
-**How $`T_1`$ rewrites.** The rule `f → ph` expands one symbol into two, spelled as a match arc then an
-output-side insertion: `f : p / 0.1`, then `ε : h / 0̄` (input-$`\varepsilon`$, output `h`). Every other
-input symbol takes a free identity arc `c : c / 0̄`. So on input $`x = `$ `fone`, $`T_1`$ writes the
-intermediate $`y = `$ `phone` at total weight $`0.1 + 0 + 0 + 0 + 0 = 0.1`$:
+**How $`T_1`$ rewrites.** The rule $`\texttt{f} \to \texttt{ph}`$ expands one symbol into two, spelled as a match arc then an
+output-side insertion: $`f : p / 0.1`$, then $`\varepsilon : h / \bar{0}`$ (input-$`\varepsilon`$,
+output $`h`$). Every other input symbol takes a free identity arc $`c : c / \bar{0}`$. So on input
+$`x = \texttt{fone}`$, $`T_1`$ writes the intermediate $`y = \texttt{phone}`$ at total weight
+$`0.1 + 0 + 0 + 0 + 0 = 0.1`$:
 
 ```text
  x:  f      (ε)     o      n      e
@@ -540,16 +543,17 @@ Two candidate bridges illustrate the $`\min`$:
 
 | intermediate $`y`$ | $`T_1(\texttt{fone}, y)`$ | $`T_2(y, \texttt{phone})`$ | sum |
 |--------------------|---------------------------|----------------------------|-----|
-| `phone` (apply `f → ph`) | $`0.1`$ | $`0`$ (exact match) | $`\mathbf{0.1}`$ |
+| `phone` (apply $`\texttt{f} \to \texttt{ph}`$) | $`0.1`$ | $`0`$ (exact match) | $`\mathbf{0.1}`$ |
 | `fone` (identity only) | $`0`$ | $`2`$ ($`d_{\mathrm{lev}}(\texttt{fone}, \texttt{phone}) = 2`$) | $`2.0`$ |
 
-The minimum is $`0.1`$, attained at $`y = `$ `phone`. This is the whole point of § 2 made concrete: the
+The minimum is $`0.1`$, attained at $`y = \texttt{phone}`$. This is the whole point of § 2 made concrete: the
 $`0.1`$ from $`T_1`$ and the $`0`$ from $`T_2`$ are both *weights on structure*, so the
 $`\min_y[\,\cdot + \cdot\,]`$ fold can weigh the cheap-rewrite-then-exact-match route against the
 no-rewrite-then-distance-2 route and pick the former. A result-set matcher, having discarded
 $`T_1(\texttt{fone}, y)`$, could not.
 
-Along the winning path every product arc is a **match** arc (the rewrite's `f:p`/`ε:h`/identity outputs
+Along the winning path every product arc is a **match** arc (the rewrite's
+$`f : p`$/$`\varepsilon : h`$/identity outputs
 line up symbol-for-symbol with $`T_2`$'s inputs), so the filter of § 4 never leaves `None` — the
 $`\varepsilon`$-filter is present but idle, exactly as promised.
 

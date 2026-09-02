@@ -1,14 +1,11 @@
 use duallity::{
-    LazyState, StateSource, TropicalWeight, WallBreakerWfst, WallBreakerWfstBuilder, Wfst,
+    DirectStateSource, StateExpansion, StateSource, TropicalWeight, WallBreakerWfst,
+    WallBreakerWfstBuilder, Wfst,
 };
 use libdictenstein::scdawg::Scdawg;
 use liblevenshtein::transducer::Algorithm;
 use lling_llang::prelude::LazyWfst;
 use lling_llang::wfst::CachePolicy;
-
-fn pending_eager_state<T>(message: &str) -> T {
-    std::panic::panic_any(message.to_owned())
-}
 
 #[test]
 fn wallbreaker_wfst_creation() {
@@ -37,7 +34,7 @@ fn wallbreaker_wfst_lazy_expansion() {
     let start = Wfst::start(&wfst);
     assert!(!wfst.is_expanded(start));
 
-    wfst.expand(start);
+    wfst.expand(start).expect("start state expands");
     assert!(wfst.is_expanded(start));
 }
 
@@ -68,14 +65,15 @@ fn wallbreaker_statesource_computes_start_state() {
     let dict = Scdawg::<()>::from_terms(vec!["hello", "help"]);
     let wfst = WallBreakerWfst::new(&dict, "helo", 2);
 
-    match StateSource::<char, TropicalWeight>::compute_state(&wfst, Wfst::start(&wfst)) {
-        LazyState::Computed { transitions, .. } => {
+    match wfst.expand_state(Wfst::start(&wfst)) {
+        StateExpansion::Expanded { transitions, .. } => {
             assert!(!transitions.is_empty());
             assert!(transitions
                 .iter()
                 .all(|transition| wfst.is_valid_state(transition.to)));
         }
-        LazyState::Pending => pending_eager_state("WallBreaker StateSource should compute eagerly"),
+        StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+        StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
     }
 }
 
@@ -85,7 +83,7 @@ fn wallbreaker_wfst_transitions_after_expansion() {
     let mut wfst = WallBreakerWfst::new(&dict, "helo", 2);
 
     let start = Wfst::start(&wfst);
-    wfst.expand(start);
+    wfst.expand(start).expect("start state expands");
 
     assert!(!wfst.transitions(start).is_empty() || wfst.num_results() == 0);
 }
@@ -161,7 +159,7 @@ fn wallbreaker_wfst_cache_operations() {
     let dict = Scdawg::<()>::from_terms(vec!["test"]);
     let mut wfst = WallBreakerWfst::new(&dict, "test", 1);
 
-    wfst.expand(0);
+    wfst.expand(0).expect("start state expands");
     let before = wfst.computed_states();
 
     wfst.clear_cache();
@@ -201,7 +199,7 @@ fn wallbreaker_wfst_lru_policy_evicts_least_recently_used_state() {
     assert!(wfst.is_expanded(start));
     assert_eq!(wfst.computed_states(), 1);
 
-    wfst.expand(next);
+    wfst.expand(next).expect("valid state expands");
 
     assert_eq!(wfst.computed_states(), 1);
     assert!(!wfst.is_expanded(start));
@@ -252,7 +250,7 @@ fn wallbreaker_path_distance_counted_once() {
     let mut transition_cost = 0.0;
 
     for _ in 0..10 {
-        wfst.expand(current);
+        wfst.expand(current).expect("valid path state expands");
         if wfst.is_final(current) {
             break;
         }
@@ -270,7 +268,7 @@ fn wallbreaker_path_distance_counted_once() {
         current = to;
     }
 
-    wfst.expand(current);
+    wfst.expand(current).expect("terminal state expands");
     assert!(wfst.is_final(current));
     assert_eq!(transition_cost, 0.0);
     assert!(wfst.final_weight(current).value() > 0.0);

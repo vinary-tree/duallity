@@ -17,7 +17,7 @@ fn generalized_lru_zero_uses_tunable_default_bound() {
         .first()
         .expect("expected generalized start transition")
         .to;
-    wfst.expand(next);
+    wfst.expand(next).expect("valid state expands");
 
     assert_eq!(wfst.computed_states(), 2);
 
@@ -39,7 +39,7 @@ fn wallbreaker_lru_zero_uses_tunable_default_bound() {
         .first()
         .expect("expected WallBreaker start transition")
         .to;
-    wfst.expand(next);
+    wfst.expand(next).expect("valid state expands");
 
     assert_eq!(wfst.computed_states(), 2);
 

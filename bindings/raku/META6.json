@@ -1,0 +1,27 @@
+{
+  "name": "Duallity",
+  "version": "4.0.0-rc.6",
+  "description": "Composable fuzzy-query automata over Vinary Tree dictionaries",
+  "auth": "zef:vinary-tree",
+  "api": "1",
+  "license": "Apache-2.0",
+  "source-url": "https://github.com/vinary-tree/duallity.git",
+  "provides": {
+    "Duallity": "lib/Duallity.rakumod",
+    "Duallity::GeneratedAbi": "lib/Duallity/GeneratedAbi.rakumod"
+  },
+  "depends": [
+    "Vinary-Tree-Interop:ver<4.0.0.rc.6>:auth<zef:vinary-tree>"
+  ],
+  "test-depends": [
+    "Libdictenstein:ver<4.0.0.rc.6>:auth<zef:vinary-tree>",
+    "Lling-Llang:ver<4.0.0.rc.6>:auth<zef:vinary-tree>",
+    "Test"
+  ],
+  "tags": [
+    "automata",
+    "fuzzy-search",
+    "levenshtein",
+    "wfst"
+  ]
+}

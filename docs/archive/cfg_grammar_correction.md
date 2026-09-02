@@ -78,18 +78,18 @@ CSG (Context-Sensitive): a^n b^n c^n  ❌ Requires LBA (neural)
 **Type 3: Regular Languages** (FST/NFA)
 - **Recognition**: Finite-state automaton
 - **Generation**: Regular grammar (A → aB, A → a)
-- **Complexity**: O(n) recognition
+- **Complexity**: $`\mathcal{O}(n)`$ recognition
 - **Example**: a*b* (any number of a's followed by any number of b's)
 
 **Type 2: Context-Free Languages** (CFG)
 - **Recognition**: Pushdown automaton (stack machine)
-- **Generation**: Context-free grammar (A → α where α is any string)
-- **Complexity**: O(n³) CYK parsing, O(n²) average Earley
+- **Generation**: Context-free grammar ($`A \to \alpha`$, where $`\alpha`$ is any string)
+- **Complexity**: $`\mathcal{O}(n^{3})`$ CYK parsing, $`\mathcal{O}(n^{2})`$ average Earley
 - **Example**: a^n b^n (equal number of a's and b's)
 
 **Type 1: Context-Sensitive Languages** (CSG)
 - **Recognition**: Linear-bounded automaton
-- **Generation**: Context-sensitive grammar (αAβ → αγβ)
+- **Generation**: Context-sensitive grammar ($`\alpha A \beta \to \alpha \gamma \beta`$)
 - **Complexity**: PSPACE-complete
 - **Example**: a^n b^n c^n (equal number of a's, b's, and c's)
 
@@ -99,19 +99,19 @@ CSG (Context-Sensitive): a^n b^n c^n  ❌ Requires LBA (neural)
 
 ### Formal Definitions
 
-**Context-Free Grammar**: G = (N, Σ, P, S)
+**Context-Free Grammar**: $`G = (N, \Sigma, P, S)`$
 - **N**: Set of non-terminal symbols
-- **Σ**: Set of terminal symbols (alphabet)
-- **P**: Set of production rules (A → α)
-- **S**: Start symbol (S ∈ N)
+- **$`\Sigma`$**: Set of terminal symbols (alphabet)
+- **$`P`$**: Set of production rules ($`A \to \alpha`$)
+- **$`S`$**: Start symbol ($`S \in N`$)
 
 **Production Rule Format**:
 ```
 A → α
 ```
 where:
-- A ∈ N (single non-terminal on left-hand side)
-- α ∈ (N ∪ Σ)* (any string of terminals and non-terminals)
+- $`A \in N`$ (single non-terminal on left-hand side)
+- $`\alpha \in (N \cup \Sigma)^{\ast}`$ (any string of terminals and non-terminals)
 
 **Example Grammar**:
 ```coq
@@ -144,28 +144,28 @@ S ⇒ NP VP
 
 ### Pumping Lemma for Regular Languages
 
-**Theorem**: If L is regular, then there exists p (pumping length) such that for any string s ∈ L with |s| ≥ p, s can be divided into xyz where:
-1. |xy| ≤ p
+**Theorem**: If $`L`$ is regular, then there exists a pumping length $`p`$ such that any $`s \in L`$ with $`\lvert s \rvert \ge p`$ can be divided into $`xyz`$ where:
+1. $`\lvert xy \rvert \le p`$
 2. |y| > 0
-3. xy^i z ∈ L for all i ≥ 0
+3. $`xy^i z \in L`$ for all $`i \ge 0`$
 
-**Proof that {a^n b^n | n ≥ 0} is not regular**:
+**Proof that $`\{a^n b^n \mid n \ge 0\}`$ is not regular**:
 
 Assume {a^n b^n} is regular with pumping length p.
 
-Consider s = a^p b^p (clearly s ∈ L and |s| = 2p ≥ p).
+Consider $`s = a^p b^p`$ (clearly $`s \in L`$ and $`\lvert s \rvert = 2p \ge p`$).
 
-By pumping lemma, s = xyz where |xy| ≤ p and |y| > 0.
+By the pumping lemma, $`s = xyz`$ where $`\lvert xy \rvert \le p`$ and $`\lvert y \rvert > 0`$.
 
-Since |xy| ≤ p, both x and y consist only of a's.
+Since $`\lvert xy \rvert \le p`$, both $`x`$ and $`y`$ consist only of $`a`$'s.
 
 So y = a^k for some k > 0.
 
 Pumping: xy²z = a^p a^k b^p = a^(p+k) b^p.
 
-But (p+k) ≠ p, so xy²z ∉ {a^n b^n}.
+But $`p+k \ne p`$, so $`xy^2z \notin \{a^n b^n\}`$.
 
-**Contradiction**! Therefore {a^n b^n} is not regular. ∎
+**Contradiction.** Therefore $`\{a^n b^n\}`$ is not regular. $`\blacksquare`$
 
 ### Linguistic Structures Requiring CFG
 
@@ -257,7 +257,7 @@ A → α  { ERROR: description, FIX: correction, COST: weight }
 
 **Components**:
 - **LHS**: Non-terminal A
-- **RHS**: String α (may include error patterns)
+- **RHS**: String $`\alpha`$ (may include error patterns)
 - **ERROR**: Error type description
 - **FIX**: Correction strategy (replacement, insertion, deletion)
 - **COST**: Penalty weight (tropical semiring)
@@ -639,7 +639,7 @@ Both parses are grammatically valid. Which is correct?
 
 ### PCFG Definition
 
-**Probabilistic Context-Free Grammar**: G = (N, Σ, P, S, θ)
+**Probabilistic Context-Free Grammar**: $`G = (N, \Sigma, P, S, \theta)`$
 
 **Production Probabilities**:
 ```
@@ -647,7 +647,7 @@ P(A → α | A) = θ_A→α
 ```
 where:
 - Sum of probabilities for all productions with LHS = A equals 1
-- ΣP(A → α | A) = 1 for all α
+- $`\sum_{\alpha} P(A \to \alpha \mid A) = 1`$ for all $`\alpha`$
 
 **Example PCFG**:
 ```coq
@@ -714,7 +714,7 @@ P(tree) = P(S → NP VP) · P(NP → DT N) · P(DT → the) · P(N → cat) · P
 
 **Algorithm**: Dynamic programming (similar to CYK)
 
-**Complexity**: O(n³ · |G|) for grammar size |G|
+**Complexity**: $`\mathcal{O}(n^{3} \cdot \lvert G \rvert)`$ for grammar size |G|
 
 **Pseudocode**:
 ```python
@@ -831,7 +831,7 @@ def cyk_parse(words, cnf_grammar):
     return cnf_grammar.start in chart[0][n]
 ```
 
-**Complexity**: O(n³ · |G|) where |G| is number of binary rules
+**Complexity**: $`\mathcal{O}(n^{3} \cdot \lvert G \rvert)`$ where |G| is number of binary rules
 
 **Example**:
 ```
@@ -861,20 +861,20 @@ Parse succeeds: S ∈ C[0][3]
 
 **Advantage**: Handles arbitrary CFG (no CNF required)
 
-**Complexity**: O(n³) worst case, O(n²) for unambiguous grammars, O(n) for LR grammars
+**Complexity**: $`\mathcal{O}(n^{3})`$ worst case, $`\mathcal{O}(n^{2})`$ for unambiguous grammars, $`\mathcal{O}(n)`$ for LR grammars
 
 **Data Structure**: State sets S[i] (i = 0 to n)
 
-**Earley State**: `[A → α • β, j]`
-- **Rule**: A → αβ
-- **Dot position**: • separates what's been recognized (α) from what's expected (β)
+**Earley State**: $`[A \to \alpha \mathbin{\bullet} \beta, j]`$
+- **Rule**: $`A \to \alpha\beta`$
+- **Dot position**: $`\mathbin{\bullet}`$ separates what has been recognized ($`\alpha`$) from what is expected ($`\beta`$)
 - **Origin**: State started at position j
 
 **Operations**:
 
-1. **Predictor**: If next symbol is non-terminal B, add all rules B → •γ
+1. **Predictor**: If the next symbol is non-terminal $`B`$, add all rules $`B \to \mathbin{\bullet}\gamma`$
 2. **Scanner**: If next symbol is terminal a and input[i] = a, advance dot
-3. **Completer**: If dot at end (A → α•), propagate to parent states
+3. **Completer**: If the dot is at the end ($`A \to \alpha\mathbin{\bullet}`$), propagate to parent states
 
 **Pseudocode**:
 ```python
@@ -948,7 +948,7 @@ S[3]:  (after scanning "sat")
 **Advantages of Earley**:
 - No CNF conversion required
 - Handles left-recursion
-- Efficient for most natural language grammars (O(n²) average)
+- Efficient for most natural language grammars ($`\mathcal{O}(n^{2})`$ average)
 - Easy to extend with probabilistic weights
 
 ---
@@ -1023,7 +1023,7 @@ def earley_parse_lattice(lattice, grammar):
 
 ### Combined Scoring
 
-**Total Cost** = α·FST_cost + β·Grammar_cost + γ·LM_cost
+**Total Cost** $`= \alpha \cdot \mathrm{FST\_cost} + \beta \cdot \mathrm{Grammar\_cost} + \gamma \cdot \mathrm{LM\_cost}`$
 
 **Example**:
 ```
@@ -1069,7 +1069,7 @@ Shared Forest:
 
 **Advantages**:
 - Avoids exponential enumeration
-- Efficient storage (O(n³) nodes)
+- Efficient storage ($`\mathcal{O}(n^{3})`$ nodes)
 - Can extract k-best parses efficiently
 
 ### Lattice Parsing Efficiency Analysis
@@ -1086,8 +1086,8 @@ For a lattice with **K corrections per word** over **N words**, the number of pa
 | 10 words | 9.7M paths | 10 billion paths |
 
 **Problem**: Parsing each path individually causes exponential blowup:
-- **Path enumeration**: O(K^N) memory to store paths
-- **Individual parsing**: O(K^N × N³) time to parse all paths
+- **Path enumeration**: $`\mathcal{O}(K^N)`$ memory to store paths
+- **Individual parsing**: $`\mathcal{O}(K^N \times N^{3})`$ time to parse all paths
 
 **Solution**: Lattice parsing avoids path enumeration entirely.
 
@@ -1095,11 +1095,11 @@ For a lattice with **K corrections per word** over **N words**, the number of pa
 
 | Approach | Time Complexity | Space Complexity | Practical Limit |
 |----------|----------------|------------------|-----------------|
-| **String List** | O(K^N × N³) | O(K^N × N) | ~8 words |
-| **Lattice Parsing** | O(K×N × N²) | O(K×N) | 20+ words |
-| **Speedup** | **O(K^(N-1) × N)** | **O(K^(N-1))** | **Exponential** |
+| **String List** | $`\mathcal{O}(K^N \times N^{3})`$ | $`\mathcal{O}(K^N \times N)`$ | ~8 words |
+| **Lattice Parsing** | $`\mathcal{O}(K \times N \times N^{2})`$ | $`\mathcal{O}(K \times N)`$ | 20+ words |
+| **Speedup** | **$`\mathcal{O}(K^{N-1} \times N)`$** | **$`\mathcal{O}(K^{N-1})`$** | **Exponential** |
 
-**Key Insight**: Lattice parsing has **same asymptotic complexity as single-string parsing** (O(N³) Earley), but operates on the compact lattice representation (O(K×N) edges) instead of the exponential path space (O(K^N) paths).
+**Key Insight**: Lattice parsing has **same asymptotic complexity as single-string parsing** ($`\mathcal{O}(N^{3})`$ Earley), but operates on the compact lattice representation ($`\mathcal{O}(K \times N)`$ edges) instead of the exponential path space ($`\mathcal{O}(K^N)`$ paths).
 
 #### Practical Performance Measurements
 
@@ -1197,7 +1197,7 @@ println!("Final correction: {}", best.sentence());
 1. **No path enumeration**: 243 paths never materialized in memory
 2. **Grammar filtering**: 240/243 paths rejected by CFG rules
 3. **Efficient extraction**: k-best algorithm extracts top-5 without enumerating all parses
-4. **Tractable complexity**: O(15 edges × 5² Earley) = O(375) operations vs. O(243 × 5³) = O(30,375) for string list
+4. **Tractable complexity**: $`\mathcal{O}(15\ \text{edges} \times 5^{2}\ \text{Earley steps})`$ = $`\mathcal{O}(375)`$ operations vs. $`\mathcal{O}(243 \times 5^{3})`$ = $`\mathcal{O}(30{,}375)`$ for string list
 
 ### Advanced Topics
 
@@ -1262,7 +1262,7 @@ impl ParseForest {
 }
 ```
 
-**Complexity**: O(k log k) to extract k-best, independent of total parse count!
+**Complexity**: $`\mathcal{O}(k \log k)`$ to extract k-best, independent of total parse count!
 
 **Further Reading**:
 - [lattice_parsing.md](./lattice_parsing.md) - Complete pedagogical guide with worked examples
@@ -1634,7 +1634,7 @@ impl LLMValidator {
 
 **Benefits**:
 - **Deterministic**: Grammar rules are symbolic (not learned)
-- **Fast**: O(n³) CFG vs O(n²) additional LLM inference
+- **Fast**: $`\mathcal{O}(n^{3})`$ CFG vs $`\mathcal{O}(n^{2})`$ additional LLM inference
 - **Interpretable**: Know exactly which grammar rule failed
 - **Cost-effective**: No additional LLM API calls for validation
 
@@ -1745,7 +1745,7 @@ LLM Explanation:
 **Advantages**:
 - **Precision**: CFG detects exact error location and type
 - **Pedagogy**: LLM generates encouraging, contextual explanations
-- **Scalability**: CFG runs in O(n³), LLM only called per error (not per sentence)
+- **Scalability**: CFG runs in $`\mathcal{O}(n^{3})`$, LLM only called per error (not per sentence)
 
 ---
 
@@ -1815,7 +1815,7 @@ impl StructuredOutputValidator {
 ```
 
 **Benefits**:
-- **Fast Validation**: CFG parsing O(n³) vs regex-based heuristics O(n²+)
+- **Fast Validation**: CFG parsing $`\mathcal{O}(n^{3})`$ vs regex-based heuristics $`\mathcal{O}(n^{2}+)`$
 - **Precise Errors**: Know exact token where syntax breaks
 - **Formal Guarantee**: Provably correct grammar (unlike regex)
 
@@ -1851,11 +1851,11 @@ Corrected:
 | **No validation** | 0ms | Free | ~85% (LLM baseline) |
 | **Regex validation** | 1-5ms | Free | ~90% (misses nested errors) |
 | **CFG validation** | 5-20ms | Free | ~98% (catches syntax errors) |
-| **LLM self-correction** | +500-2000ms | $$$ (2× inference) | ~95% (still probabilistic) |
+| **LLM self-correction** | +500-2000ms | high cost (2× inference) | ~95% (still probabilistic) |
 
 **Why CFG Wins**:
 - **Deterministic**: 100% accuracy for defined grammar rules
-- **Fast**: O(n³) but with small constant factors (n = sentence length ~10-50 tokens)
+- **Fast**: $`\mathcal{O}(n^{3})`$ but with small constant factors (n = sentence length ~10-50 tokens)
 - **Zero marginal cost**: No API calls, runs locally
 - **Interpretable**: Exact error location and rule violation
 

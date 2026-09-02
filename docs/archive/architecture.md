@@ -119,7 +119,7 @@ Text normalization for noisy user-generated content (SMS, chat, social media) re
 1. **Symbolic-first**: Use deterministic algorithms (FST, CFG) before neural models
 2. **Compositional**: Layers compose via well-defined interfaces (lattices, parse forests)
 3. **Modular**: Each layer independently testable and swappable
-4. **Performance-aware**: O(n) for FST, O(n³) for CFG, optional neural for accuracy
+4. **Performance-aware**: $`\mathcal{O}(n)`$ for FST, $`\mathcal{O}(n^{3})`$ for CFG, optional neural for accuracy
 5. **Formally verified**: Phonetic rules proven in Coq, grammar rules symbolic
 
 ### Data Flow
@@ -151,16 +151,16 @@ Output: "i saw an elephant yesterday"
 
 **Capabilities**:
 - Character-level edit operations (insertion, deletion, substitution, transposition)
-- Phonetic transformations (ph→f, c→s, gh→∅)
+- Phonetic transformations ($`\texttt{ph} \to \texttt{f}`$, $`\texttt{c} \to \texttt{s}`$, $`\texttt{gh} \to \varepsilon`$)
 - Morphological variants (plurals, verb conjugations if context-free)
 - Lexical normalization ("u" → "you", "4" → "for")
 
 **Algorithms**:
 - **Levenshtein automaton**: Accepts all strings within edit distance n
 - **NFA phonetic regex**: Compiles patterns like `(ph|f)` to non-deterministic automaton
-- **FST composition**: Chains transducers (T1 ∘ T2 ∘ ... ∘ Tn)
+- **FST composition**: Chains transducers ($`T_1 \circ T_2 \circ \cdots \circ T_n`$)
 
-**Complexity**: O(n) with pre-compiled automata
+**Complexity**: $`\mathcal{O}(n)`$ with pre-compiled automata
 
 **Example**:
 ```
@@ -186,8 +186,8 @@ Output lattice: [("phone", cost=1.0), ("phones", cost=1.2)]
 - Auxiliary verb selection ("can able" → "can" or "is able")
 
 **Algorithms**:
-- **CYK parsing**: O(n³), requires Chomsky Normal Form
-- **Earley parsing**: O(n³) worst case, O(n²) average, handles arbitrary CFG
+- **CYK parsing**: $`\mathcal{O}(n^{3})`$, requires Chomsky Normal Form
+- **Earley parsing**: $`\mathcal{O}(n^{3})`$ worst case, $`\mathcal{O}(n^{2})`$ average, handles arbitrary CFG
 - **Probabilistic CFG**: Assigns probabilities to ambiguous parses
 
 **Error Grammar Approach**:
@@ -206,7 +206,7 @@ S → NP[num=pl] VP[num=sg]
       FIX: Rewrite VP to plural form }
 ```
 
-**Complexity**: O(n³) for CYK, O(n²) average for Earley
+**Complexity**: $`\mathcal{O}(n^{3})`$ for CYK, $`\mathcal{O}(n^{2})`$ average for Earley
 
 **Example**:
 ```
@@ -245,7 +245,7 @@ Output: "the cat runs fast"
 - **Transformer sequence-to-sequence**: Full rewrite with context
 - **Lattice rescoring**: Re-rank candidates from Tier 1+2 using neural scores
 
-**Complexity**: O(n²) for transformer self-attention
+**Complexity**: $`\mathcal{O}(n^{2})`$ for transformer self-attention
 
 **Example**:
 ```
@@ -331,11 +331,11 @@ Lattice: [("phone", phonetic_cost=0.5)]
 **Purpose**: Add edit distance corrections to phonetic candidates
 
 **Approach**:
-1. Build Levenshtein automaton for each candidate (distance ≤ n)
+1. Build Levenshtein automaton for each candidate (distance $`\le n`$)
 2. Intersect with dictionary trie
 3. Merge with phonetic lattice
 
-**Composition**: NFA(phonetic) ∩ FST(Levenshtein) ∩ Trie(dictionary)
+**Composition**: $`\mathrm{NFA}(\text{phonetic}) \cap \mathrm{FST}(\text{Levenshtein}) \cap \mathrm{Trie}(\text{dictionary})`$
 
 **Output**: Extended lattice (phonetic + spelling corrections)
 
@@ -403,7 +403,7 @@ Lattice: [("an elephant", cost=0.1)]
 
 **Approach**:
 1. For each lattice path, compute neural LM score
-2. Combine with symbolic scores: `total = α·symbolic + β·neural`
+2. Combine with symbolic scores: $`\mathrm{total} = \alpha \cdot \mathrm{symbolic} + \beta \cdot \mathrm{neural}`$
 3. Select top-k candidates
 
 **Models**:
@@ -457,12 +457,12 @@ Output: "I saw an elephant yesterday"
 
 ## Composition Operators
 
-### FST ∘ FST (Standard Transducer Composition)
+### $`\mathrm{FST} \circ \mathrm{FST}`$ (Standard Transducer Composition)
 
 **Definition**: Compose two finite-state transducers T1 and T2:
-- T1: Input alphabet Σ → Intermediate alphabet Γ
-- T2: Intermediate alphabet Γ → Output alphabet Δ
-- T1 ∘ T2: Σ → Δ (direct composition)
+- $`T_1`$: input alphabet $`\Sigma \to \Gamma`$
+- $`T_2`$: intermediate alphabet $`\Gamma \to \Delta`$
+- $`T_1 \circ T_2 : \Sigma \to \Delta`$ (direct composition)
 
 **Application**: Chain spelling corrections
 ```
@@ -472,12 +472,12 @@ T2 (capitalization): "phone" → "Phone"
 T1 ∘ T2: "fone" → "Phone"
 ```
 
-**Complexity**: O(|Q1| · |Q2|) states in worst case (product construction)
+**Complexity**: $`\mathcal{O}(\lvert Q_1 \rvert \cdot \lvert Q_2 \rvert)`$ states in worst case (product construction)
 
-### NFA ∩ FST (Intersection)
+### $`\mathrm{NFA} \cap \mathrm{FST}`$ (Intersection)
 
 **Definition**: Intersection of NFA language and FST input language:
-- L(NFA ∩ FST) = {x : x ∈ L(NFA) ∧ x ∈ Domain(FST)}
+- $`L(\mathrm{NFA} \cap \mathrm{FST}) = \{x : x \in L(\mathrm{NFA}) \land x \in \mathrm{Domain}(\mathrm{FST})\}`$
 
 **Application**: Phonetic patterns constrained by edit distance
 ```
@@ -511,7 +511,7 @@ Grammar: "saw" is past tense (matches VP[past])
 Result: "I saw the movie"
 ```
 
-**Complexity**: O(n³) CYK parsing × |lattice paths|
+**Complexity**: $`\mathcal{O}(n^{3})`$ CYK parsing × |lattice paths|
 
 ### Lattice → CFG Parser
 
@@ -542,13 +542,13 @@ Select Path 2
 
 ### Tropical Semiring
 
-**Definition**: (ℝ ∪ {∞}, ⊕ = min, ⊗ = +, 0̄ = ∞, 1̄ = 0)
+**Definition**: $`(\mathbb{R} \cup \{+\infty\}, \oplus = \min, \otimes = +, \bar{0} = +\infty, \bar{1} = 0)`$
 
 **Operations**:
-- **Addition**: a ⊕ b = min(a, b) (select best path)
-- **Multiplication**: a ⊗ b = a + b (accumulate costs)
+- **Addition**: $`a \oplus b = \min(a, b)`$ (select best path)
+- **Multiplication**: $`a \otimes b = a + b`$ (accumulate costs)
 - **Identity**: 1̄ = 0 (no cost)
-- **Annihilator**: 0̄ = ∞ (impossible path)
+- **Annihilator**: $`\bar{0} = +\infty`$ (impossible path)
 
 **Application**: Shortest path in weighted automaton
 ```
@@ -691,7 +691,7 @@ Paths:
 
 **After Layer 4** (CFG Grammar):
 
-CFG applies article rule: `a + vowel_initial → an`
+CFG applies article rule: $`\texttt{a + vowel\_initial} \to \texttt{an}`$
 
 Prune paths violating grammar:
 - Path 1: INVALID ("a elephant")
@@ -712,7 +712,7 @@ BERT scoring:
 - "seen": P = 0.05 → cost = -log(0.05) = 3.0
 - "saw": P = 0.95 → cost = -log(0.95) = 0.05
 
-Combined (α=0.7 symbolic, β=0.3 neural):
+Combined ($`\alpha = 0.7`$ symbolic, $`\beta = 0.3`$ neural):
 - Path 2: 0.7·1.2 + 0.3·3.0 = 0.84 + 0.90 = 1.74
 - Path 4: 0.7·1.4 + 0.3·0.05 = 0.98 + 0.015 = 0.995 ← WINNER
 
@@ -736,7 +736,7 @@ Parse("I saw an elephant")  → 4 chart operations
 Total: 16 operations (4 paths × 4 words)
 ```
 
-**Problem**: For K corrections per word over N words, this scales as **O(K^N × N³)** (exponential in N).
+**Problem**: For K corrections per word over N words, this scales as **$`\mathcal{O}(K^N \times N^{3})`$** (exponential in N).
 
 #### Lattice Parsing Algorithm
 
@@ -790,7 +790,7 @@ fn parse_lattice(grammar: &Grammar, lattice: &Lattice) -> ParseForest {
 | Chart indexed by `position` | Chart indexed by `(node, position)` |
 | Scanner checks `input[position]` | Scanner follows lattice edges |
 | Advance by `position + 1` | Advance to `edge.target` node |
-| O(N³) for single string | O(K×N × N²) for K branches |
+| $`\mathcal{O}(N^{3})`$ for single string | $`\mathcal{O}(K \times N \times N^{2})`$ for K branches |
 
 #### Example: Shared Prefix Parsing
 
@@ -846,9 +846,9 @@ println!("Best: {}", best_parse.sentence());
 
 | Representation | Parse Time | Memory |
 |----------------|------------|--------|
-| String list (K^N paths) | O(K^N × N³) | O(K^N × N) |
-| Lattice (K×N edges) | O(K×N × N²) | O(K×N) |
-| **Speedup** | **O(K^(N-1) × N)** | **O(K^(N-1))** |
+| String list (K^N paths) | $`\mathcal{O}(K^N \times N^{3})`$ | $`\mathcal{O}(K^N \times N)`$ |
+| Lattice (K×N edges) | $`\mathcal{O}(K \times N \times N^{2})`$ | $`\mathcal{O}(K \times N)`$ |
+| **Speedup** | **$`\mathcal{O}(K^{N-1} \times N)`$** | **$`\mathcal{O}(K^{N-1})`$** |
 
 **Practical measurements** (see [lattice_parsing.md](./lattice_parsing.md)):
 - **3-10× speedup** on real-world queries
@@ -1399,7 +1399,7 @@ MORK Pattern Matching (Tier 2)
 Parse Forest + Corrections
 ```
 
-**Complexity**: O(K×N) edge processing instead of O(K^N) path enumeration.
+**Complexity**: $`\mathcal{O}(K \times N)`$ edge processing instead of $`\mathcal{O}(K^N)`$ path enumeration.
 
 ### Documentation
 
@@ -1996,7 +1996,7 @@ async fn optimized_pipeline(input: &str) -> Result<String, Error> {
 **Symbolic (WFST/CFG) Strengths**:
 - ✅ **Deterministic**: Same input → same output
 - ✅ **Verifiable**: Rules can be inspected and tested
-- ✅ **Fast**: O(n) to O(n³) algorithms
+- ✅ **Fast**: $`\mathcal{O}(n)`$ to $`\mathcal{O}(n^{3})`$ algorithms
 - ✅ **No training data**: Hand-written rules
 - ✅ **Interpretable**: Clear error explanations
 
@@ -2173,8 +2173,8 @@ The three-tier WFST core is extended by the **MeTTaIL correction architecture** 
 **Unique Value Proposition**:
 
 1. **Only system with FST + CFG + Neural three-tier architecture**
-   - FST for speed (O(n))
-   - CFG for syntax (O(n³))
+   - FST for speed ($`\mathcal{O}(n)`$)
+   - CFG for syntax ($`\mathcal{O}(n^{3})`$)
    - Neural for semantics (optional)
 
 2. **Formally verified phonetic rules** (Coq proofs)
@@ -2191,7 +2191,7 @@ The three-tier WFST core is extended by the **MeTTaIL correction architecture** 
    - Competitive with C++ Sparrowhawk
 
 5. **Composable architecture**
-   - NFA ∩ FST ∩ CFG composition
+   - $`\mathrm{NFA} \cap \mathrm{FST} \cap \mathrm{CFG}`$ composition
    - Modular: Each layer independently testable
 
 **Target Users**:
@@ -2210,29 +2210,29 @@ The three-tier WFST core is extended by the **MeTTaIL correction architecture** 
 
 | Operation | Complexity | Latency (estimate) | Notes |
 |-----------|------------|-------------------|-------|
-| Levenshtein automaton | O(n) | <5ms | Pre-compiled dictionary |
-| NFA phonetic regex | O(n·m) | <10ms | m = NFA states (small) |
-| FST composition | O(n) | <5ms | Lazy evaluation |
-| **Total Tier 1** | **O(n)** | **<20ms** | Deterministic |
+| Levenshtein automaton | $`\mathcal{O}(n)`$ | <5ms | Pre-compiled dictionary |
+| NFA phonetic regex | $`\mathcal{O}(n \cdot m)`$ | <10ms | m = NFA states (small) |
+| FST composition | $`\mathcal{O}(n)`$ | <5ms | Lazy evaluation |
+| **Total Tier 1** | **$`\mathcal{O}(n)`$** | **<20ms** | Deterministic |
 
 **Tier 2: Context-Free (CFG)**
 
 | Operation | Complexity | Latency (estimate) | Notes |
 |-----------|------------|-------------------|-------|
-| Earley parsing | O(n³) worst, O(n²) avg | <100ms | Depends on grammar size |
-| CYK parsing (CNF) | O(n³·\|G\|) | <150ms | Requires CNF conversion |
-| Error detection | O(n³) | <100ms | Same as parsing |
-| Correction application | O(n) | <5ms | Tree transformation |
-| **Total Tier 2** | **O(n³)** | **<200ms** | Deterministic |
+| Earley parsing | $`\mathcal{O}(n^{3})`$ worst, $`\mathcal{O}(n^{2})`$ avg | <100ms | Depends on grammar size |
+| CYK parsing (CNF) | $`\mathcal{O}(n^{3}\cdot\lvert G \rvert)`$ | <150ms | Requires CNF conversion |
+| Error detection | $`\mathcal{O}(n^{3})`$ | <100ms | Same as parsing |
+| Correction application | $`\mathcal{O}(n)`$ | <5ms | Tree transformation |
+| **Total Tier 2** | **$`\mathcal{O}(n^{3})`$** | **<200ms** | Deterministic |
 
 **Tier 3: Neural (Optional)**
 
 | Operation | Complexity | Latency (estimate) | Notes |
 |-----------|------------|-------------------|-------|
-| BERT masked LM | O(n²) | 50-200ms | Depends on batch size |
-| GPT autoregressive | O(n²) | 100-500ms | Sequential generation |
-| Lattice rescoring | O(k·n²) | 50-300ms | k = lattice size |
-| **Total Tier 3** | **O(n²)** | **50-500ms** | Non-deterministic |
+| BERT masked LM | $`\mathcal{O}(n^{2})`$ | 50-200ms | Depends on batch size |
+| GPT autoregressive | $`\mathcal{O}(n^{2})`$ | 100-500ms | Sequential generation |
+| Lattice rescoring | $`\mathcal{O}(k \cdot n^{2})`$ | 50-300ms | k = lattice size |
+| **Total Tier 3** | **$`\mathcal{O}(n^{2})`$** | **50-500ms** | Non-deterministic |
 
 ### Deployment Mode Latencies
 
@@ -2261,7 +2261,7 @@ The three-tier WFST core is extended by the **MeTTaIL correction architecture** 
 
 **Tier 2: Context-Free**
 - Error grammar: 1-5 MB (production rules)
-- Chart: O(n²·|G|) = 1-10 MB (depends on sentence length)
+- Chart: $`\mathcal{O}(n^{2}\cdot\lvert G \rvert)`$ = 1-10 MB (depends on sentence length)
 - **Total**: <20 MB (per sentence)
 
 **Tier 3: Neural**
@@ -2278,8 +2278,8 @@ The three-tier WFST core is extended by the **MeTTaIL correction architecture** 
 - Neural layer: Batch multiple sentences for GPU efficiency
 
 **Vertical Scaling**:
-- Dictionary size: O(|V|) lookup (constant with trie)
-- Grammar size: O(|G|) parsing (linear in grammar size)
+- Dictionary size: $`\mathcal{O}(\lvert V \rvert)`$ lookup (constant with trie)
+- Grammar size: $`\mathcal{O}(\lvert G \rvert)`$ parsing (linear in grammar size)
 
 ---
 

@@ -62,7 +62,7 @@ $`(\Pi,\ \text{query-label cursor})`$ pair to a dense id in `UniversalStateRegis
 To decide a step, the automaton needs only the slice of the fixed word that a distance-$`k`$ alignment
 could still touch around the current position — the **relevant subword**
 [$`s_n(w, i)`$](README.md#automaton-state-functions). With radius $`n`$, out-of-range left positions
-padded by the sentinel `` `$` `` (which matches no real character), and $`1`$-indexed positions,
+padded by the sentinel `$` (which matches no real character), and $`1`$-indexed positions,
 
 ```math
 s_n(w, i) \;=\; \underbrace{\texttt{\$} \cdots \texttt{\$}}_{(\,n + 1 - i\,)^{+}}\;
@@ -90,15 +90,15 @@ $`s`$:
 ```
 
 where $`r = \lvert s \rvert \le 2k + 1`$ (plus sentinels). Sentinel cells are always $`0`$ (no real
-character equals `` `$` ``), so **$`\chi`$ folds the end-of-query boundary into its bits**. This is
+character equals `$`), so **$`\chi`$ folds the end-of-query boundary into its bits**. This is
 duallity's `CharacteristicVector::new(c, s)`. Because the universal automaton consumes
 $`\chi(c, s)`$ — *not* the literal character $`c`$ — the *same* automaton serves every query; only the
 bit vector changes.
 
 <img src="../diagrams/characteristic-vector-window.svg" alt="The relevant-subword window over a term and the characteristic bit vector for a character" width="780"/>
 
-In the figure, $`w = `$ `hello`, $`k = 1`$, head at position $`i = 2`$: the window is
-$`s_1(\texttt{hello}, 2) = `$ `ell`, and for candidate character $`c = `$ `l` the characteristic vector
+In the figure, $`w = \texttt{hello}`$, $`k = 1`$, head at position $`i = 2`$: the window is
+$`s_1(\texttt{hello}, 2) = \texttt{ell}`$, and for candidate character $`c = \texttt{l}`$ the characteristic vector
 is $`\chi(\texttt{l}, \texttt{ell}) = (0, 1, 1)`$. The automaton consumes $`(0, 1, 1)`$ and steps; it
 never sees the letter `l`.
 
@@ -236,7 +236,7 @@ same factoring for the full universal construction and every variant $`V`$.
 > 2. **(Acceptance)** the minimal accepting weight equals $`d_{\mathrm{lev}}(q, w)`$ whenever
 >    $`w \in L(q, k)`$, and this weight is computed by duallity's `universal_accepting_weight`;
 > 3. **(Reuse)** because $`U_k`$ mentions no query character, it is built once per $`k`$; per-query
->    construction is amortized $`O(1)`$ in the automaton core.
+>    construction is amortized $`\mathcal{O}(1)`$ in the automaton core.
 
 **Proof of (1).** Feed $`U_k`$ the vectors $`\chi_t = \chi\bigl(w_t,\ s_k(q, t)\bigr)`$ for
 $`t = 1, \ldots, m`$ (reading $`w_t`$ at dictionary depth $`d = t - 1`$ uses the window at position
@@ -290,9 +290,9 @@ which position of $`\Pi`$ attains the minimum — that is the content of the arg
 $`q`$; it is fixed once $`k`$ and $`V`$ are chosen (it is `liblevenshtein`'s
 `transition_with_consumption` for variant $`V`$, compiled once). `BoundUniversalWfst` stores only
 $`(D, k, V)`$ and no query state, so `with_query(q)` re-derives *no* automaton structure — it allocates
-only the per-query $`\chi`$-driver: `precompute_relevant_subwords` is $`O(\lvert q \rvert + k)`$, and the
+only the per-query $`\chi`$-driver: `precompute_relevant_subwords` is $`\mathcal{O}(\lvert q \rvert + k)`$, and the
 initial `UniversalStateRegistry` holds a single state. Amortized over a stream of $`Q`$ queries, the
-cost of the query-agnostic core is $`O(1)`$ per query — versus the parameterized automaton, which must
+cost of the query-agnostic core is $`\mathcal{O}(1)`$ per query — versus the parameterized automaton, which must
 re-derive its entire transition relation from $`q`$'s characters every time. $`\blacksquare`$
 
 ---

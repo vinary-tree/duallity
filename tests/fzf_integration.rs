@@ -1,8 +1,8 @@
-use duallity::{FzfConfig, FzfScorer, FzfStateSource, FzfWfst};
+use duallity::{DirectStateSource, FzfConfig, FzfScorer, FzfStateSource, FzfWfst};
 use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 use libdictenstein::Dictionary;
 use liblevenshtein::transducer::SubsequenceQueryIterator;
-use lling_llang::prelude::{ArcticWeight, LazyState, Semiring, StateSource};
+use lling_llang::prelude::{ArcticWeight, Semiring, StateExpansion, StateSource};
 
 fn sorted(mut values: Vec<(String, i32)>) -> Vec<(String, i32)> {
     values.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
@@ -59,7 +59,7 @@ fn upstream_path_corpus_agrees_across_scorer_trie_and_state_source() {
     assert_eq!(trie, flat);
 
     let source = FzfStateSource::new(&dictionary, "zshc").expect("fixture query is bounded");
-    let LazyState::Computed { transitions, .. } = source.compute_state(source.start()) else {
+    let StateExpansion::Expanded { transitions, .. } = source.expand_state(source.start()) else {
         panic!("fzf source computes reachable states");
     };
     assert!(!transitions.is_empty());

@@ -3,7 +3,7 @@
 ## Question and method
 
 The question is whether a prefix-sensitive upper bound can prune fzf
-`FuzzyMatchV2` search without changing exact top-`` $`k`$ `` results. The bound
+`FuzzyMatchV2` search without changing exact top-$`k`$ results. The bound
 uses the configured maximum candidate length as explicit remaining capacity and
 takes the maximum of feasible completed, active, and unstarted local-alignment
 alternatives. The benchmark compares independent per-path scoring with a
@@ -50,7 +50,7 @@ claim is limited to exactness and avoided DP work.
   the independent batch oracle and duallity's incremental scorer.
 - Every query/path pair in the checked-in corpus agrees score-for-score between
   those two implementations.
-- Property tests establish exact trie/brute-force top-`` $`k`$ `` equality,
+- Property tests establish exact trie/brute-force top-$`k`$ equality,
   descendant-score domination, and parent-to-child upper-bound monotonicity.
 - A targeted example observes score pruning with zero length-limit pruning.
 - Formal artifacts derive successor domination from the gap, match, completed,

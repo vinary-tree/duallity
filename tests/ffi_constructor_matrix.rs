@@ -20,8 +20,9 @@ use std::ptr;
 
 use duallity::ffi::{
     duallity_abi_version, duallity_api_revision, duallity_last_error_message,
-    duallity_resource_release, duallity_wfst_free, duallity_wfst_new, duallity_wfst_resource,
-    DuallityStatus, DuallityWfst, DUALLITY_ABI_VERSION, DUALLITY_API_REVISION,
+    duallity_resource_release, duallity_wfst_free, duallity_wfst_new, duallity_wfst_new_ref,
+    duallity_wfst_resource, DuallityStatus, DuallityWfst, DUALLITY_ABI_VERSION,
+    DUALLITY_API_REVISION,
 };
 use libdictenstein::bindings::{BindingUnitDomain, DynamicDawgBinding};
 use vinary_tree_interop::VtResource;
@@ -335,6 +336,27 @@ fn null_query_with_length_reports_null_pointer_message() {
 }
 
 #[test]
+fn pointer_form_preserves_constructor_semantics_and_checks_the_resource_pointer() {
+    let dictionary = unicode_dictionary();
+    let source = dictionary.resource();
+    let raw = source.as_raw();
+    let mut wfst = ptr::null_mut();
+    assert_eq!(
+        unsafe { duallity_wfst_new_ref(ptr::null(), b"cat".as_ptr(), 3, 1, 0, 0, &mut wfst) },
+        DuallityStatus::NullPointer
+    );
+    assert!(wfst.is_null());
+    assert_eq!(last_error(), "dictionary is null");
+
+    assert_eq!(
+        unsafe { duallity_wfst_new_ref(&raw, b"cat".as_ptr(), 3, 1, 0, 0, &mut wfst) },
+        DuallityStatus::Ok
+    );
+    assert!(!wfst.is_null());
+    unsafe { duallity_wfst_free(wfst) };
+}
+
+#[test]
 fn invalid_utf8_query_reports_utf8_message() {
     let dictionary = unicode_dictionary();
     let source = dictionary.resource();
@@ -361,5 +383,5 @@ fn version_pins_match_header_constants() {
     assert_eq!(duallity_abi_version(), DUALLITY_ABI_VERSION);
     assert_eq!(duallity_api_revision(), DUALLITY_API_REVISION);
     assert_eq!(duallity_abi_version(), 1);
-    assert_eq!(duallity_api_revision(), 1);
+    assert_eq!(duallity_api_revision(), 2);
 }

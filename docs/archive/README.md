@@ -26,7 +26,7 @@ has been rewritten accurately in the canonical documentation tree and is cross-r
 
 | File | Topic | Status vs. `duallity` |
 |---|---|---|
-| [`architecture.md`](architecture.md) | Three-tier FST+CFG+Neural text-normalization architecture, six-layer pipeline, MORK/LLM integration | **Research-only** — outside `duallity`'s crate surface. Only the generic tropical-semiring / FST∘FST composition theory is conceptually shared (see canonical [`theory/04-composition.md`](../theory/04-composition.md)). |
+| [`architecture.md`](architecture.md) | Three-tier FST+CFG+Neural text-normalization architecture, six-layer pipeline, MORK/LLM integration | **Research-only** — outside `duallity`'s crate surface. Only the generic tropical-semiring / $`\mathrm{FST} \circ \mathrm{FST}`$ composition theory is conceptually shared (see canonical [`theory/04-composition.md`](../theory/04-composition.md)). |
 | [`cfg_grammar_correction.md`](cfg_grammar_correction.md) | CFG-based grammatical error correction (CYK, Earley, PCFG) | **Research-only** — parser, grammar, and CFG code are outside this crate. |
 | [`lattice_parsing.md`](lattice_parsing.md) | Lattice parsing, parse forests, modified Earley | **Research-only** — lattice parsing is outside this crate. |
 | [`lattice_data_structures.md`](lattice_data_structures.md) | `Lattice`/`Node`/`Edge`/`EarleyChart` data structures | **Research-only** — describes external types and dependencies absent from `Cargo.toml`. |
@@ -41,7 +41,7 @@ has been rewritten accurately in the canonical documentation tree and is cross-r
 | Concept here | Where it lives accurately now |
 |---|---|
 | Phonetic regex → NFA → WFST | [`design/phonetic-wfst.md`](../design/phonetic-wfst.md), [`design/phonetic-nfa-wfst.md`](../design/phonetic-nfa-wfst.md) |
-| Tropical-semiring composition (`T₁ ∘ T₂`) | [`theory/01-semirings-and-wfsts.md`](../theory/01-semirings-and-wfsts.md), [`theory/04-composition.md`](../theory/04-composition.md) |
+| Tropical-semiring composition ($`T_1 \circ T_2`$) | [`theory/01-semirings-and-wfsts.md`](../theory/01-semirings-and-wfsts.md), [`theory/04-composition.md`](../theory/04-composition.md) |
 | Regular-language / FST expressivity limits | [`theory/07-regular-language-limits.md`](../theory/07-regular-language-limits.md) |
 | Schulz & Mihov 2002; Mohri 1997; Mohri, Pereira & Riley 2002 | [`references/bibliography.md`](../references/bibliography.md) |
 

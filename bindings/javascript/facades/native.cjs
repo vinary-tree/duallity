@@ -1,6 +1,6 @@
 "use strict";
-const { duallity } = require("@vinary-tree/vinary-tree");
-const { assertDictionaryResource, assertSameRuntime } = require("@vinary-tree/interop");
+const { duallity } = require("@vinary-tree/javascript-runtime");
+const { assertDictionaryResource, assertSameRuntime } = require("@vinary-tree/vinary-tree-interop");
 const runtimeIdentity = duallity.runtimeIdentity;
 function wfst(dictionary, query, maximumDistance, algorithm, kind) {
   assertDictionaryResource(dictionary);

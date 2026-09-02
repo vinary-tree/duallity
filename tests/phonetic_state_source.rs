@@ -1,6 +1,8 @@
 #![cfg(feature = "phonetic-rules")]
 
-use duallity::{LazyState, PhoneticStateSource, StateSource, TropicalWeight};
+use duallity::{
+    DirectStateSource, PhoneticStateSource, StateExpansion, StateSource, TropicalWeight,
+};
 use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 use liblevenshtein::phonetic::nfa::compiler::compile;
 use liblevenshtein::phonetic::nfa::NFAChar;
@@ -11,39 +13,36 @@ fn compile_pattern(pattern: &str) -> NFAChar {
     compile(&ast).expect("phonetic pattern should compile")
 }
 
-fn pending_eager_state<T>(message: &str) -> T {
-    std::panic::panic_any(message.to_owned())
-}
-
-fn transition_outputs(state: &LazyState<char, TropicalWeight>) -> Vec<char> {
-    state
-        .transitions()
-        .expect("expected computed state transitions")
-        .iter()
-        .filter_map(|transition| transition.output)
-        .collect()
+fn transition_outputs(state: &StateExpansion<char, TropicalWeight>) -> Vec<char> {
+    match state {
+        StateExpansion::Expanded { transitions, .. } => transitions
+            .iter()
+            .filter_map(|transition| transition.output)
+            .collect(),
+        StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+        StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
+    }
 }
 
 fn follow_term(
     source: &PhoneticStateSource<DynamicDawgChar<()>>,
     term: &str,
-) -> LazyState<char, TropicalWeight> {
+) -> StateExpansion<char, TropicalWeight> {
     let mut state_id = source.start();
 
     for ch in term.chars() {
-        state_id = match source.compute_state(state_id) {
-            LazyState::Computed { transitions, .. } => transitions
+        state_id = match source.expand_state(state_id) {
+            StateExpansion::Expanded { transitions, .. } => transitions
                 .iter()
                 .find(|transition| transition.output == Some(ch))
                 .map(|transition| transition.to)
                 .expect("expected dictionary transition while following test term"),
-            LazyState::Pending => {
-                pending_eager_state("Phonetic state source should compute eagerly")
-            }
+            StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+            StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
         };
     }
 
-    source.compute_state(state_id)
+    source.expand_state(state_id)
 }
 
 #[test]
@@ -51,7 +50,7 @@ fn phonetic_state_source_start_anchor_allows_initial_dictionary_edge() {
     let dict = DynamicDawgChar::<()>::from_terms(vec!["a"]);
     let source = PhoneticStateSource::new(&dict, compile_pattern("^a"), 0);
 
-    let start_state = source.compute_state(source.start());
+    let start_state = source.expand_state(source.start());
 
     assert_eq!(transition_outputs(&start_state), vec!['a']);
 }
@@ -62,7 +61,7 @@ fn phonetic_state_source_end_anchor_marks_dictionary_terminal_final() {
     let source = PhoneticStateSource::new(&dict, compile_pattern("a$"), 0);
 
     match follow_term(&source, "a") {
-        LazyState::Computed {
+        StateExpansion::Expanded {
             is_final,
             final_weight,
             ..
@@ -70,7 +69,8 @@ fn phonetic_state_source_end_anchor_marks_dictionary_terminal_final() {
             assert!(is_final);
             assert_eq!(final_weight.value(), 0.0);
         }
-        LazyState::Pending => pending_eager_state("Phonetic state source should compute eagerly"),
+        StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+        StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
     }
 }
 
@@ -79,17 +79,18 @@ fn phonetic_state_source_end_anchor_does_not_enable_following_dictionary_edge() 
     let dict = DynamicDawgChar::<()>::from_terms(vec!["ab"]);
     let source = PhoneticStateSource::new(&dict, compile_pattern("a\\z[b]"), 0);
 
-    let after_a = match source.compute_state(source.start()) {
-        LazyState::Computed { transitions, .. } => transitions
+    let after_a = match source.expand_state(source.start()) {
+        StateExpansion::Expanded { transitions, .. } => transitions
             .iter()
             .find(|transition| transition.output == Some('a'))
             .map(|transition| transition.to)
             .expect("expected first dictionary edge"),
-        LazyState::Pending => pending_eager_state("Phonetic state source should compute eagerly"),
+        StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+        StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
     };
 
-    match source.compute_state(after_a) {
-        LazyState::Computed {
+    match source.expand_state(after_a) {
+        StateExpansion::Expanded {
             is_final,
             transitions,
             ..
@@ -99,7 +100,8 @@ fn phonetic_state_source_end_anchor_does_not_enable_following_dictionary_edge() 
                 .iter()
                 .any(|transition| transition.output == Some('b')));
         }
-        LazyState::Pending => pending_eager_state("Phonetic state source should compute eagerly"),
+        StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+        StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
     }
 }
 
@@ -119,7 +121,10 @@ fn phonetic_state_source_start_state_computes_eagerly() {
     let source = PhoneticStateSource::new(&dict, compile_pattern("test"), 1);
 
     assert_eq!(source.start(), 0);
-    assert!(source.compute_state(source.start()).is_computed());
+    assert!(matches!(
+        source.expand_state(source.start()),
+        StateExpansion::Expanded { .. }
+    ));
 }
 
 #[test]
@@ -157,15 +162,16 @@ fn phonetic_state_source_applies_phonetic_transition_weight() {
     let source = PhoneticStateSource::with_weights(&dict, compile_pattern("cat"), 1, 0.25, 1.0)
         .expect("valid phonetic weights");
 
-    match source.compute_state(source.start()) {
-        LazyState::Computed { transitions, .. } => {
+    match source.expand_state(source.start()) {
+        StateExpansion::Expanded { transitions, .. } => {
             let transition = transitions
                 .iter()
                 .find(|transition| transition.output == Some('c'))
                 .expect("expected first dictionary transition");
             assert_eq!(transition.weight.value(), 0.25);
         }
-        LazyState::Pending => pending_eager_state("Phonetic state source should compute eagerly"),
+        StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+        StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
     }
 }
 
@@ -176,7 +182,7 @@ fn phonetic_state_source_applies_edit_final_weight() {
         .expect("valid phonetic weights");
 
     match follow_term(&source, "bat") {
-        LazyState::Computed {
+        StateExpansion::Expanded {
             is_final,
             final_weight,
             ..
@@ -184,7 +190,8 @@ fn phonetic_state_source_applies_edit_final_weight() {
             assert!(is_final);
             assert_eq!(final_weight.value(), 2.5);
         }
-        LazyState::Pending => pending_eager_state("Phonetic state source should compute eagerly"),
+        StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+        StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
     }
 }
 
@@ -193,7 +200,10 @@ fn phonetic_state_source_computes_start_state() {
     let dict = DynamicDawgChar::<()>::from_terms(vec!["phone", "help"]);
     let source = PhoneticStateSource::new(&dict, compile_pattern("phone"), 1);
 
-    assert!(source.compute_state(source.start()).is_computed());
+    assert!(matches!(
+        source.expand_state(source.start()),
+        StateExpansion::Expanded { .. }
+    ));
 }
 
 #[test]

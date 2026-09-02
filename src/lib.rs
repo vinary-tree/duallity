@@ -59,6 +59,7 @@ mod backend;
 #[cfg(feature = "bindings-core")]
 pub mod bindings;
 mod lazy_cache;
+mod lazy_lifecycle;
 mod node_key;
 mod node_registry;
 mod state_source;
@@ -102,6 +103,8 @@ mod fzf_support;
 mod fzf_wfst;
 
 pub use backend::DictionaryBackend;
+pub(crate) use lazy_lifecycle::fulfill_expansion_request;
+pub use lazy_lifecycle::DirectStateSource;
 pub use state_source::LevenshteinStateSource;
 pub use universal_state_source::UniversalLevenshteinStateSource;
 pub use universal_state_support::UniversalStateRegistry;
@@ -132,8 +135,9 @@ pub mod ffi;
 
 // Re-export commonly used lling-llang types for convenience
 pub use lling_llang::prelude::{
-    ArcticWeight, LazyState, LazyWfst, LazyWfstWrapper, Semiring, StateId, StateSource,
-    TropicalWeight, VocabId, WeightedTransition, Wfst,
+    ArcticWeight, CancellationReason, ExpansionError, ExpansionFailure, ExpansionFailureKind,
+    ExpansionRequest, ExpansionStatus, LazyState, LazyWfst, LazyWfstWrapper, Semiring,
+    StateExpansion, StateId, StateSource, TropicalWeight, VocabId, WeightedTransition, Wfst,
 };
 
 /// Error returned when a caller supplies an invalid non-negative weight.

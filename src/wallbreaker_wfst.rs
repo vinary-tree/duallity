@@ -45,7 +45,8 @@
 use std::marker::PhantomData;
 
 use lling_llang::prelude::{
-    LazyState, LazyWfst, StateId, StateSource, TropicalWeight, WeightedTransition, Wfst,
+    ExpansionError, ExpansionFailure, ExpansionRequest, ExpansionStatus, LazyWfst, StateExpansion,
+    StateId, StateSource, TropicalWeight, WeightedTransition, Wfst,
 };
 use smallvec::SmallVec;
 
@@ -54,13 +55,17 @@ use libdictenstein::{Dictionary, DictionaryNode};
 use liblevenshtein::transducer::Algorithm;
 use liblevenshtein::wallbreaker::WallBreaker;
 
-use crate::lazy_cache::{empty_char_transitions, CachedCharState, LazyStateCache};
+use crate::lazy_cache::{
+    cache_char_state_expansion, cached_char_state_status, empty_char_transitions, CachedCharState,
+    LazyStateCache,
+};
 use crate::wallbreaker_results::{
     empty_wallbreaker_result_final_weight, next_wallbreaker_char_position,
     next_wallbreaker_result_index, next_wallbreaker_state_id, normalize_wallbreaker_results,
     usize_from_state_id, usize_from_u32, wallbreaker_result_final_weights, ResultCharArena,
     WallBreakerStateKey, SUPER_START_RESULT_INDEX,
 };
+use crate::{fulfill_expansion_request, DirectStateSource};
 
 /// Default maximum cache size used when LRU policy delegates to the wrapper default.
 const DEFAULT_MAX_CACHE_SIZE: usize = 100_000;
@@ -265,14 +270,14 @@ where
     }
 
     /// Ensure a state is computed and cached.
-    fn ensure_state(&mut self, state_id: StateId) {
+    fn ensure_state(&mut self, state_id: StateId) -> Result<ExpansionStatus, ExpansionError> {
         if self.cache.touch_if_cached(state_id) {
-            return;
+            return cached_char_state_status(&self.cache, state_id);
         }
 
         let key = match self.id_to_state.get(usize_from_state_id(state_id)) {
             Some(key) => *key,
-            None => return,
+            None => return Err(crate::lazy_cache::invalid_state_error(state_id)),
         };
 
         let (is_final, final_weight, transitions) = if key.result_index == SUPER_START_RESULT_INDEX
@@ -283,10 +288,12 @@ where
             self.compute_result_state(state_id, &key)
         };
 
-        self.cache.insert(
-            state_id,
-            CachedCharState::new(is_final, final_weight, transitions),
-        );
+        let expansion = if is_final {
+            StateExpansion::final_state(final_weight, transitions)
+        } else {
+            StateExpansion::non_final(transitions)
+        };
+        cache_char_state_expansion(&mut self.cache, state_id, expansion)
     }
 
     /// Compute transitions from the super-start state.
@@ -456,12 +463,12 @@ where
         self.cache.is_expanded(state)
     }
 
-    fn expand(&mut self, state: StateId) {
-        self.ensure_state(state);
+    fn expand(&mut self, state: StateId) -> Result<ExpansionStatus, ExpansionError> {
+        self.ensure_state(state)
     }
 
     fn transitions_lazy(&mut self, state: StateId) -> &[WeightedTransition<char, TropicalWeight>] {
-        self.ensure_state(state);
+        let _ = self.ensure_state(state);
         self.transitions(state)
     }
 
@@ -482,15 +489,15 @@ where
     }
 }
 
-impl<'a, D> StateSource<char, TropicalWeight> for WallBreakerWfst<'a, D>
+impl<'a, D> DirectStateSource<char, TropicalWeight> for WallBreakerWfst<'a, D>
 where
     D: Dictionary + SubstringDictionary + Clone + Send + Sync,
     D::Node: BidirectionalDictionaryNode,
     <D::Node as DictionaryNode>::Unit: Into<u32>,
 {
-    fn compute_state(&self, state: StateId) -> LazyState<char, TropicalWeight> {
+    fn expand_state(&self, state: StateId) -> StateExpansion<char, TropicalWeight> {
         let Some(key) = self.id_to_state.get(usize_from_state_id(state)).copied() else {
-            return LazyState::non_final(SmallVec::new());
+            return StateExpansion::failed(ExpansionFailure::invalid_state(state));
         };
 
         let (is_final, final_weight, transitions) = if key.result_index == SUPER_START_RESULT_INDEX
@@ -501,10 +508,21 @@ where
         };
 
         if is_final {
-            LazyState::final_state(final_weight, transitions)
+            StateExpansion::final_state(final_weight, transitions)
         } else {
-            LazyState::non_final(transitions)
+            StateExpansion::non_final(transitions)
         }
+    }
+}
+
+impl<'a, D> StateSource<char, TropicalWeight> for WallBreakerWfst<'a, D>
+where
+    D: Dictionary + SubstringDictionary + Clone + Send + Sync,
+    D::Node: BidirectionalDictionaryNode,
+    <D::Node as DictionaryNode>::Unit: Into<u32>,
+{
+    fn compute_state(&self, request: ExpansionRequest<'_>) -> StateExpansion<char, TropicalWeight> {
+        fulfill_expansion_request(self, request)
     }
 
     fn start(&self) -> StateId {
@@ -536,7 +554,8 @@ mod tests {
             })
             .expect("single-character result path should register terminal state");
 
-        wfst.expand(terminal_state);
+        wfst.expand(terminal_state)
+            .expect("terminal result state expands");
 
         assert!(!wfst.is_final(terminal_state));
         assert!(wfst.final_weight(terminal_state).value().is_infinite());

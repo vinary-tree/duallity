@@ -21,13 +21,14 @@ package "lling-llang traits (yellow)" as LLL #F8F9F9 {
   }
   interface "LazyWfst<L, W>" as LazyWfst #FCF3CF {
     +is_expanded(StateId) : bool
-    +expand(&mut self, StateId)
+    +expand(&mut self, StateId) : Result<ExpansionStatus, ExpansionError>
     +transitions_lazy(&mut self, StateId)
     +cache_policy() : CachePolicy
     +clear_cache()
   }
   interface "StateSource<L, W>" as StateSource #FCF3CF {
-    +compute_state(StateId) : LazyState
+    +compute_state(ExpansionRequest) : StateExpansion
+    +snapshot() : SourceSnapshot
     +start() : StateId
   }
   interface "LatticeBackend" as LatticeBackend #FCF3CF {
@@ -45,6 +46,10 @@ package "lling-llang traits (yellow)" as LLL #F8F9F9 {
     Lru(max_states)
     NoCache
   }
+}
+
+interface "DirectStateSource<L, W>" as DirectStateSource #D6EAF8 {
+  +expand_state(StateId) : StateExpansion
 }
 
 class "TropicalWeight" as TW #EAECEE {
@@ -78,12 +83,21 @@ GW   ..|> Wfst
 RWW  ..|> Wfst
 PW   ..|> Wfst
 
-GW ..> StateSource : delegates compute_state
+GW ..|> StateSource
+GW ..|> DirectStateSource
+WBW ..|> StateSource
+WBW ..|> DirectStateSource
+RWW ..|> StateSource
+RWW ..|> DirectStateSource
 DB ..|> LatticeBackend
 
 note bottom of StateSource
-  The pure &self kernel: each lazy WFST wraps a StateSource,
-  whose compute_state mints one product state on demand.
+  Managed request boundary: snapshots, attempts, and
+  cooperative cancellation remain explicit.
+end note
+note bottom of DirectStateSource
+  duallity's allocation-conscious &self kernel.
+  StateSource validates request lifecycle, then delegates here.
 end note
 note bottom of DB
   DictionaryBackend realizes LatticeBackend — a vocabulary

@@ -4,8 +4,8 @@
 //! lling-llang's WFST infrastructure.
 
 use duallity::{
-    DictionaryBackend, GeneralizedWfst, LazyState, LevenshteinStateSource, LevenshteinWfst,
-    Semiring, StateSource, TropicalWeight, UniversalLevenshteinStateSource,
+    DictionaryBackend, DirectStateSource, GeneralizedWfst, LevenshteinStateSource, LevenshteinWfst,
+    Semiring, StateExpansion, StateSource, TropicalWeight, UniversalLevenshteinStateSource,
     UniversalLevenshteinWfst, Wfst,
 };
 #[cfg(feature = "phonetic-rules")]
@@ -15,11 +15,8 @@ use libdictenstein::{Dictionary, DictionaryNode};
 use liblevenshtein::transducer::universal::Standard;
 use liblevenshtein::transducer::{Algorithm, OperationSet};
 use lling_llang::backend::LatticeBackend;
+use lling_llang::prelude::{CancellationReason, CancellationToken, ExpansionError};
 use lling_llang::wfst::{LazyWfst, LazyWfstWrapper};
-
-fn pending_eager_state<T>(message: &str) -> T {
-    std::panic::panic_any(message.to_owned())
-}
 
 #[derive(Clone)]
 struct UnknownLenDict;
@@ -63,8 +60,8 @@ fn state_source_transition_labels(
 ) -> Vec<(Option<char>, Option<char>, f64)> {
     let dict = DynamicDawgChar::<()>::from_terms(dict_terms);
     let source = LevenshteinStateSource::new(&dict, query, 1);
-    match source.compute_state(source.start()) {
-        LazyState::Computed { transitions, .. } => transitions
+    match source.expand_state(source.start()) {
+        StateExpansion::Expanded { transitions, .. } => transitions
             .iter()
             .map(|transition| {
                 (
@@ -74,9 +71,8 @@ fn state_source_transition_labels(
                 )
             })
             .collect(),
-        LazyState::Pending => {
-            pending_eager_state("Levenshtein state source should compute eagerly")
-        }
+        StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+        StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
     }
 }
 
@@ -117,8 +113,8 @@ fn state_source_accepts_any_path(source: &LevenshteinStateSource<DynamicDawgChar
             continue;
         }
 
-        match source.compute_state(state_id) {
-            LazyState::Computed {
+        match source.expand_state(state_id) {
+            StateExpansion::Expanded {
                 is_final,
                 transitions,
                 ..
@@ -128,9 +124,8 @@ fn state_source_accepts_any_path(source: &LevenshteinStateSource<DynamicDawgChar
                 }
                 stack.extend(transitions.iter().map(|transition| transition.to));
             }
-            LazyState::Pending => {
-                pending_eager_state("Levenshtein state source should compute eagerly")
-            }
+            StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+            StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
         }
     }
 
@@ -172,7 +167,7 @@ fn test_levenshtein_wfst_lazy_expansion() {
     assert_eq!(wfst.computed_states(), 0);
 
     // Expand start state
-    wfst.expand(start);
+    wfst.expand(start).expect("start state expands");
     assert!(wfst.is_expanded(start));
     assert!(wfst.computed_states() >= 1);
 }
@@ -323,7 +318,10 @@ fn test_levenshtein_state_source_oversized_distance_does_not_panic() {
     let dict = DynamicDawgChar::<()>::from_terms(vec!["a"]);
     let source = LevenshteinStateSource::new(&dict, "a", usize::MAX);
 
-    assert!(source.compute_state(source.start()).is_computed());
+    assert!(matches!(
+        source.expand_state(source.start()),
+        StateExpansion::Expanded { .. }
+    ));
 }
 
 #[test]
@@ -413,8 +411,23 @@ fn test_levenshtein_state_source_compute_state() {
     let source = LevenshteinStateSource::new(&dict, "helo", 2);
 
     // Compute start state
-    let state = source.compute_state(source.start());
-    assert!(state.is_computed());
+    let state = source.expand_state(source.start());
+    assert!(matches!(state, StateExpansion::Expanded { .. }));
+}
+
+#[test]
+fn test_levenshtein_state_source_honors_managed_cancellation() {
+    let dict = DynamicDawgChar::<()>::from_terms(vec!["hello", "help"]);
+    let source = LevenshteinStateSource::new(&dict, "helo", 2);
+    let mut wrapper = LazyWfstWrapper::new(source);
+    let cancellation = CancellationToken::new();
+    assert!(cancellation.cancel(CancellationReason::Requested));
+
+    assert_eq!(
+        wrapper.expand_with(wrapper.start(), &cancellation),
+        Err(ExpansionError::Cancelled(CancellationReason::Requested))
+    );
+    assert_eq!(wrapper.computed_states(), 0);
 }
 
 #[test]
@@ -454,8 +467,8 @@ fn test_levenshtein_state_source_prunes_paths_above_max_distance() {
             continue;
         }
 
-        match source.compute_state(state_id) {
-            LazyState::Computed {
+        match source.expand_state(state_id) {
+            StateExpansion::Expanded {
                 is_final,
                 transitions,
                 ..
@@ -463,9 +476,8 @@ fn test_levenshtein_state_source_prunes_paths_above_max_distance() {
                 assert!(!is_final, "distance-3 term must not be accepted with k=1");
                 stack.extend(transitions.iter().map(|transition| transition.to));
             }
-            LazyState::Pending => {
-                pending_eager_state("Levenshtein state source should compute eagerly")
-            }
+            StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+            StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
         }
     }
 
@@ -477,8 +489,8 @@ fn test_levenshtein_state_source_accepts_paths_at_max_distance() {
     let dict = DynamicDawgChar::<()>::from_terms(vec!["b"]);
     let source = LevenshteinStateSource::new(&dict, "a", 1);
 
-    let substitution_target = match source.compute_state(source.start()) {
-        LazyState::Computed { transitions, .. } => transitions
+    let substitution_target = match source.expand_state(source.start()) {
+        StateExpansion::Expanded { transitions, .. } => transitions
             .iter()
             .find(|transition| {
                 transition.input == Some('a')
@@ -487,13 +499,12 @@ fn test_levenshtein_state_source_accepts_paths_at_max_distance() {
             })
             .map(|transition| transition.to)
             .expect("expected substitution transition"),
-        LazyState::Pending => {
-            pending_eager_state("Levenshtein state source should compute eagerly")
-        }
+        StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+        StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
     };
 
-    match source.compute_state(substitution_target) {
-        LazyState::Computed {
+    match source.expand_state(substitution_target) {
+        StateExpansion::Expanded {
             is_final,
             final_weight,
             ..
@@ -501,9 +512,8 @@ fn test_levenshtein_state_source_accepts_paths_at_max_distance() {
             assert!(is_final);
             assert_eq!(final_weight.value(), 0.0);
         }
-        LazyState::Pending => {
-            pending_eager_state("Levenshtein state source should compute eagerly")
-        }
+        StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+        StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
     }
 }
 
@@ -512,8 +522,8 @@ fn test_levenshtein_state_source_transposition_accepts_adjacent_swap() {
     let dict = DynamicDawgChar::<()>::from_terms(vec!["ab"]);
     let source = LevenshteinStateSource::with_algorithm(&dict, "ba", 1, Algorithm::Transposition);
 
-    let first_targets = match source.compute_state(source.start()) {
-        LazyState::Computed { transitions, .. } => transitions
+    let first_targets = match source.expand_state(source.start()) {
+        StateExpansion::Expanded { transitions, .. } => transitions
             .iter()
             .filter(|transition| {
                 transition.input == Some('b')
@@ -522,9 +532,8 @@ fn test_levenshtein_state_source_transposition_accepts_adjacent_swap() {
             })
             .map(|transition| transition.to)
             .collect::<Vec<_>>(),
-        LazyState::Pending => {
-            pending_eager_state("Levenshtein state source should compute eagerly")
-        }
+        StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+        StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
     };
 
     assert!(
@@ -535,8 +544,8 @@ fn test_levenshtein_state_source_transposition_accepts_adjacent_swap() {
     let mut reaches_final = false;
 
     for first_target in first_targets {
-        let second_targets = match source.compute_state(first_target) {
-            LazyState::Computed { transitions, .. } => transitions
+        let second_targets = match source.expand_state(first_target) {
+            StateExpansion::Expanded { transitions, .. } => transitions
                 .iter()
                 .filter(|transition| {
                     transition.input == Some('a')
@@ -545,17 +554,16 @@ fn test_levenshtein_state_source_transposition_accepts_adjacent_swap() {
                 })
                 .map(|transition| transition.to)
                 .collect::<Vec<_>>(),
-            LazyState::Pending => {
-                pending_eager_state("Levenshtein state source should compute eagerly")
-            }
+            StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+            StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
         };
 
         for second_target in second_targets {
-            if let LazyState::Computed {
+            if let StateExpansion::Expanded {
                 is_final,
                 final_weight,
                 ..
-            } = source.compute_state(second_target)
+            } = source.expand_state(second_target)
             {
                 reaches_final |= is_final && final_weight.value() == 0.0;
             }
@@ -581,8 +589,8 @@ fn test_levenshtein_state_source_merge_and_split_accepts_merge() {
     let dict = DynamicDawgChar::<()>::from_terms(vec!["m"]);
     let source = LevenshteinStateSource::with_algorithm(&dict, "rn", 1, Algorithm::MergeAndSplit);
 
-    let first_targets = match source.compute_state(source.start()) {
-        LazyState::Computed { transitions, .. } => transitions
+    let first_targets = match source.expand_state(source.start()) {
+        StateExpansion::Expanded { transitions, .. } => transitions
             .iter()
             .filter(|transition| {
                 transition.input == Some('r')
@@ -591,16 +599,15 @@ fn test_levenshtein_state_source_merge_and_split_accepts_merge() {
             })
             .map(|transition| transition.to)
             .collect::<Vec<_>>(),
-        LazyState::Pending => {
-            pending_eager_state("Levenshtein state source should compute eagerly")
-        }
+        StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+        StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
     };
 
     let mut reaches_final = false;
 
     for first_target in first_targets {
-        let second_targets = match source.compute_state(first_target) {
-            LazyState::Computed { transitions, .. } => transitions
+        let second_targets = match source.expand_state(first_target) {
+            StateExpansion::Expanded { transitions, .. } => transitions
                 .iter()
                 .filter(|transition| {
                     transition.input == Some('n')
@@ -609,17 +616,16 @@ fn test_levenshtein_state_source_merge_and_split_accepts_merge() {
                 })
                 .map(|transition| transition.to)
                 .collect::<Vec<_>>(),
-            LazyState::Pending => {
-                pending_eager_state("Levenshtein state source should compute eagerly")
-            }
+            StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+            StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
         };
 
         for second_target in second_targets {
-            if let LazyState::Computed {
+            if let StateExpansion::Expanded {
                 is_final,
                 final_weight,
                 ..
-            } = source.compute_state(second_target)
+            } = source.expand_state(second_target)
             {
                 reaches_final |= is_final && final_weight.value() == 0.0;
             }
@@ -634,8 +640,8 @@ fn test_levenshtein_state_source_merge_and_split_accepts_split() {
     let dict = DynamicDawgChar::<()>::from_terms(vec!["rn"]);
     let source = LevenshteinStateSource::with_algorithm(&dict, "m", 1, Algorithm::MergeAndSplit);
 
-    let first_targets = match source.compute_state(source.start()) {
-        LazyState::Computed { transitions, .. } => transitions
+    let first_targets = match source.expand_state(source.start()) {
+        StateExpansion::Expanded { transitions, .. } => transitions
             .iter()
             .filter(|transition| {
                 transition.input == Some('m')
@@ -644,16 +650,15 @@ fn test_levenshtein_state_source_merge_and_split_accepts_split() {
             })
             .map(|transition| transition.to)
             .collect::<Vec<_>>(),
-        LazyState::Pending => {
-            pending_eager_state("Levenshtein state source should compute eagerly")
-        }
+        StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+        StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
     };
 
     let mut reaches_final = false;
 
     for first_target in first_targets {
-        let second_targets = match source.compute_state(first_target) {
-            LazyState::Computed { transitions, .. } => transitions
+        let second_targets = match source.expand_state(first_target) {
+            StateExpansion::Expanded { transitions, .. } => transitions
                 .iter()
                 .filter(|transition| {
                     transition.input.is_none()
@@ -662,17 +667,16 @@ fn test_levenshtein_state_source_merge_and_split_accepts_split() {
                 })
                 .map(|transition| transition.to)
                 .collect::<Vec<_>>(),
-            LazyState::Pending => {
-                pending_eager_state("Levenshtein state source should compute eagerly")
-            }
+            StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+            StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
         };
 
         for second_target in second_targets {
-            if let LazyState::Computed {
+            if let StateExpansion::Expanded {
                 is_final,
                 final_weight,
                 ..
-            } = source.compute_state(second_target)
+            } = source.expand_state(second_target)
             {
                 reaches_final |= is_final && final_weight.value() == 0.0;
             }
@@ -831,7 +835,7 @@ fn test_wfst_transposition_algorithm() {
             .collect::<Vec<_>>();
 
         for second_target in second_targets {
-            wfst.expand(second_target);
+            wfst.expand(second_target).expect("valid state expands");
             reaches_final |=
                 wfst.is_final(second_target) && wfst.final_weight(second_target).value() == 0.0;
         }
@@ -877,7 +881,9 @@ fn test_wfst_merge_and_split_algorithm() {
             .collect::<Vec<_>>();
 
         for second_target in second_targets {
-            merge_wfst.expand(second_target);
+            merge_wfst
+                .expand(second_target)
+                .expect("valid merge state expands");
             merge_reaches_final |= merge_wfst.is_final(second_target)
                 && merge_wfst.final_weight(second_target).value() == 0.0;
         }
@@ -919,7 +925,9 @@ fn test_wfst_merge_and_split_algorithm() {
             .collect::<Vec<_>>();
 
         for second_target in second_targets {
-            split_wfst.expand(second_target);
+            split_wfst
+                .expand(second_target)
+                .expect("valid split state expands");
             split_reaches_final |= split_wfst.is_final(second_target)
                 && split_wfst.final_weight(second_target).value() == 0.0;
         }

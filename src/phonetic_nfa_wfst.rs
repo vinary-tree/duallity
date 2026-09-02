@@ -13,13 +13,17 @@
 use std::sync::{Arc, RwLock};
 
 use lling_llang::prelude::{
-    LazyState, LazyWfst, Semiring, StateId, StateSource, TropicalWeight, WeightedTransition, Wfst,
+    ExpansionError, ExpansionFailure, ExpansionRequest, ExpansionStatus, LazyWfst, Semiring,
+    StateExpansion, StateId, StateSource, TropicalWeight, WeightedTransition, Wfst,
 };
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 
 use crate::fx_hash_map_with_capacity;
-use crate::lazy_cache::{empty_char_transitions, CachedCharState, LazyStateCache};
+use crate::lazy_cache::{
+    cache_char_state_expansion, cached_char_state_status, empty_char_transitions, CachedCharState,
+    LazyStateCache,
+};
 use crate::phonetic_anchors::{
     start_anchor_closure, state_set_can_reach_final_through_end_anchors,
 };
@@ -28,6 +32,7 @@ use crate::phonetic_nfa_support::{
     phonetic_nfa_state_hint, push_bounded_char_range, state_set_to_key, usize_from_state_id,
     CandidateChars, LabelSuccessors, StateSetKey,
 };
+use crate::{fulfill_expansion_request, DirectStateSource};
 #[cfg(feature = "phonetic-rules")]
 use liblevenshtein::phonetic::nfa::{CharClassChar, NFAChar, StateSet, TransitionLabelChar};
 
@@ -391,21 +396,22 @@ impl PhoneticNfaWfst {
     }
 
     /// Ensure a state is computed and cached.
-    fn ensure_state(&mut self, state: StateId) {
+    fn ensure_state(&mut self, state: StateId) -> Result<ExpansionStatus, ExpansionError> {
         if self.cache.touch_if_cached(state) {
-            return;
+            return cached_char_state_status(&self.cache, state);
         }
 
         if !self.is_registered_state(state) {
-            return;
+            return Err(crate::lazy_cache::invalid_state_error(state));
         }
 
         let (is_final, final_weight, transitions) = self.compute_nfa_transitions(state);
-
-        self.cache.insert(
-            state,
-            CachedCharState::new(is_final, final_weight, transitions),
-        );
+        let expansion = if is_final {
+            StateExpansion::final_state(final_weight, transitions)
+        } else {
+            StateExpansion::non_final(transitions)
+        };
+        cache_char_state_expansion(&mut self.cache, state, expansion)
     }
 
     fn is_registered_state(&self, state: StateId) -> bool {
@@ -502,12 +508,12 @@ impl LazyWfst<char, TropicalWeight> for PhoneticNfaWfst {
         self.cache.is_expanded(state)
     }
 
-    fn expand(&mut self, state: StateId) {
-        self.ensure_state(state);
+    fn expand(&mut self, state: StateId) -> Result<ExpansionStatus, ExpansionError> {
+        self.ensure_state(state)
     }
 
     fn transitions_lazy(&mut self, state: StateId) -> &[WeightedTransition<char, TropicalWeight>] {
-        self.ensure_state(state);
+        let _ = self.ensure_state(state);
         self.transitions(state)
     }
 
@@ -529,18 +535,25 @@ impl LazyWfst<char, TropicalWeight> for PhoneticNfaWfst {
 }
 
 #[cfg(feature = "phonetic-rules")]
-impl StateSource<char, TropicalWeight> for PhoneticNfaWfst {
-    fn compute_state(&self, state: StateId) -> LazyState<char, TropicalWeight> {
+impl DirectStateSource<char, TropicalWeight> for PhoneticNfaWfst {
+    fn expand_state(&self, state: StateId) -> StateExpansion<char, TropicalWeight> {
         if !self.is_valid_state(state) {
-            return LazyState::non_final(SmallVec::new());
+            return StateExpansion::failed(ExpansionFailure::invalid_state(state));
         }
 
         let (is_final, final_weight, transitions) = self.compute_nfa_transitions(state);
         if is_final {
-            LazyState::final_state(final_weight, transitions)
+            StateExpansion::final_state(final_weight, transitions)
         } else {
-            LazyState::non_final(transitions)
+            StateExpansion::non_final(transitions)
         }
+    }
+}
+
+#[cfg(feature = "phonetic-rules")]
+impl StateSource<char, TropicalWeight> for PhoneticNfaWfst {
+    fn compute_state(&self, request: ExpansionRequest<'_>) -> StateExpansion<char, TropicalWeight> {
+        fulfill_expansion_request(self, request)
     }
 
     fn start(&self) -> StateId {
@@ -634,7 +647,7 @@ mod tests {
             liblevenshtein::phonetic::nfa::compiler::compile(&ast).expect("wildcard compiles");
         let mut wfst = PhoneticNfaWfst::with_alphabet(nfa, ['x', 'y', 'z']);
 
-        wfst.expand(0);
+        wfst.expand(0).expect("start state expands");
 
         let transitions = wfst.transitions(0);
         assert_eq!(transitions.len(), 3);

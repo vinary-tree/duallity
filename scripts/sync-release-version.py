@@ -9,11 +9,26 @@ import re
 import sys
 from pathlib import Path
 
+import tomllib
+
 ROOT = Path(__file__).resolve().parents[1]
 MODEL_PATH = ROOT / "release/version.json"
 GENERATED_TREE_PARTS = frozenset(
     {".git", ".venv", "_build", "build", "dist", "node_modules", "target", "venv"}
 )
+HISTORICAL_DOC_TREE_PARTS = frozenset({"archive", "releases"})
+NPM_PACKAGE = "@vinary-tree/duallity"
+NPM_INTEROP_PACKAGE = "@vinary-tree/vinary-tree-interop"
+NPM_RUNTIME_PACKAGE = "@vinary-tree/javascript-runtime"
+DEPRECATED_NPM_COORDINATES = {
+    "@vinary-tree/" + "interop",
+    "@vinary-tree/" + "vinary-tree",
+    "@vinary-tree/" + "javascript-runtime-interop",
+}
+DEPRECATED_NPM_PATTERNS = {
+    coordinate: re.compile(re.escape(coordinate) + r"(?=$|[^A-Za-z0-9._~-])")
+    for coordinate in DEPRECATED_NPM_COORDINATES
+}
 
 
 def replace(path: str, pattern: str, replacement: str, expected: int = 1) -> None:
@@ -41,8 +56,10 @@ def rewrite_candidate_tokens(patterns: tuple[str, ...], canonical: str) -> None:
     for pattern in patterns:
         for target in ROOT.glob(pattern):
             relative = target.relative_to(ROOT)
-            if not target.is_file() or GENERATED_TREE_PARTS.intersection(
-                relative.parts
+            if (
+                not target.is_file()
+                or GENERATED_TREE_PARTS.intersection(relative.parts)
+                or HISTORICAL_DOC_TREE_PARTS.intersection(relative.parts)
             ):
                 continue
             source = target.read_text(encoding="utf-8")
@@ -70,11 +87,26 @@ def set_cargo_dependency(name: str, version: str) -> None:
     target.write_text(updated, encoding="utf-8")
 
 
+def raku_version(version: str) -> str:
+    """Translate SemVer prerelease spelling to Raku distribution spelling."""
+    return version.replace("-rc.", ".rc.")
+
+
+def raku_dependency(package: str, version: str) -> str:
+    """Build one exact, authority-qualified Raku distribution dependency."""
+    return f"{package}:ver<{raku_version(version)}>:auth<zef:vinary-tree>"
+
+
 def write_versions(model: dict[str, object]) -> None:
     canonical = str(model["canonical"])
     component = str(model["component"])
+    coordinates = model["coordinates"]
     deps = model["dependencies"]
+    publication = model["publication"]
+    assert isinstance(coordinates, dict)
     assert isinstance(deps, dict)
+    assert isinstance(publication, dict)
+    npm_package = str(coordinates["npmPackage"])
     replace("Cargo.toml", r'^version = "[^"]+"$', f'version = "{canonical}"')
     for name in ("liblevenshtein", "libdictenstein", "lling-llang", "llattice"):
         if name in deps and re.search(
@@ -100,35 +132,59 @@ def write_versions(model: dict[str, object]) -> None:
         )
 
     def api(value: dict) -> None:
+        value["packages"]["npm"] = npm_package
+        value["interop"]["npm"] = NPM_INTEROP_PACKAGE
         value["packageVersion"] = canonical
+        value["javascript"]["package"] = npm_package
         value["javascript"]["version"] = canonical
-        value["javascript"]["dependencies"]["@vinary-tree/interop"] = deps[
-            "@vinary-tree/interop"
-        ]
-        value["javascript"]["dependencies"]["@vinary-tree/vinary-tree"] = deps[
-            "@vinary-tree/vinary-tree"
-        ]
+        value["javascript"]["dependencies"] = {
+            NPM_INTEROP_PACKAGE: deps[NPM_INTEROP_PACKAGE],
+            NPM_RUNTIME_PACKAGE: deps[NPM_RUNTIME_PACKAGE],
+        }
+        value["wasm"].pop("umbrellaPackage", None)
+        value["wasm"]["runtimePackage"] = NPM_RUNTIME_PACKAGE
         value["release"] = {
             "canonical": canonical,
             "registries": model["registries"],
-            "distTag": model["publication"]["distTag"],
+            "distTag": publication["distTag"],
+            "sourceTag": publication["sourceTag"],
         }
 
     update_json("bindings/api.json", api)
 
     def npm(value: dict) -> None:
+        value["name"] = npm_package
         value["version"] = canonical
-        value["dependencies"]["@vinary-tree/interop"] = deps["@vinary-tree/interop"]
-        value["dependencies"]["@vinary-tree/vinary-tree"] = deps[
-            "@vinary-tree/vinary-tree"
-        ]
-        value.setdefault("publishConfig", {})["tag"] = model["publication"]["distTag"]
+        value["dependencies"] = {
+            NPM_INTEROP_PACKAGE: deps[NPM_INTEROP_PACKAGE],
+            NPM_RUNTIME_PACKAGE: deps[NPM_RUNTIME_PACKAGE],
+        }
+        value.setdefault("publishConfig", {})["tag"] = publication["distTag"]
 
     update_json("bindings/javascript/package.json", npm)
     replace(
+        "bindings/julia/Duallity/Project.toml",
+        r'^version = "[^"]+"$',
+        f'version = "{canonical}"',
+    )
+
+    def raku(value: dict) -> None:
+        value["name"] = "Duallity"
+        value["version"] = canonical
+        value["depends"] = [
+            raku_dependency("Vinary-Tree-Interop", str(deps["vinary-tree-interop"]))
+        ]
+        value["test-depends"] = [
+            raku_dependency("Libdictenstein", str(deps["libdictenstein"])),
+            raku_dependency("Lling-Llang", str(deps["lling-llang"])),
+            "Test",
+        ]
+
+    update_json("bindings/raku/META6.json", raku)
+    replace(
         "bindings/javascript/README.md",
-        r"(\| `@vinary-tree/interop`) \([^)]*\) \| `[^`]+` \|",
-        rf"\1 (dependency) | `{deps['@vinary-tree/interop']}` |",
+        r"(\| `@vinary-tree/vinary-tree-interop`) \([^)]*\) \| `[^`]+` \|",
+        rf"\1 (dependency) | `{deps[NPM_INTEROP_PACKAGE]}` |",
     )
     replace(
         "docs/guides/07-language-bindings.md",
@@ -137,8 +193,8 @@ def write_versions(model: dict[str, object]) -> None:
     )
     replace(
         "docs/guides/07-language-bindings.md",
-        r"(\| npm `@vinary-tree/interop`) \([^)]*\) \| `[^`]+` \|",
-        rf"\1 (dependency) | `{deps['@vinary-tree/interop']}` |",
+        r"(\| npm `@vinary-tree/vinary-tree-interop`) \([^)]*\) \| `[^`]+` \|",
+        rf"\1 (dependency) | `{deps[NPM_INTEROP_PACKAGE]}` |",
     )
     replace(
         "bindings/javascript/deps.cljs",
@@ -148,13 +204,13 @@ def write_versions(model: dict[str, object]) -> None:
     test_path = "bindings/javascript/test/facades.test.mjs"
     source = (ROOT / test_path).read_text(encoding="utf-8")
     source = re.sub(
-        r'(packageJson\.dependencies\["@vinary-tree/vinary-tree"\], )"[^"]+"',
-        rf'\g<1>"{deps["@vinary-tree/vinary-tree"]}"',
+        r'(packageJson\.dependencies\["@vinary-tree/javascript-runtime"\], )"[^"]+"',
+        rf'\g<1>"{deps[NPM_RUNTIME_PACKAGE]}"',
         source,
     )
     source = re.sub(
-        r'(packageJson\.dependencies\["@vinary-tree/interop"\], )"[^"]+"',
-        rf'\g<1>"{deps["@vinary-tree/interop"]}"',
+        r'(packageJson\.dependencies\["@vinary-tree/vinary-tree-interop"\], )"[^"]+"',
+        rf'\g<1>"{deps[NPM_INTEROP_PACKAGE]}"',
         source,
     )
     source = source.replace(r"/^\d+\.\d+\.\d+$/", r"/^\d+\.\d+\.\d+-rc\.\d+$/")
@@ -181,8 +237,61 @@ def validate(model: dict[str, object]) -> list[str]:
     failures: list[str] = []
     canonical = str(model["canonical"])
     component = str(model["component"])
+    coordinates = model.get("coordinates")
     deps = model["dependencies"]
+    publication = model.get("publication")
+    if coordinates != {"npmPackage": NPM_PACKAGE}:
+        failures.append(f"npm package coordinate must be exactly {NPM_PACKAGE}")
+    if not isinstance(publication, dict):
+        failures.append("publication model is missing")
+        publication = {}
     assert isinstance(deps, dict)
+    expected_npm_dependencies = {
+        NPM_INTEROP_PACKAGE: canonical,
+        NPM_RUNTIME_PACKAGE: canonical,
+    }
+    actual_npm_dependencies = {
+        name: version for name, version in deps.items() if name.startswith("@")
+    }
+    if actual_npm_dependencies != expected_npm_dependencies:
+        failures.append(
+            f"npm dependency coordinates must be {expected_npm_dependencies}, "
+            f"found {actual_npm_dependencies}"
+        )
+    source_tag = publication.get("sourceTag")
+    immutable_tag_pattern = rf"v{re.escape(canonical)}(?:-release\.[1-9][0-9]*)?"
+    if (
+        not isinstance(source_tag, str)
+        or re.fullmatch(immutable_tag_pattern, source_tag) is None
+    ):
+        failures.append(
+            "source tag must be canonical or an append-only numbered correction"
+        )
+    for pattern in (
+        "README.md",
+        "bindings/api.json",
+        "bindings/javascript/**/*",
+        "docs/**/*.md",
+    ):
+        for target in ROOT.glob(pattern):
+            if not target.is_file():
+                continue
+            relative = target.relative_to(ROOT)
+            if HISTORICAL_DOC_TREE_PARTS.intersection(relative.parts):
+                continue
+            source = target.read_text(encoding="utf-8")
+            deprecated = next(
+                (
+                    coordinate
+                    for coordinate, pattern in DEPRECATED_NPM_PATTERNS.items()
+                    if pattern.search(source)
+                ),
+                None,
+            )
+            if deprecated:
+                failures.append(
+                    f"{relative} contains forbidden npm coordinate {deprecated}"
+                )
     expected_registries = {
         "cargo": canonical,
         "cmake": canonical,
@@ -215,36 +324,63 @@ def validate(model: dict[str, object]) -> list[str]:
     if (
         api.get("packageVersion") != canonical
         or api.get("javascript", {}).get("version") != canonical
+        or api.get("packages", {}).get("npm") != NPM_PACKAGE
+        or api.get("javascript", {}).get("package") != NPM_PACKAGE
+        or api.get("interop", {}).get("npm") != NPM_INTEROP_PACKAGE
+        or api.get("wasm", {}).get("runtimePackage") != NPM_RUNTIME_PACKAGE
+        or "umbrellaPackage" in api.get("wasm", {})
+        or api.get("javascript", {}).get("dependencies") != expected_npm_dependencies
     ):
-        failures.append("binding model version is stale")
+        failures.append("binding model release identity is stale")
     package = json.loads(
         (ROOT / "bindings/javascript/package.json").read_text(encoding="utf-8")
     )
     if (
-        package.get("version") != canonical
+        package.get("name") != NPM_PACKAGE
+        or package.get("version") != canonical
         or package.get("publishConfig", {}).get("tag") != "next"
+        or package.get("dependencies") != expected_npm_dependencies
     ):
         failures.append("npm package release identity is stale")
+    julia = tomllib.loads(
+        (ROOT / "bindings/julia/Duallity/Project.toml").read_text(encoding="utf-8")
+    )
+    if julia.get("name") != "Duallity" or julia.get("version") != canonical:
+        failures.append("Julia package release identity is stale")
+    raku = json.loads((ROOT / "bindings/raku/META6.json").read_text(encoding="utf-8"))
+    expected_raku_dependencies = [
+        raku_dependency("Vinary-Tree-Interop", str(deps["vinary-tree-interop"]))
+    ]
+    expected_raku_test_dependencies = [
+        raku_dependency("Libdictenstein", str(deps["libdictenstein"])),
+        raku_dependency("Lling-Llang", str(deps["lling-llang"])),
+        "Test",
+    ]
+    if (
+        raku.get("name") != "Duallity"
+        or raku.get("version") != canonical
+        or raku.get("depends") != expected_raku_dependencies
+        or raku.get("test-depends") != expected_raku_test_dependencies
+    ):
+        failures.append("Raku package release identity or exact dependencies are stale")
     readme = (ROOT / "bindings/javascript/README.md").read_text(encoding="utf-8")
     readme_interop = re.search(
-        r"\| `@vinary-tree/interop` \(dependency\) \| `([^`]+)`", readme
+        r"\| `@vinary-tree/vinary-tree-interop` \(dependency\) \| `([^`]+)`", readme
     )
-    if not readme_interop or readme_interop.group(1) != deps["@vinary-tree/interop"]:
+    if not readme_interop or readme_interop.group(1) != deps[NPM_INTEROP_PACKAGE]:
         failures.append("JavaScript README interop pin is stale")
     guide = (ROOT / "docs/guides/07-language-bindings.md").read_text(encoding="utf-8")
     guide_rust_interop = re.search(r"\| `vinary-tree-interop` \| `([^`]+)`", guide)
     guide_npm_interop = re.search(
-        r"\| npm `@vinary-tree/interop` \(dependency\) \| `([^`]+)`", guide
+        r"\| npm `@vinary-tree/vinary-tree-interop` \(dependency\) \| `([^`]+)`",
+        guide,
     )
     if (
         not guide_rust_interop
         or guide_rust_interop.group(1) != deps["vinary-tree-interop"]
     ):
         failures.append("language-binding guide Rust interop pin is stale")
-    if (
-        not guide_npm_interop
-        or guide_npm_interop.group(1) != deps["@vinary-tree/interop"]
-    ):
+    if not guide_npm_interop or guide_npm_interop.group(1) != deps[NPM_INTEROP_PACKAGE]:
         failures.append("language-binding guide npm interop pin is stale")
     cmake_name = "lling-llang" if component == "lling-llang" else component
     for name, path, pattern in (

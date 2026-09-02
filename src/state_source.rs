@@ -12,7 +12,8 @@
 use std::sync::Arc;
 
 use lling_llang::prelude::{
-    LazyState, Semiring, StateId, StateSource, TropicalWeight, WeightedTransition,
+    ExpansionFailure, ExpansionRequest, Semiring, StateExpansion, StateId, StateSource,
+    TropicalWeight, WeightedTransition,
 };
 use smallvec::SmallVec;
 
@@ -27,6 +28,7 @@ use crate::state_source_support::{
     bounded_count_to_f64, next_index, node_has_any_edge, node_has_char_edge, remaining_query_chars,
     usize_from_u32, within_max_distance, AutomatonState, LevenshteinStateCodec,
 };
+use crate::{fulfill_expansion_request, DirectStateSource};
 
 /// State source for lazy Levenshtein WFST computation.
 ///
@@ -730,26 +732,37 @@ where
     }
 }
 
-impl<D> StateSource<char, TropicalWeight> for LevenshteinStateSource<D>
+impl<D> DirectStateSource<char, TropicalWeight> for LevenshteinStateSource<D>
 where
     D: Dictionary + Clone + Send + Sync,
     D::Node: Send + Sync,
     <D::Node as DictionaryNode>::Unit: Into<char> + TryFrom<char> + Copy + Send + Sync,
 {
-    fn compute_state(&self, state: StateId) -> LazyState<char, TropicalWeight> {
+    fn expand_state(&self, state: StateId) -> StateExpansion<char, TropicalWeight> {
         let Some((dict_node_id, automaton_state_id)) = self.codec.decode_product_state(state)
         else {
-            return LazyState::non_final(SmallVec::new());
+            return StateExpansion::failed(ExpansionFailure::invalid_state(state));
         };
 
         let (is_final, final_weight, transitions) =
             self.compute_transitions(dict_node_id, automaton_state_id);
 
         if is_final {
-            LazyState::final_state(final_weight, transitions)
+            StateExpansion::final_state(final_weight, transitions)
         } else {
-            LazyState::non_final(transitions)
+            StateExpansion::non_final(transitions)
         }
+    }
+}
+
+impl<D> StateSource<char, TropicalWeight> for LevenshteinStateSource<D>
+where
+    D: Dictionary + Clone + Send + Sync,
+    D::Node: Send + Sync,
+    <D::Node as DictionaryNode>::Unit: Into<char> + TryFrom<char> + Copy + Send + Sync,
+{
+    fn compute_state(&self, request: ExpansionRequest<'_>) -> StateExpansion<char, TropicalWeight> {
+        fulfill_expansion_request(self, request)
     }
 
     fn start(&self) -> StateId {
@@ -847,8 +860,8 @@ mod tests {
 
         assert_eq!(registered_dictionary_node_count(&source), 1);
 
-        match source.compute_state(source.start()) {
-            LazyState::Computed { transitions, .. } => {
+        match source.expand_state(source.start()) {
+            StateExpansion::Expanded { transitions, .. } => {
                 assert!(
                     !transitions
                         .iter()
@@ -856,9 +869,8 @@ mod tests {
                     "mismatched dictionary edge must be pruned at distance zero"
                 );
             }
-            LazyState::Pending => {
-                std::panic::panic_any("Levenshtein state source should compute eagerly".to_owned());
-            }
+            StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+            StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
         }
 
         assert_eq!(registered_dictionary_node_count(&source), 1);
@@ -872,13 +884,12 @@ mod tests {
 
         assert_eq!(registered_dictionary_node_count(&source), 1);
 
-        match source.compute_state(source.start()) {
-            LazyState::Computed { transitions, .. } => {
+        match source.expand_state(source.start()) {
+            StateExpansion::Expanded { transitions, .. } => {
                 assert!(transitions.is_empty());
             }
-            LazyState::Pending => {
-                std::panic::panic_any("Levenshtein state source should compute eagerly".to_owned());
-            }
+            StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+            StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
         }
 
         assert_eq!(registered_dictionary_node_count(&source), 1);
@@ -889,7 +900,7 @@ mod tests {
         let dict = DynamicDawgChar::<()>::from_terms(vec!["abcd"]);
         let source = LevenshteinStateSource::new(&dict, "a", 0);
 
-        let _ = source.compute_state(source.start());
+        let _ = source.expand_state(source.start());
 
         let registered_nodes = registered_dictionary_node_count(&source);
         let automaton_states = usize_from_u32(source.codec.max_automaton_states());

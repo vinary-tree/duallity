@@ -78,18 +78,18 @@
 - **Grammar**: A → aB | a (right-linear)
 - **Automaton**: Finite-state automaton
 - **Memory**: Finite states (no stack)
-- **Complexity**: O(n) recognition
+- **Complexity**: $`\mathcal{O}(n)`$ recognition
 - **Example**: a*b*
 
 **Type 2: Context-Free Languages** (CFG)
-- **Grammar**: A → α (any string on RHS)
+- **Grammar**: $`A \to \alpha`$ (any string on the right-hand side)
 - **Automaton**: Pushdown automaton (FSA + stack)
 - **Memory**: Unbounded stack
-- **Complexity**: O(n³) CYK, O(n²) average Earley
+- **Complexity**: $`\mathcal{O}(n^{3})`$ CYK, $`\mathcal{O}(n^{2})`$ average Earley
 - **Example**: a^n b^n (balanced parentheses)
 
 **Type 1: Context-Sensitive Languages** (CSG)
-- **Grammar**: αAβ → αγβ (context around A)
+- **Grammar**: $`\alpha A \beta \to \alpha \gamma \beta`$ (context around $`A`$)
 - **Automaton**: Linear-bounded automaton
 - **Memory**: Tape bounded by input length
 - **Complexity**: PSPACE-complete
@@ -111,8 +111,8 @@ Regular ⊂ Context-Free ⊂ Context-Sensitive ⊂ Recursively Enumerable
 ```
 
 **Strict Inclusions** (proven via pumping lemmas):
-- {a^n b^n} ∈ Type 2, {a^n b^n} ∉ Type 3
-- {a^n b^n c^n} ∈ Type 1, {a^n b^n c^n} ∉ Type 2
+- $`\{a^n b^n\} \in \text{Type 2}`$, $`\{a^n b^n\} \notin \text{Type 3}`$
+- $`\{a^n b^n c^n\} \in \text{Type 1}`$, $`\{a^n b^n c^n\} \notin \text{Type 2}`$
 
 ### Text Normalization Mapping
 
@@ -218,29 +218,29 @@ Why: Requires world knowledge, not syntactic patterns
 
 ### Pumping Lemma for Regular Languages
 
-**Theorem**: If L is regular, then ∃p (pumping length) such that ∀s ∈ L with |s| ≥ p,
+**Theorem**: If $`L`$ is regular, then $`\exists p`$ (a pumping length) such that $`\forall s \in L`$ with $`\lvert s \rvert \ge p`$,
 s can be written as xyz where:
-1. |xy| ≤ p
+1. $`\lvert xy \rvert \le p`$
 2. |y| > 0
-3. xy^i z ∈ L for all i ≥ 0
+3. $`xy^i z \in L`$ for all $`i \ge 0`$
 
 **Proof that {a^n b^n} is not regular**:
 
 Assume {a^n b^n} is regular with pumping length p.
 
-Let s = a^p b^p ∈ L (clearly |s| ≥ p).
+Let $`s = a^p b^p \in L`$ (clearly $`\lvert s \rvert \ge p`$).
 
-By pumping lemma, s = xyz where |xy| ≤ p and |y| > 0.
+By the pumping lemma, $`s = xyz`$ where $`\lvert xy \rvert \le p`$ and $`\lvert y \rvert > 0`$.
 
-Since |xy| ≤ p, both x and y consist only of a's.
+Since $`\lvert xy \rvert \le p`$, both $`x`$ and $`y`$ consist only of $`a`$'s.
 
 So y = a^k for some k > 0.
 
 Pump down (i=0): xz = a^(p-k) b^p.
 
-But (p-k) ≠ p, so xz ∉ {a^n b^n}.
+But $`p-k \ne p`$, so $`xz \notin \{a^n b^n\}`$.
 
-**Contradiction**! Therefore {a^n b^n} is not regular. ∎
+**Contradiction.** Therefore $`\{a^n b^n\}`$ is not regular. $`\blacksquare`$
 
 ---
 
@@ -352,19 +352,19 @@ Why: Requires discourse model, world knowledge
 
 ### Pumping Lemma for Context-Free Languages
 
-**Theorem**: If L is context-free, then ∃p (pumping length) such that ∀s ∈ L with |s| ≥ p,
+**Theorem**: If $`L`$ is context-free, then $`\exists p`$ (a pumping length) such that $`\forall s \in L`$ with $`\lvert s \rvert \ge p`$,
 s can be written as uvxyz where:
-1. |vxy| ≤ p
+1. $`\lvert vxy \rvert \le p`$
 2. |vy| > 0
-3. uv^i xy^i z ∈ L for all i ≥ 0
+3. $`uv^i xy^i z \in L`$ for all $`i \ge 0`$
 
 **Proof that {a^n b^n c^n} is not context-free**:
 
 Assume {a^n b^n c^n} is context-free with pumping length p.
 
-Let s = a^p b^p c^p ∈ L.
+Let $`s = a^p b^p c^p \in L`$.
 
-By pumping lemma, s = uvxyz where |vxy| ≤ p and |vy| > 0.
+By the pumping lemma, $`s = uvxyz`$ where $`\lvert vxy \rvert \le p`$ and $`\lvert vy \rvert > 0`$.
 
 **Case 1**: vxy contains only a's.
 Pump up (i=2): uv²xy²z = a^(p+k) b^p c^p for some k > 0.
@@ -376,14 +376,14 @@ Similar argument.
 **Case 3**: vxy contains only c's.
 Similar argument.
 
-**Case 4**: vxy spans a's and b's (but not c's, since |vxy| ≤ p).
+**Case 4**: $`vxy`$ spans $`a`$'s and $`b`$'s (but not $`c`$'s, since $`\lvert vxy \rvert \le p`$).
 Pump up: increases a's and/or b's, but not c's.
 Not in L.
 
 **Case 5**: vxy spans b's and c's (but not a's).
 Similar argument.
 
-All cases lead to contradiction! Therefore {a^n b^n c^n} is not context-free. ∎
+All cases lead to contradiction. Therefore $`\{a^n b^n c^n\}`$ is not context-free. $`\blacksquare`$
 
 ---
 
@@ -487,11 +487,11 @@ Why: Learned patterns, not formal rules
 
 | Formalism | Recognition | Parsing | Example |
 |-----------|-------------|---------|---------|
-| FST | O(n) | O(n) | Levenshtein |
-| NFA | O(n·\|Q\|) | O(n·\|Q\|) | Phonetic regex |
-| CYK (CNF) | O(n³·\|G\|) | O(n³·\|G\|) | Grammar |
-| Earley (general CFG) | O(n³) worst, O(n²) avg | O(n³) | Grammar |
-| Transformer | O(n²·d) | O(n²·d) | BERT, GPT |
+| FST | $`\mathcal{O}(n)`$ | $`\mathcal{O}(n)`$ | Levenshtein |
+| NFA | $`\mathcal{O}(n\cdot\lvert Q \rvert)`$ | $`\mathcal{O}(n\cdot\lvert Q \rvert)`$ | Phonetic regex |
+| CYK (CNF) | $`\mathcal{O}(n^{3}\cdot\lvert G \rvert)`$ | $`\mathcal{O}(n^{3}\cdot\lvert G \rvert)`$ | Grammar |
+| Earley (general CFG) | $`\mathcal{O}(n^{3})`$ worst, $`\mathcal{O}(n^{2})`$ avg | $`\mathcal{O}(n^{3})`$ | Grammar |
+| Transformer | $`\mathcal{O}(n^{2} \cdot d)`$ | $`\mathcal{O}(n^{2} \cdot d)`$ | BERT, GPT |
 
 **Legend**:
 - n = input length
@@ -503,12 +503,12 @@ Why: Learned patterns, not formal rules
 
 | Formalism | Memory | Notes |
 |-----------|--------|-------|
-| FST | O(\|Q\|) | States + transitions (constant per input) |
-| NFA | O(\|Q\|) | Active state set |
-| DFA | O(2^{\|Q\|}) | Exponential blowup in worst case |
-| CYK | O(n²·\|G\|) | Chart size (triangular matrix) |
-| Earley | O(n²·\|G\|) | State sets (can be sparse) |
-| Transformer | O(n²) | Attention matrix |
+| FST | $`\mathcal{O}(\lvert Q \rvert)`$ | States + transitions (constant per input) |
+| NFA | $`\mathcal{O}(\lvert Q \rvert)`$ | Active state set |
+| DFA | $`\mathcal{O}(2^{\lvert Q \rvert})`$ | Exponential blowup in worst case |
+| CYK | $`\mathcal{O}(n^{2}\cdot\lvert G \rvert)`$ | Chart size (triangular matrix) |
+| Earley | $`\mathcal{O}(n^{2}\cdot\lvert G \rvert)`$ | State sets (can be sparse) |
+| Transformer | $`\mathcal{O}(n^{2})`$ | Attention matrix |
 
 ### Latency Benchmarks (Estimated)
 
@@ -730,9 +730,9 @@ let best = bert.rank(cfg_candidates, context);
 ### Recommendation 3: Know Your Complexity
 
 **Scaling**:
-- FST: Scales to millions of words (O(n))
-- CFG: Scales to hundreds of words (O(n³))
-- Neural: Scales to hundreds of words (O(n²), but high constant)
+- FST: Scales to millions of words ($`\mathcal{O}(n)`$)
+- CFG: Scales to hundreds of words ($`\mathcal{O}(n^{3})`$)
+- Neural: Scales to hundreds of words ($`\mathcal{O}(n^{2})`$, but high constant)
 
 **Rule of Thumb**:
 - Input <100 chars → All tiers feasible
@@ -796,7 +796,7 @@ fn bench_fst_vs_cfg_vs_neural(b: &mut Bencher) {
 |--------|------------------|--------------|------------------------|
 | **Language Class** | Regular | Context-Free | Unrestricted |
 | **Memory** | Finite states | Stack (unbounded) | Learned weights |
-| **Complexity** | O(n) | O(n³) CYK, O(n²) avg | O(n²) transformer |
+| **Complexity** | $`\mathcal{O}(n)`$ | $`\mathcal{O}(n^{3})`$ CYK, $`\mathcal{O}(n^{2})`$ avg | $`\mathcal{O}(n^{2})`$ transformer |
 | **Latency** | <10ms | <200ms | 50-500ms |
 | **Deterministic** | ✅ Yes | ✅ Yes (with PCFG) | ❌ No |
 | **Can Count** | ❌ No | ✅ Yes (one stack) | ✅ Yes (learned) |
@@ -838,4 +838,4 @@ fn bench_fst_vs_cfg_vs_neural(b: &mut Bencher) {
    - Parsing complexity analysis
 
 7. **Earley, J.** (1970). An efficient context-free parsing algorithm. Communications of the ACM, 13(2), 94-102.
-   - O(n³) worst case, O(n²) average for unambiguous grammars
+   - $`\mathcal{O}(n^{3})`$ worst case, $`\mathcal{O}(n^{2})`$ average for unambiguous grammars

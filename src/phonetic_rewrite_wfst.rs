@@ -27,15 +27,20 @@
 //! ```
 
 use lling_llang::prelude::{
-    LazyState, LazyWfst, Semiring, StateId, StateSource, TropicalWeight, WeightedTransition, Wfst,
+    ExpansionError, ExpansionFailure, ExpansionRequest, ExpansionStatus, LazyWfst, Semiring,
+    StateExpansion, StateId, StateSource, TropicalWeight, WeightedTransition, Wfst,
 };
 use smallvec::SmallVec;
 
-use crate::lazy_cache::{empty_char_transitions, CachedCharState, LazyStateCache};
+use crate::lazy_cache::{
+    cache_char_state_expansion, cached_char_state_status, empty_char_transitions, CachedCharState,
+    LazyStateCache,
+};
 use crate::phonetic_rewrite_support::{
     prune_dominated_transitions, rewrite_state_count, usize_from_state_id, validate_rewrite_rule,
     validate_rewrite_rules, ContinuationState, PreparedRewriteRule, PreparedRuleMetadata,
 };
+use crate::{fulfill_expansion_request, DirectStateSource};
 
 /// A phonetic rewrite rule.
 #[derive(Debug, Clone)]
@@ -364,21 +369,22 @@ impl RewriteWfst {
     }
 
     /// Ensure a state is computed and cached.
-    fn ensure_state(&mut self, state: StateId) {
+    fn ensure_state(&mut self, state: StateId) -> Result<ExpansionStatus, ExpansionError> {
         if self.cache.touch_if_cached(state) {
-            return;
+            return cached_char_state_status(&self.cache, state);
         }
 
         if !self.is_known_state(state) {
-            return;
+            return Err(crate::lazy_cache::invalid_state_error(state));
         }
 
         let (is_final, final_weight, transitions) = self.compute_transitions(state);
-
-        self.cache.insert(
-            state,
-            CachedCharState::new(is_final, final_weight, transitions),
-        );
+        let expansion = if is_final {
+            StateExpansion::final_state(final_weight, transitions)
+        } else {
+            StateExpansion::non_final(transitions)
+        };
+        cache_char_state_expansion(&mut self.cache, state, expansion)
     }
 
     fn is_known_state(&self, state: StateId) -> bool {
@@ -446,12 +452,12 @@ impl LazyWfst<char, TropicalWeight> for RewriteWfst {
         self.cache.is_expanded(state)
     }
 
-    fn expand(&mut self, state: StateId) {
-        self.ensure_state(state);
+    fn expand(&mut self, state: StateId) -> Result<ExpansionStatus, ExpansionError> {
+        self.ensure_state(state)
     }
 
     fn transitions_lazy(&mut self, state: StateId) -> &[WeightedTransition<char, TropicalWeight>] {
-        self.ensure_state(state);
+        let _ = self.ensure_state(state);
         self.transitions(state)
     }
 
@@ -472,15 +478,25 @@ impl LazyWfst<char, TropicalWeight> for RewriteWfst {
     }
 }
 
-impl StateSource<char, TropicalWeight> for RewriteWfst {
-    fn compute_state(&self, state: StateId) -> LazyState<char, TropicalWeight> {
+impl DirectStateSource<char, TropicalWeight> for RewriteWfst {
+    fn expand_state(&self, state: StateId) -> StateExpansion<char, TropicalWeight> {
+        if !self.is_known_state(state) {
+            return StateExpansion::failed(ExpansionFailure::invalid_state(state));
+        }
+
         let (is_final, final_weight, transitions) = self.compute_transitions(state);
 
         if is_final {
-            LazyState::final_state(final_weight, transitions)
+            StateExpansion::final_state(final_weight, transitions)
         } else {
-            LazyState::non_final(transitions)
+            StateExpansion::non_final(transitions)
         }
+    }
+}
+
+impl StateSource<char, TropicalWeight> for RewriteWfst {
+    fn compute_state(&self, request: ExpansionRequest<'_>) -> StateExpansion<char, TropicalWeight> {
+        fulfill_expansion_request(self, request)
     }
 
     fn start(&self) -> StateId {
@@ -558,8 +574,8 @@ mod tests {
 
         bulk.set_allow_identity(false);
         incremental.set_allow_identity(false);
-        bulk.expand(0);
-        incremental.expand(0);
+        bulk.expand(0).expect("start state expands");
+        incremental.expand(0).expect("start state expands");
 
         assert_eq!(incremental.prepared_rules.len(), bulk.prepared_rules.len());
         assert_eq!(

@@ -28,7 +28,7 @@ extern "C" {
 #endif
 
 #define DUALLITY_ABI_VERSION 1u
-#define DUALLITY_API_REVISION 1u
+#define DUALLITY_API_REVISION 2u
 
 typedef enum DuallityStatus {
     DUALLITY_STATUS_OK = 0,
@@ -67,6 +67,15 @@ DUALLITY_API uint32_t duallity_api_revision(void);
 DUALLITY_API const char* duallity_last_error_message(void);
 DUALLITY_API DuallityStatus duallity_wfst_new(
     VtResource dictionary,
+    const uint8_t* query_data,
+    size_t query_len,
+    size_t maximum_distance,
+    uint32_t algorithm,
+    uint32_t kind,
+    DuallityWfst** out_wfst);
+/* Pointer form for FFIs that cannot pass C aggregates by value. */
+DUALLITY_API DuallityStatus duallity_wfst_new_ref(
+    const VtResource* dictionary,
     const uint8_t* query_data,
     size_t query_len,
     size_t maximum_distance,

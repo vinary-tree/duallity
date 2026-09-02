@@ -4,13 +4,15 @@ use std::sync::{Arc, RwLock};
 
 use libdictenstein::{Dictionary, DictionaryNode};
 use lling_llang::prelude::{
-    ArcticWeight, LazyState, Semiring, StateId, StateSource, WeightedTransition,
+    ArcticWeight, ExpansionFailure, ExpansionRequest, Semiring, StateExpansion, StateId,
+    StateSource, WeightedTransition,
 };
 use smallvec::SmallVec;
 
 use crate::fzf_scorer::{FzfConfig, FzfError};
 use crate::fzf_state_support::FzfStateRegistry;
 use crate::fzf_support::FzfCore;
+use crate::{fulfill_expansion_request, DirectStateSource};
 
 type FzfTransitions = SmallVec<[WeightedTransition<char, ArcticWeight>; 4]>;
 type ComputedFzfState = (bool, ArcticWeight, FzfTransitions);
@@ -111,22 +113,33 @@ where
     }
 }
 
+impl<D> DirectStateSource<char, ArcticWeight> for FzfStateSource<D>
+where
+    D: Dictionary + Clone + Send + Sync,
+    D::Node: Send + Sync,
+    <D::Node as DictionaryNode>::Unit: Into<char> + Copy + Send + Sync,
+{
+    fn expand_state(&self, state: StateId) -> StateExpansion<char, ArcticWeight> {
+        let Some((is_final, final_weight, transitions)) = self.compute_registered_state(state)
+        else {
+            return StateExpansion::failed(ExpansionFailure::invalid_state(state));
+        };
+        if is_final {
+            StateExpansion::final_state(final_weight, transitions)
+        } else {
+            StateExpansion::non_final(transitions)
+        }
+    }
+}
+
 impl<D> StateSource<char, ArcticWeight> for FzfStateSource<D>
 where
     D: Dictionary + Clone + Send + Sync,
     D::Node: Send + Sync,
     <D::Node as DictionaryNode>::Unit: Into<char> + Copy + Send + Sync,
 {
-    fn compute_state(&self, state: StateId) -> LazyState<char, ArcticWeight> {
-        let Some((is_final, final_weight, transitions)) = self.compute_registered_state(state)
-        else {
-            return LazyState::non_final(SmallVec::new());
-        };
-        if is_final {
-            LazyState::final_state(final_weight, transitions)
-        } else {
-            LazyState::non_final(transitions)
-        }
+    fn compute_state(&self, request: ExpansionRequest<'_>) -> StateExpansion<char, ArcticWeight> {
+        fulfill_expansion_request(self, request)
     }
 
     fn start(&self) -> StateId {
@@ -151,7 +164,7 @@ mod tests {
         let mut state = source.start();
         let mut accumulated = ArcticWeight::one();
         for expected in "foo/bar/baz".chars() {
-            let LazyState::Computed { transitions, .. } = source.compute_state(state) else {
+            let StateExpansion::Expanded { transitions, .. } = source.expand_state(state) else {
                 panic!("state source computes eagerly");
             };
             let transition = transitions
@@ -161,7 +174,7 @@ mod tests {
             accumulated = accumulated.times(&transition.weight);
             state = transition.to;
         }
-        let LazyState::Computed { is_final, .. } = source.compute_state(state) else {
+        let StateExpansion::Expanded { is_final, .. } = source.expand_state(state) else {
             panic!("state source computes eagerly");
         };
         assert!(is_final);

@@ -16,7 +16,8 @@
 use std::sync::Arc;
 
 use lling_llang::prelude::{
-    LazyState, Semiring, StateId, StateSource, TropicalWeight, WeightedTransition,
+    ExpansionFailure, ExpansionRequest, Semiring, StateExpansion, StateId, StateSource,
+    TropicalWeight, WeightedTransition,
 };
 use smallvec::SmallVec;
 
@@ -29,6 +30,7 @@ use crate::node_registry::DictionaryNodeRegistry;
 #[cfg(feature = "phonetic-rules")]
 use crate::phonetic_state_support::{estimated_phonetic_product_states, ProductStateRegistry};
 use crate::state_encoding;
+use crate::{fulfill_expansion_request, DirectStateSource};
 
 /// State source for phonetic WFST composition.
 ///
@@ -369,27 +371,39 @@ where
 }
 
 #[cfg(feature = "phonetic-rules")]
-impl<D> StateSource<char, TropicalWeight> for PhoneticStateSource<D>
+impl<D> DirectStateSource<char, TropicalWeight> for PhoneticStateSource<D>
 where
     D: Dictionary + Clone + Send + Sync,
     D::Node: Send + Sync,
     <D::Node as DictionaryNode>::Unit: Into<char> + TryFrom<char> + Copy + Send + Sync,
 {
-    fn compute_state(&self, state: StateId) -> LazyState<char, TropicalWeight> {
+    fn expand_state(&self, state: StateId) -> StateExpansion<char, TropicalWeight> {
         let Some((dict_node_id, product_state_id)) =
             state_encoding::decode(state, self.max_product_states)
         else {
-            return LazyState::non_final(SmallVec::new());
+            return StateExpansion::failed(ExpansionFailure::invalid_state(state));
         };
 
         let (is_final, final_weight, transitions) =
             self.compute_transitions(dict_node_id, product_state_id);
 
         if is_final {
-            LazyState::final_state(final_weight, transitions)
+            StateExpansion::final_state(final_weight, transitions)
         } else {
-            LazyState::non_final(transitions)
+            StateExpansion::non_final(transitions)
         }
+    }
+}
+
+#[cfg(feature = "phonetic-rules")]
+impl<D> StateSource<char, TropicalWeight> for PhoneticStateSource<D>
+where
+    D: Dictionary + Clone + Send + Sync,
+    D::Node: Send + Sync,
+    <D::Node as DictionaryNode>::Unit: Into<char> + TryFrom<char> + Copy + Send + Sync,
+{
+    fn compute_state(&self, request: ExpansionRequest<'_>) -> StateExpansion<char, TropicalWeight> {
+        fulfill_expansion_request(self, request)
     }
 
     fn start(&self) -> StateId {
@@ -426,10 +440,6 @@ mod tests {
     use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
     use liblevenshtein::phonetic::nfa::compiler::compile;
     use liblevenshtein::phonetic::regex::parse;
-
-    fn pending_eager_state<T>(message: &str) -> T {
-        std::panic::panic_any(message.to_owned())
-    }
 
     #[test]
     fn test_phonetic_registry_id_helper_rejects_unrepresentable_len() {
@@ -708,7 +718,7 @@ mod tests {
             Some(2usize.saturating_mul(crate::MAX_NUM_STATES_HINT + 1))
         );
 
-        let _ = source.compute_state(source.start());
+        let _ = source.expand_state(source.start());
 
         let registered_nodes = crate::read_lock(&source.node_registry).len();
         let states_per_dictionary_node =
@@ -751,13 +761,12 @@ mod tests {
         assert_eq!(registered_dictionary_node_count(&source), 1);
         assert_eq!(crate::read_lock(&source.product_state_registry).len(), 1);
 
-        match source.compute_state(source.start()) {
-            LazyState::Computed { transitions, .. } => {
+        match source.expand_state(source.start()) {
+            StateExpansion::Expanded { transitions, .. } => {
                 assert!(transitions.is_empty());
             }
-            LazyState::Pending => {
-                pending_eager_state("Phonetic state source should compute eagerly")
-            }
+            StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+            StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
         }
 
         assert_eq!(registered_dictionary_node_count(&source), 1);
@@ -772,8 +781,8 @@ mod tests {
 
         assert_eq!(registered_dictionary_node_count(&source), 1);
 
-        match source.compute_state(source.start()) {
-            LazyState::Computed { transitions, .. } => {
+        match source.expand_state(source.start()) {
+            StateExpansion::Expanded { transitions, .. } => {
                 assert!(
                     !transitions
                         .iter()
@@ -781,9 +790,8 @@ mod tests {
                     "mismatched dictionary edge must be pruned at distance zero"
                 );
             }
-            LazyState::Pending => {
-                pending_eager_state("Phonetic state source should compute eagerly")
-            }
+            StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+            StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
         }
 
         assert_eq!(registered_dictionary_node_count(&source), 1);

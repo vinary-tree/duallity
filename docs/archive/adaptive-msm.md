@@ -103,7 +103,7 @@ O(√(T log |Σ|))
 
 Where:
 - **T**: Number of rounds
-- **|Σ|**: Alphabet size (discretization of c space)
+- **$`\lvert \Sigma \rvert`$**: Alphabet size (discretization of $`c`$ space)
 
 This is optimal for online learning with tropical (min-plus) losses.
 
@@ -389,7 +389,7 @@ println!("After reset: c={:.4}, rounds={}", adaptive.current_c(), adaptive.round
 
 ### Gradient Estimation
 
-The gradient ∂Cost/∂c is estimated using finite differences over the observation window:
+The gradient $`\partial \mathrm{Cost} / \partial c`$ is estimated using finite differences over the observation window:
 
 ```
 gradient ≈ (cost[i] - cost[i-1]) / (c[i] - c[i-1])
@@ -446,9 +446,9 @@ let noise = if u < 0.5 {
 
 | Operation | Complexity |
 |-----------|------------|
-| `predict()` | O(nm) for MSM on n×m series |
-| `observe()` | O(window_size) for gradient |
-| Space | O(window_size) for history |
+| `predict()` | $`\mathcal{O}(nm)`$ for MSM on n×m series |
+| `observe()` | $`\mathcal{O}(\texttt{window\_size})`$ for gradient |
+| Space | $`\mathcal{O}(\texttt{window\_size})`$ for history |
 
 ## References
 

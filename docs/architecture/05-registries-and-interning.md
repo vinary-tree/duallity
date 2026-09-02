@@ -1,7 +1,7 @@
 # 05 · Registries and interning
 
 > **Prerequisites:** [architecture/03 · State encoding](03-state-encoding-and-product-space.md) (a
-> `StateId` decodes to a `` $`(d, a)`$ `` pair in Regime A, or *is* a registry index in Regime B) and
+> `StateId` decodes to a $`(d, a)`$ pair in Regime A, or *is* a registry index in Regime B) and
 > [architecture/04 · Lazy evaluation and caching](04-lazy-evaluation-and-caching.md) (registries are
 > read/written during `compute_state`).
 >
@@ -23,21 +23,21 @@ the things a WFST state is *made of* arrive as a `u32`:
 
 Each must receive a **stable, sequential `u32`** so it can serve as a `StateId` component (Regime A) or
 as the whole `StateId` (Regime B). That is a **registry's** job: a bidirectional map between rich
-objects and dense ids, allocated on first sight. Every registry hands out ids `` $`0, 1, 2, \ldots`$ ``
+objects and dense ids, allocated on first sight. Every registry hands out ids $`0, 1, 2, \ldots`$
 through a `next_*_id(len) = u32::try_from(len).ok()` helper, so id allocation itself cannot silently
 wrap — it returns `None` once the `u32` space is exhausted and the caller prunes rather than aliases.
 
 ## 2. The registry families
 
-| Registry | Forward map (key `` $`\to`$ `` id) | Reverse (id `` $`\to`$ `` object) | Id `` $`0`$ `` seed | Consumer(s) | Role |
+| Registry | Forward map (key $`\to`$ id) | Reverse (id $`\to`$ object) | Id $`0`$ seed | Consumer(s) | Role |
 |----------|-----------------------------------|-----------------------------------|---------------------|-------------|------|
-| `DictionaryNodeRegistry<N>` | `FxHashMap<DictionaryNodeKey, u32>` | `Vec<N>` | root (key `ROOT`) | `LevenshteinStateSource`, `PhoneticStateSource`, `GeneralizedWfst` | the `` $`d`$ `` component |
-| `DepthDictionaryNodeRegistry<N>` | as above, plus `id_to_depth: Vec<usize>` | `(N, depth)` | root, depth `` $`0`$ `` | `UniversalLevenshteinStateSource` | the `` $`d`$ `` component + character depth |
-| `UniversalStateRegistry<V>` | `FxHashMap<UniversalStateKey, u32>` | `Vec<RegisteredUniversalState<V>>` (`Arc<UniversalState<V>>` + `query_pos`) | initial universal state | `UniversalLevenshteinStateSource` | the `` $`a`$ `` component |
-| `ProductStateRegistry` | `FxHashMap<ProductStateKey, u32>` | `Vec<Arc<[ProductStateChar]>>` | initial frontier | `PhoneticStateSource` | the `` $`a`$ `` component |
+| `DictionaryNodeRegistry<N>` | `FxHashMap<DictionaryNodeKey, u32>` | `Vec<N>` | root (key `ROOT`) | `LevenshteinStateSource`, `PhoneticStateSource`, `GeneralizedWfst` | the $`d`$ component |
+| `DepthDictionaryNodeRegistry<N>` | as above, plus `id_to_depth: Vec<usize>` | `(N, depth)` | root, depth $`0`$ | `UniversalLevenshteinStateSource` | the $`d`$ component + character depth |
+| `UniversalStateRegistry<V>` | `FxHashMap<UniversalStateKey, u32>` | `Vec<RegisteredUniversalState<V>>` (`Arc<UniversalState<V>>` + `query_pos`) | initial universal state | `UniversalLevenshteinStateSource` | the $`a`$ component |
+| `ProductStateRegistry` | `FxHashMap<ProductStateKey, u32>` | `Vec<Arc<[ProductStateChar]>>` | initial frontier | `PhoneticStateSource` | the $`a`$ component |
 | `NfaStateRegistry` | `FxHashMap<StateSetKey, u32>` | `Vec<RegisteredNfaState>` (`Arc<state set>` + `is_final`) | start-anchor closure | `PhoneticNfaWfst` | the **whole** `StateId` (Regime B) |
 | `StateRegistry` (generalized) | `FxHashMap<ProductStateKey, StateId>` + `FxHashMap<Arc<EmitState>, StateId>` | `Vec<RegisteredState>` (`Product` or `Emit`) | start product state | `GeneralizedWfst` | the **whole** `StateId` (Regime B) |
-| `WallBreakerWfst::id_to_state` | (built once, not a hash-interner) | `Vec<WallBreakerStateKey>` | super-start (index `` $`0`$ ``) | `WallBreakerWfst` | the **whole** `StateId` (Regime B) |
+| `WallBreakerWfst::id_to_state` | (built once, not a hash-interner) | `Vec<WallBreakerStateKey>` | super-start (index $`0`$) | `WallBreakerWfst` | the **whole** `StateId` (Regime B) |
 
 The first four registries supply a *component* of a packed Regime-A `StateId`; the last three supply the
 *entire* id in Regime B. `WallBreakerWfst` is the outlier: it does not intern lazily at all — it
@@ -65,10 +65,10 @@ pub(crate) fn register_node(&mut self, node: N, key: DictionaryNodeKey) -> Optio
 }
 ```
 
-`register_*` is **`` $`O(1)`$ `` amortized**: one `FxHashMap` probe (`` $`O(1)`$ `` expected) plus a
-`Vec::push` (`` $`O(1)`$ `` amortized, `` $`O(n)`$ `` only on the rare doubling reallocation). Id
-`` $`0`$ `` is always the root/initial object, registered in the constructor so the WFST's `start()` can
-be the literal `` $`0`$ `` (`` $`\mathrm{encode}(0, 0) = 0`$ `` in Regime A). A companion
+`register_*` is **$`\mathcal{O}(1)`$ amortized**: one `FxHashMap` probe ($`\mathcal{O}(1)`$ expected) plus a
+`Vec::push` ($`\mathcal{O}(1)`$ amortized, $`\mathcal{O}(n)`$ only on the rare doubling reallocation). Id
+$`0`$ is always the root/initial object, registered in the constructor so the WFST's `start()` can
+be the literal $`0`$ ($`\mathrm{encode}(0, 0) = 0`$ in Regime A). A companion
 `candidate_id(key)` returns the id a key *would* receive without mutating — the state sources use it to
 check that a prospective child would encode within the radix **before** taking the write lock and
 committing the registration, so a pruned edge never leaves an orphan node behind
@@ -76,7 +76,7 @@ committing the registration, so a pruned edge never leaves an orphan node behind
 
 `DepthDictionaryNodeRegistry` wraps `DictionaryNodeRegistry` and pushes the node's **character depth**
 into a parallel `id_to_depth` vector. The universal engine needs depth because it evaluates the relevant
-subword `` $`s_k(q,\ d{+}1)`$ `` at dictionary depth `` $`d`$ `` (Schulz & Mihov [3]); keeping depth in
+subword $`s_k(q,\ d{+}1)`$ at dictionary depth $`d`$ (Schulz & Mihov [3]); keeping depth in
 the node registry and the *consumed query-label cursor* in `UniversalStateRegistry` keeps the two
 cursors explicit, so the wrapper never has to recover a WFST label position from the universal
 automaton's abstract offsets.
@@ -84,7 +84,7 @@ automaton's abstract offsets.
 ## 4. The compact exact node key
 
 Dictionary nodes lack ids, so the node registries key a child by the **exact path step** that reaches
-it: the pair `` $`(\text{parent id},\ \text{edge label})`$ ``. Rather than hash that pair as opaque
+it: the pair $`(\text{parent id},\ \text{edge label})`$. Rather than hash that pair as opaque
 struct fields, `DictionaryNodeKey` packs it losslessly into one `u64` (`src/node_key.rs`):
 
 ```rust,ignore
@@ -105,8 +105,8 @@ impl DictionaryNodeKey {
 }
 ```
 
-Formally, for a parent id `` $`p \in [0, 2^{32})`$ `` and an edge label `` $`\ell`$ `` with Unicode
-scalar value `` $`\mathrm{cp}(\ell)`$ ``, the child key is
+Formally, for a parent id $`p \in [0, 2^{32})`$ and an edge label $`\ell`$ with Unicode
+scalar value $`\mathrm{cp}(\ell)`$, the child key is
 
 ```math
 \mathrm{child}(p, \ell) \;=\; \bigl(p \ll 21\bigr)\ \lor\ \mathrm{cp}(\ell),
@@ -135,18 +135,18 @@ high bits that are always zero for a child key:
 
 ### Exactness (no child key can alias the root, no two path steps collide)
 
-- **Field disjointness.** `` $`\mathrm{cp}(\ell)`$ `` occupies bits `` $`[0, 21)`$ `` and, since
-  `` $`\mathrm{cp}(\ell) < 2^{21}`$ ``, never overflows into the parent field. `` $`p \ll 21`$ `` places
-  the 32-bit parent id in bits `` $`[21, 53)`$ ``. The `` $`\lor`$ `` therefore combines two
-  non-overlapping bit ranges, so `` $`(p, \mathrm{cp}(\ell))`$ `` is **recoverable** — distinct path
+- **Field disjointness.** $`\mathrm{cp}(\ell)`$ occupies bits $`[0, 21)`$ and, since
+  $`\mathrm{cp}(\ell) < 2^{21}`$, never overflows into the parent field. $`p \ll 21`$ places
+  the 32-bit parent id in bits $`[21, 53)`$. The $`\lor`$ therefore combines two
+  non-overlapping bit ranges, so $`(p, \mathrm{cp}(\ell))`$ is **recoverable** — distinct path
   steps produce distinct keys (tested by `child_keys_encode_parent_and_label`).
-- **Root can never collide.** A child key uses at most bits `` $`[0, 53)`$ ``, so its maximum value is
+- **Root can never collide.** A child key uses at most bits $`[0, 53)`$, so its maximum value is
 
   ```math
   \max \mathrm{child} \;=\; \bigl((2^{32}-1) \ll 21\bigr) \lor (2^{21}-1) \;=\; 2^{53} - 1 \;<\; 2^{64} - 1 \;=\; \texttt{ROOT}.
   ```
 
-  The 11 high bits `` $`[53, 64)`$ `` are always zero for a child, so no child key can equal the
+  The 11 high bits $`[53, 64)`$ are always zero for a child, so no child key can equal the
   all-ones root sentinel (tested by `child_keys_are_distinct_from_root`).
 
 <img src="../diagrams/noderegistry-interning.svg" alt="A dictionary node is keyed by the exact parent id and edge label packed into a u64; the reverse vector recovers the node from its dense id" width="820"/>
@@ -166,7 +166,7 @@ representations of the same logical state intern to one id:
   `positions` is a byte serialization of the position set (`universal_state_key`). Two universal states
   with the same positions and the same consumed-query cursor share an id and an `Arc`.
 - `ProductStateRegistry` **canonicalizes** each frontier before keying it: NFA-state vectors are sorted
-  and deduplicated, the accumulated cost is bucketed to `` $`10^{-6}`$ `` (`product_cost_key`), and the
+  and deduplicated, the accumulated cost is bucketed to $`10^{-6}`$ (`product_cost_key`), and the
   frontier is sorted/deduped so equivalent frontiers collapse to one `ProductStateKey`
   (`canonicalize_product_frontier`). This is why a single `ProductStateChar` is insufficient — the
   deletion-closed *frontier* is the true state.
@@ -174,9 +174,9 @@ representations of the same logical state intern to one id:
   key (Rabin & Scott); `get_or_create_with_key` interns each subset once.
 
 Canonicalization is what makes the reverse vector a *deduplicated* census: the radix bounds
-`` $`M_{\mathrm{uni}}`$ `` / `` $`M_{\mathrm{phon}}`$ ``
+$`M_{\mathrm{uni}}`$ / $`M_{\mathrm{phon}}`$
 ([architecture/03 §5](03-state-encoding-and-product-space.md#5-choosing-the-radix-m)) over-count these
-deduplicated states, guaranteeing `` $`a < M`$ `` for realistic inputs.
+deduplicated states, guaranteeing $`a < M`$ for realistic inputs.
 
 ## 6. `VocabId` interning in `DictionaryBackend`
 
@@ -203,7 +203,7 @@ pub fn try_intern(&mut self, word: &str) -> Option<VocabId> {
 }
 ```
 
-The mapping is bidirectional and `` $`O(1)`$ `` amortized in both directions —
+The mapping is bidirectional and $`\mathcal{O}(1)`$ amortized in both directions —
 `word_to_id: FxHashMap<Arc<str>, VocabId>` for `term → id` and `id_to_word: Vec<Arc<str>>` for
 `id → term` — with terms shared behind `Arc<str>` so both maps hold the same allocation. Terms are
 interned **lazily** by default (`new`), or eagerly (`with_vocabulary` / `try_with_vocabulary`).

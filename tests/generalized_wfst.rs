@@ -1,16 +1,12 @@
 use duallity::{
-    GeneralizedWfst, GeneralizedWfstBuilder, LazyState, LazyWfst, StateSource, TropicalWeight,
-    WeightedTransition, Wfst,
+    DirectStateSource, GeneralizedWfst, GeneralizedWfstBuilder, LazyWfst, StateExpansion,
+    TropicalWeight, WeightedTransition, Wfst,
 };
 use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 use liblevenshtein::transducer::{
     OperationSet, OperationSetBuilder, OperationType, SubstitutionSet,
 };
 use lling_llang::wfst::CachePolicy;
-
-fn pending_eager_state<T>(message: &str) -> T {
-    std::panic::panic_any(message.to_owned())
-}
 
 type TestDict = DynamicDawgChar<()>;
 
@@ -91,7 +87,7 @@ fn generalized_wfst_lazy_expansion_materializes_start_state() {
     let start = Wfst::start(&wfst);
     assert!(!wfst.is_expanded(start));
 
-    wfst.expand(start);
+    wfst.expand(start).expect("start state expands");
     assert!(wfst.is_expanded(start));
 }
 
@@ -137,11 +133,10 @@ fn generalized_state_source_computes_eagerly() {
     let dict = DynamicDawgChar::<()>::from_terms(vec!["ab"]);
     let wfst = GeneralizedWfst::new(&dict, "ab", 1, OperationSet::standard());
 
-    match StateSource::compute_state(&wfst, Wfst::start(&wfst)) {
-        LazyState::Computed { transitions, .. } => assert!(!transitions.is_empty()),
-        LazyState::Pending => {
-            pending_eager_state("generalized WFST state source should compute eagerly")
-        }
+    match wfst.expand_state(Wfst::start(&wfst)) {
+        StateExpansion::Expanded { transitions, .. } => assert!(!transitions.is_empty()),
+        StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+        StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
     }
 }
 
@@ -158,7 +153,7 @@ fn generalized_wfst_expands_non_start_product_states() {
     let second_transitions = transitions_for(&mut wfst, first.to);
     let second = find_transition(&second_transitions, Some('b'), Some('b'), Some(0.0));
 
-    wfst.expand(second.to);
+    wfst.expand(second.to).expect("valid state expands");
     assert!(wfst.is_valid_state(second.to));
     assert!(wfst.is_final(second.to));
     assert_eq!(wfst.final_weight(second.to).value(), 0.0);
@@ -173,7 +168,7 @@ fn generalized_wfst_standard_match_counts_unicode_chars() {
     let start_transitions = transitions_for(&mut wfst, start);
     let exact = find_transition(&start_transitions, Some('é'), Some('é'), Some(0.0));
 
-    wfst.expand(exact.to);
+    wfst.expand(exact.to).expect("exact state expands");
 
     assert!(wfst.is_final(exact.to));
     assert_eq!(wfst.final_weight(exact.to).value(), 0.0);
@@ -188,7 +183,8 @@ fn generalized_wfst_unrestricted_substitution_counts_unicode_chars() {
     let start_transitions = transitions_for(&mut wfst, start);
     let substitution = find_transition(&start_transitions, Some('e'), Some('é'), Some(1.0));
 
-    wfst.expand(substitution.to);
+    wfst.expand(substitution.to)
+        .expect("substitution state expands");
 
     assert!(wfst.is_final(substitution.to));
     assert_eq!(wfst.final_weight(substitution.to).value(), 0.0);
@@ -214,7 +210,8 @@ fn generalized_wfst_restricted_substitution_counts_unicode_chars() {
     let start_transitions = transitions_for(&mut wfst, start);
     let substitution = find_transition(&start_transitions, Some('e'), Some('é'), Some(0.25));
 
-    wfst.expand(substitution.to);
+    wfst.expand(substitution.to)
+        .expect("substitution state expands");
 
     assert!(wfst.is_final(substitution.to));
 }
@@ -243,7 +240,7 @@ fn generalized_wfst_transposition_reaches_final() {
             .find(|transition| transition.input == Some('a') && transition.output == Some('b'))
             .cloned()
         {
-            wfst.expand(second.to);
+            wfst.expand(second.to).expect("valid state expands");
             if wfst.is_final(second.to) {
                 found = true;
                 break;
@@ -278,7 +275,7 @@ fn generalized_wfst_restricted_digraph_uses_continuation_state() {
     let e_transitions = transitions_for(&mut wfst, n.to);
     let e = find_transition(&e_transitions, Some('e'), Some('e'), Some(0.0));
 
-    wfst.expand(e.to);
+    wfst.expand(e.to).expect("valid state expands");
     assert!(wfst.is_final(e.to));
     assert_eq!(wfst.final_weight(e.to).value(), 0.0);
 }
@@ -335,7 +332,7 @@ fn generalized_wfst_transitions_after_expansion() {
     let mut wfst = GeneralizedWfst::new(&dict, "ab", 1, OperationSet::standard());
 
     let start = Wfst::start(&wfst);
-    wfst.expand(start);
+    wfst.expand(start).expect("start state expands");
 
     assert!(!wfst.transitions(start).is_empty());
 }
@@ -345,7 +342,7 @@ fn generalized_wfst_cache_operations_clear_cached_states() {
     let dict = DynamicDawgChar::<()>::from_terms(vec!["test"]);
     let mut wfst = GeneralizedWfst::new(&dict, "test", 1, OperationSet::standard());
 
-    wfst.expand(0);
+    wfst.expand(0).expect("start state expands");
     let before = wfst.computed_states();
 
     wfst.clear_cache();

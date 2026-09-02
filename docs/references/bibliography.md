@@ -32,21 +32,21 @@ duallity appear here.
 ## Edit distance and Levenshtein automata
 
 The metric duallity computes, the dynamic program that defines it, and the automata that accept a
-`` $`k`$ ``-neighborhood without recomputing the lattice per candidate.
+$`k`$-neighborhood without recomputing the lattice per candidate.
 
 1. **Levenshtein, V. I.** (1966). *Binary codes capable of correcting deletions, insertions, and
    reversals.* Soviet Physics Doklady 10(8), 707–710. (Originally *Doklady Akademii Nauk SSSR*
-   163(4), 845–848, 1965.) — the edit distance `` $`d_{\mathrm{lev}}`$ `` itself.
+   163(4), 845–848, 1965.) — the edit distance $`d_{\mathrm{lev}}`$ itself.
 2. **Damerau, F. J.** (1964). *A technique for computer detection and correction of spelling errors.*
    Communications of the ACM 7(3), 171–176.
    [doi:10.1145/363958.363994](https://doi.org/10.1145/363958.363994) — adjacent transposition as a
-   unit-cost edit; the `` $`d_{\mathrm{DL}}`$ `` metric behind the `Transposition` variant.
+   unit-cost edit; the $`d_{\mathrm{DL}}`$ metric behind the `Transposition` variant.
 3. **Wagner, R. A., & Fischer, M. J.** (1974). *The String-to-String Correction Problem.* Journal of
    the ACM 21(1), 168–173. [doi:10.1145/321796.321811](https://doi.org/10.1145/321796.321811) — the
-   dynamic-programming edit lattice `` $`\Delta`$ ``.
+   dynamic-programming edit lattice $`\Delta`$.
 4. **Ukkonen, E.** (1985). *Algorithms for approximate string matching.* Information and Control
    64(1–3), 100–118. [doi:10.1016/S0019-9958(85)80046-2](https://doi.org/10.1016/S0019-9958(85)80046-2)
-   — the diagonal-band (cutoff) dynamic program duallity's `` $`O(k)`$ ``-frontier evaluation
+   — the diagonal-band (cutoff) dynamic program duallity's $`\mathcal{O}(k)`$-frontier evaluation
    reproduces.
 5. **Myers, G.** (1999). *A fast bit-vector algorithm for approximate string matching based on
    dynamic programming.* Journal of the ACM 46(3), 395–415.
@@ -71,11 +71,11 @@ Why a fuzzy matcher must *be* a WFST to compose, and the algebra of weights it c
    the **rational relations**, and these are closed under composition.
 9. **Mohri, M.** (1997). *Finite-State Transducers in Language and Speech Processing.* Computational
    Linguistics 23(2), 269–311. [ACL Anthology J97-2003](https://aclanthology.org/J97-2003/) — the
-   canonical WFST treatment: the path-weight functional `` $`T(x, y)`$ `` and closure under composition.
+   canonical WFST treatment: the path-weight functional $`T(x, y)`$ and closure under composition.
 10. **Mohri, M., Pereira, F., & Riley, M.** (2002). *Weighted Finite-State Transducers in Speech
     Recognition.* Computer Speech & Language 16(1), 69–88.
     [doi:10.1006/csla.2001.0184](https://doi.org/10.1006/csla.2001.0184) — weighted composition, the
-    `` $`\varepsilon`$ ``-filter, and the tropical `` $`(\min, +)`$ `` semiring as the decoding weight.
+    $`\varepsilon`$-filter, and the tropical $`(\min, +)`$ semiring as the decoding weight.
 11. **Droste, M., Kuich, W., & Vogler, H.** (Eds.) (2009). *Handbook of Weighted Automata.* EATCS
     Monographs in Theoretical Computer Science. Springer.
     [doi:10.1007/978-3-642-01492-5](https://doi.org/10.1007/978-3-642-01492-5) — the reference volume
@@ -83,18 +83,18 @@ Why a fuzzy matcher must *be* a WFST to compose, and the algebra of weights it c
 12. **Droste, M., & Kuich, W.** (2009). *Semirings and Formal Power Series.* In *Handbook of Weighted
     Automata* (no. 11), 3–28. Springer.
     [doi:10.1007/978-3-642-01492-5_1](https://doi.org/10.1007/978-3-642-01492-5_1) — the semiring
-    axioms and well-definedness of finite `` $`\oplus`$ ``-sums over a commutative monoid.
+    axioms and well-definedness of finite $`\oplus`$-sums over a commutative monoid.
 13. **Mohri, M.** (2009). *Weighted Automata Algorithms.* In *Handbook of Weighted Automata* (no. 11),
     213–254. Springer.
     [doi:10.1007/978-3-642-01492-5_6](https://doi.org/10.1007/978-3-642-01492-5_6) — the canonical
-    three-state `` $`\varepsilon`$ ``-filter for composition and its completeness.
+    three-state $`\varepsilon`$-filter for composition and its completeness.
 14. **Sakarovitch, J.** (2009). *Elements of Automata Theory.* Cambridge University Press.
     ISBN 978-0521844253 — rational relations, the composition theorem, and their non-closure under
     intersection, in textbook form.
 
 ## Regular languages and complexity
 
-The finite-state model, the regex `` $`\to`$ `` NFA pipeline, and the tools that bound what a
+The finite-state model, the regex $`\to`$ NFA pipeline, and the tools that bound what a
 Levenshtein or phonetic WFST can and cannot express.
 
 15. **Chomsky, N.** (1956). *Three models for the description of language.* IRE Transactions on
@@ -107,10 +107,10 @@ Levenshtein or phonetic WFST can and cannot express.
 17. **Rabin, M. O., & Scott, D.** (1959). *Finite Automata and Their Decision Problems.* IBM Journal
     of Research and Development 3(2), 114–125.
     [doi:10.1147/rd.32.0114](https://doi.org/10.1147/rd.32.0114) — nondeterministic finite automata
-    and the subset (powerset) construction with its `` $`2^{n}`$ `` state bound.
+    and the subset (powerset) construction with its $`2^{n}`$ state bound.
 18. **Thompson, K.** (1968). *Programming Techniques: Regular expression search algorithm.*
     Communications of the ACM 11(6), 419–422.
-    [doi:10.1145/363347.363387](https://doi.org/10.1145/363347.363387) — the regex `` $`\to`$ `` NFA
+    [doi:10.1145/363347.363387](https://doi.org/10.1145/363347.363387) — the regex $`\to`$ NFA
     construction the phonetic front-end runs.
 19. **Hopcroft, J. E., Motwani, R., & Ullman, J. D.** (2006). *Introduction to Automata Theory,
     Languages, and Computation* (3rd ed.). Pearson. ISBN 978-0321455369 — the pumping lemma, the
@@ -126,7 +126,7 @@ Levenshtein band collapses.
     366–369. ACM. Proceedings [doi:10.1145/2457317](https://doi.org/10.1145/2457317) ·
     [Semantic Scholar](https://www.semanticscholar.org/paper/58b0aec47f79ded87483f03951d48d182fbbc7d6)
     — the split/seed/extend/verify algorithm and its pigeonhole piece-count proofs
-    (`` $`k+1`$ `` for Levenshtein, `` $`2k+1`$ `` for transposition and merge/split).
+    ($`k+1`$ for Levenshtein, $`2k+1`$ for transposition and merge/split).
 
 ## Software architecture
 
@@ -199,5 +199,5 @@ the three tables cover every chapter of [theory](../theory/) 01–07 and every
   flows from a chapter's inline `[n]` to this consolidated list.
 - [glossary](glossary.md) — every term, symbol, and acronym, defined alphabetically.
 - [theory/README · Master notation](../theory/README.md#master-notation) — the single source of truth
-  for the symbols (`` $`d_{\mathrm{lev}}`$ ``, `` $`\oplus`$ ``, `` $`\varepsilon`$ ``, …) these
+  for the symbols ($`d_{\mathrm{lev}}`$, $`\oplus`$, $`\varepsilon`$, …) these
   entries reference.

@@ -1,10 +1,15 @@
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
-use lling_llang::prelude::{LazyState, StateId, StateSource, TropicalWeight, WeightedTransition};
+use lling_llang::prelude::{
+    ExpansionError, ExpansionFailure, ExpansionStatus, StateExpansion, StateId, TropicalWeight,
+    WeightedTransition,
+};
 use lling_llang::wfst::CachePolicy;
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
+
+use crate::DirectStateSource;
 
 #[derive(Clone)]
 pub(crate) struct CachedCharState {
@@ -28,14 +33,26 @@ impl CachedCharState {
     }
 
     #[inline]
-    pub(crate) fn from_lazy_state(lazy_state: LazyState<char, TropicalWeight>) -> Option<Self> {
-        match lazy_state {
-            LazyState::Computed {
+    pub(crate) fn from_state_expansion(
+        expansion: StateExpansion<char, TropicalWeight>,
+    ) -> Result<Self, ExpansionError> {
+        match expansion {
+            StateExpansion::Expanded {
                 is_final,
                 final_weight,
                 transitions,
-            } => Some(Self::new(is_final, final_weight, transitions)),
-            LazyState::Pending => None,
+            } => Ok(Self::new(is_final, final_weight, transitions)),
+            StateExpansion::Failed(failure) => Err(ExpansionError::Failure(failure)),
+            StateExpansion::Cancelled(reason) => Err(ExpansionError::Cancelled(reason)),
+        }
+    }
+
+    #[inline]
+    fn expansion_status(&self) -> ExpansionStatus {
+        if self.transitions.is_empty() {
+            ExpansionStatus::ExpandedEmpty
+        } else {
+            ExpansionStatus::ExpandedNonempty
         }
     }
 }
@@ -61,21 +78,48 @@ pub(crate) fn ensure_cached_char_state<S, F>(
     state_source: &S,
     state: StateId,
     is_valid: F,
-) where
-    S: StateSource<char, TropicalWeight>,
+) -> Result<ExpansionStatus, ExpansionError>
+where
+    S: DirectStateSource<char, TropicalWeight>,
     F: FnOnce(&S, StateId) -> bool,
 {
     if cache.touch_if_cached(state) {
-        return;
+        return cached_char_state_status(cache, state);
     }
 
     if !is_valid(state_source, state) {
-        return;
+        return Err(invalid_state_error(state));
     }
 
-    if let Some(cached) = CachedCharState::from_lazy_state(state_source.compute_state(state)) {
-        cache.insert(state, cached);
-    }
+    cache_char_state_expansion(cache, state, state_source.expand_state(state))
+}
+
+#[inline]
+pub(crate) fn cache_char_state_expansion(
+    cache: &mut LazyStateCache<CachedCharState>,
+    state: StateId,
+    expansion: StateExpansion<char, TropicalWeight>,
+) -> Result<ExpansionStatus, ExpansionError> {
+    let cached = CachedCharState::from_state_expansion(expansion)?;
+    let status = cached.expansion_status();
+    cache.insert(state, cached);
+    Ok(status)
+}
+
+#[inline]
+pub(crate) fn cached_char_state_status(
+    cache: &LazyStateCache<CachedCharState>,
+    state: StateId,
+) -> Result<ExpansionStatus, ExpansionError> {
+    cache
+        .get(state)
+        .map(CachedCharState::expansion_status)
+        .ok_or_else(|| invalid_state_error(state))
+}
+
+#[inline]
+pub(crate) fn invalid_state_error(state: StateId) -> ExpansionError {
+    ExpansionError::Failure(ExpansionFailure::invalid_state(state))
 }
 
 #[inline]

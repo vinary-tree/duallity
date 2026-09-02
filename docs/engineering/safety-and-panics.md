@@ -44,8 +44,8 @@ throughout; `VocabId = u32`, `StateId = u32`.
 
 | API (`pub`) | Returns | Failure is signalled by | Failure condition |
 |-------------|---------|-------------------------|-------------------|
-| `state_encoding::try_encode(d, a, M)` | `Option<StateId>` | `None` | radix `` $`M = 0`$ ``, component `` $`a \ge M`$ ``, or the product `` $`d \cdot M + a`$ `` overflows `u32` |
-| `state_encoding::decode(id, M)` | `Option<(u32, u32)>` | `None` | radix `` $`M = 0`$ `` (no width to divide by) |
+| `state_encoding::try_encode(d, a, M)` | `Option<StateId>` | `None` | radix $`M = 0`$, component $`a \ge M`$, or the product $`d \cdot M + a`$ overflows `u32` |
+| `state_encoding::decode(id, M)` | `Option<(u32, u32)>` | `None` | radix $`M = 0`$ (no width to divide by) |
 | `DictionaryBackend::try_intern(word)` | `Option<VocabId>` | `None` | the `u32` vocabulary space is exhausted (the reserved `VOCAB_ID_EXHAUSTED` sentinel is never assigned) |
 | `DictionaryBackend::try_with_vocabulary(dict, terms)` | `Option<Self>` | `None` | any term would exhaust the vocabulary space |
 | `RewriteRule::with_cost(in, out, cost)` | `Result<Self, InvalidWeightError>` | `Err` | `cost` is not finite and non-negative |
@@ -182,7 +182,7 @@ consequences:
 ## 5. Weight-domain safety
 
 A duallity cost is a tropical weight. `TropicalWeight` admits exactly the domain
-`` $`\mathbb{R} \cup \{+\infty\}`$ `` and **rejects `NaN` and `` $`-\infty`$ `` at construction**, so a
+$`\mathbb{R} \cup \{+\infty\}`$ and **rejects `NaN` and $`-\infty`$ at construction**, so a
 weight is always a well-formed tropical value; `lling_llang` additionally checks the semiring laws
 against a machine-verified model.
 
@@ -220,10 +220,10 @@ The only subtlety in the weight domain is **naming**, not correctness. In `lling
 ```
 
 The method names follow the **algebraic role** (additive identity / multiplicative identity), not the
-numeric value: `zero()` is the annihilator `` $`+\infty`$ `` ("no path"), and `one()` is the free step
-`` $`0`$ ``. This is the single most common point of confusion when reading duallity's weights; it is a
+numeric value: `zero()` is the annihilator $`+\infty`$ ("no path"), and `one()` is the free step
+$`0`$. This is the single most common point of confusion when reading duallity's weights; it is a
 *readability* hazard, fully explained where it is introduced in
-[theory/01 · The tropical `` $`(\min, +)`$ `` semiring](../theory/01-semirings-and-wfsts.md#3-the-tropical-min--semiring).
+[theory/01 · The tropical $`(\min, +)`$ semiring](../theory/01-semirings-and-wfsts.md#3-the-tropical-min--semiring).
 
 ## See also
 

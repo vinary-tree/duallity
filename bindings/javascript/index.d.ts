@@ -1,4 +1,4 @@
-import type { DictionaryResource, RuntimeIdentity, WfstResource } from "@vinary-tree/interop";
+import type { DictionaryResource, RuntimeIdentity, WfstResource } from "@vinary-tree/vinary-tree-interop";
 
 export type Algorithm = "standard" | "transposition" | "merge-and-split" | "damerau-levenshtein";
 export type WfstKind =

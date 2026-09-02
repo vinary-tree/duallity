@@ -11,7 +11,8 @@
 //! - **Variant Support**: Supports Standard, Transposition, and MergeAndSplit variants
 
 use lling_llang::prelude::{
-    LazyWfst, Semiring, StateId, StateSource, TropicalWeight, WeightedTransition, Wfst,
+    ExpansionError, ExpansionStatus, LazyWfst, Semiring, StateId, StateSource, TropicalWeight,
+    WeightedTransition, Wfst,
 };
 
 use libdictenstein::{Dictionary, DictionaryNode};
@@ -118,13 +119,13 @@ where
     }
 
     /// Ensure a state is computed and cached.
-    fn ensure_state(&mut self, state: StateId) {
+    fn ensure_state(&mut self, state: StateId) -> Result<ExpansionStatus, ExpansionError> {
         ensure_cached_char_state(
             &mut self.cache,
             &self.state_source,
             state,
             UniversalLevenshteinStateSource::is_valid_product_state,
-        );
+        )
     }
 }
 
@@ -197,12 +198,12 @@ where
         self.cache.is_expanded(state)
     }
 
-    fn expand(&mut self, state: StateId) {
-        self.ensure_state(state);
+    fn expand(&mut self, state: StateId) -> Result<ExpansionStatus, ExpansionError> {
+        self.ensure_state(state)
     }
 
     fn transitions_lazy(&mut self, state: StateId) -> &[WeightedTransition<char, TropicalWeight>] {
-        self.ensure_state(state);
+        let _ = self.ensure_state(state);
         self.transitions(state)
     }
 
@@ -320,7 +321,7 @@ mod tests {
         let start = wfst.start();
         assert!(!wfst.is_expanded(start));
 
-        wfst.expand(start);
+        wfst.expand(start).expect("start state expands");
         assert!(wfst.is_expanded(start));
         assert!(wfst.computed_states() >= 1);
     }
@@ -394,7 +395,7 @@ mod tests {
         let invalid_state = u32::MAX;
 
         assert!(!wfst.is_valid_state(invalid_state));
-        wfst.expand(invalid_state);
+        assert!(wfst.expand(invalid_state).is_err());
 
         assert_eq!(wfst.computed_states(), 0);
         assert!(wfst.transitions_lazy(invalid_state).is_empty());
@@ -433,7 +434,7 @@ mod tests {
         assert!(wfst.is_expanded(start));
         assert_eq!(wfst.computed_states(), 1);
 
-        wfst.expand(next);
+        wfst.expand(next).expect("valid state expands");
 
         assert_eq!(wfst.computed_states(), 1);
         assert!(!wfst.is_expanded(start));

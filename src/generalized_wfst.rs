@@ -32,7 +32,8 @@
 //! ```
 
 use lling_llang::prelude::{
-    LazyState, LazyWfst, Semiring, StateId, StateSource, TropicalWeight, WeightedTransition, Wfst,
+    ExpansionError, ExpansionFailure, ExpansionRequest, ExpansionStatus, LazyWfst, Semiring,
+    StateExpansion, StateId, StateSource, TropicalWeight, WeightedTransition, Wfst,
 };
 use smallvec::SmallVec;
 use std::sync::{Arc, RwLock};
@@ -56,9 +57,13 @@ use crate::generalized_state_support::{
     reserve_operation_path_capacity, ByteBuffer, DictPath, DictPathCache, DictPaths, EmitState,
     LabelBuffer, ProductState, QuerySegment, QuerySegmentCache, RegisteredState, StateRegistry,
 };
-use crate::lazy_cache::{empty_char_transitions, CachedCharState, LazyStateCache};
+use crate::lazy_cache::{
+    cache_char_state_expansion, cached_char_state_status, empty_char_transitions, CachedCharState,
+    LazyStateCache,
+};
 use crate::node_key::DictionaryNodeKey;
 use crate::node_registry::DictionaryNodeRegistry;
+use crate::{fulfill_expansion_request, DirectStateSource};
 
 /// Default maximum cache size used when LRU policy delegates to the wrapper default.
 const DEFAULT_MAX_CACHE_SIZE: usize = 100_000;
@@ -166,21 +171,18 @@ where
     }
 
     /// Ensure a state is computed and cached.
-    fn ensure_state(&mut self, state_id: StateId) {
+    fn ensure_state(&mut self, state_id: StateId) -> Result<ExpansionStatus, ExpansionError> {
         if self.cache.touch_if_cached(state_id) {
-            return;
+            return cached_char_state_status(&self.cache, state_id);
         }
 
-        if let Some(cached) =
-            CachedCharState::from_lazy_state(self.compute_registered_state(state_id))
-        {
-            self.cache.insert(state_id, cached);
-        }
+        let expansion = self.compute_registered_state(state_id);
+        cache_char_state_expansion(&mut self.cache, state_id, expansion)
     }
 
-    fn compute_registered_state(&self, state_id: StateId) -> LazyState<char, TropicalWeight> {
+    fn compute_registered_state(&self, state_id: StateId) -> StateExpansion<char, TropicalWeight> {
         let Some(state) = self.registered_state(state_id) else {
-            return LazyState::non_final(SmallVec::new());
+            return StateExpansion::failed(ExpansionFailure::invalid_state(state_id));
         };
 
         let (is_final, final_weight, transitions) = match state {
@@ -189,9 +191,9 @@ where
         };
 
         if is_final {
-            LazyState::final_state(final_weight, transitions)
+            StateExpansion::final_state(final_weight, transitions)
         } else {
-            LazyState::non_final(transitions)
+            StateExpansion::non_final(transitions)
         }
     }
 
@@ -592,12 +594,12 @@ where
         self.cache.is_expanded(state)
     }
 
-    fn expand(&mut self, state: StateId) {
-        self.ensure_state(state);
+    fn expand(&mut self, state: StateId) -> Result<ExpansionStatus, ExpansionError> {
+        self.ensure_state(state)
     }
 
     fn transitions_lazy(&mut self, state: StateId) -> &[WeightedTransition<char, TropicalWeight>] {
-        self.ensure_state(state);
+        let _ = self.ensure_state(state);
         self.transitions(state)
     }
 
@@ -618,13 +620,23 @@ where
     }
 }
 
+impl<D> DirectStateSource<char, TropicalWeight> for GeneralizedWfst<D>
+where
+    D: Dictionary + Clone + Send + Sync,
+    D::Node: DictionaryNode<Unit = char>,
+{
+    fn expand_state(&self, state: StateId) -> StateExpansion<char, TropicalWeight> {
+        self.compute_registered_state(state)
+    }
+}
+
 impl<D> StateSource<char, TropicalWeight> for GeneralizedWfst<D>
 where
     D: Dictionary + Clone + Send + Sync,
     D::Node: DictionaryNode<Unit = char>,
 {
-    fn compute_state(&self, state: StateId) -> LazyState<char, TropicalWeight> {
-        self.compute_registered_state(state)
+    fn compute_state(&self, request: ExpansionRequest<'_>) -> StateExpansion<char, TropicalWeight> {
+        fulfill_expansion_request(self, request)
     }
 
     fn start(&self) -> StateId {
@@ -883,13 +895,12 @@ mod tests {
 
         assert_eq!(registered_dictionary_node_count(&wfst), 1);
 
-        match StateSource::compute_state(&wfst, Wfst::start(&wfst)) {
-            LazyState::Computed { transitions, .. } => {
+        match DirectStateSource::expand_state(&wfst, Wfst::start(&wfst)) {
+            StateExpansion::Expanded { transitions, .. } => {
                 assert!(transitions.is_empty());
             }
-            LazyState::Pending => {
-                std::panic::panic_any("generalized WFST should compute eagerly".to_owned())
-            }
+            StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+            StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
         }
 
         assert_eq!(registered_dictionary_node_count(&wfst), 1);

@@ -6,9 +6,9 @@ it*. The full, exact API for each is in [design/](../design/README.md), whose tw
 [selection matrices](../design/README.md#variant-selection-matrix--capability-and-cost) this guide
 distills into concrete thresholds.
 
-Throughout, `` $`n = \lvert q \rvert`$ `` is the query length in Unicode scalars, `` $`k`$ `` is
-`max_distance`, `` $`c \in \{0, 1, 2\}`$ `` is the number of enabled continuation-state classes
-(Standard / Transposition / MergeAndSplit), and `` $`M`$ `` is the state-encoding radix
+Throughout, $`n = \lvert q \rvert`$ is the query length in Unicode scalars, $`k`$ is
+`max_distance`, $`c \in \{0, 1, 2\}`$ is the number of enabled continuation-state classes
+(Standard / Transposition / MergeAndSplit), and $`M`$ is the state-encoding radix
 ([master notation](../theory/README.md#master-notation)).
 
 ---
@@ -57,33 +57,33 @@ Assembling a phonetic STAGE rather than choosing a matcher?
 ## Decision guide — all eight variants, with thresholds and Big-O
 
 Each row links to its design page. Costs follow [design/README](../design/README.md#variant-selection-matrix--capability-and-cost);
-`` $`\delta`$ `` is the out-degree of a dictionary node (its child count).
+$`\delta`$ is the out-degree of a dictionary node (its child count).
 
-| Variant | `max_distance` | Best `` $`k`$ `` range | Build cost | Per-query / per-state cost | Radix `` $`M`$ `` | Feature |
+| Variant | `max_distance` | Best $`k`$ range | Build cost | Per-query / per-state cost | Radix $`M`$ | Feature |
 |---|---|---|---|---|---|---|
-| [`LevenshteinWfst`](../design/levenshtein-wfst.md) | `usize` | small–moderate (`` $`0`$ `` – `` $`3`$ ``) | `` $`O(n)`$ `` (per query) | `` $`O\!\bigl(\delta(1{+}c)\bigr)`$ `` / state | `` $`(n{+}1)(k{+}1)(1{+}c)`$ `` | — |
-| [`BoundUniversalWfst`](../design/universal-wfst.md) / [`UniversalLevenshteinWfst`](../design/universal-wfst.md) | `u8` | small–moderate, `` $`k \le 255`$ `` | factory `` $`O(1)`$ ``; `with_query` `` $`O\!\bigl(n(n{+}k)\bigr)`$ `` | `` $`\lvert\Sigma\rvert`$ ``-independent walk | `` $`(n{+}1)^2(2k{+}1)`$ `` | — |
-| [`WallBreakerWfst`](../design/wallbreaker-wfst.md) | `usize` | **large** (`` $`\ge 4`$ – `` $`5`$ ``) | **eager**: whole query at construction | view over the finished forest | — (finite forest) | — |
-| [`GeneralizedWfst`](../design/generalized-wfst.md) | `u8` (default `` $`2`$ ``) | small–moderate | lazy product graph | `` $`O(\delta)`$ `` / state | registry-bounded | — |
-| [`RewriteWfst`](../design/phonetic-rewrite-wfst.md) | — | n/a (not edit-bounded) | from a rule list | `num_states() = 1 + `continuations | `` $`1 + \text{continuations}`$ `` | — |
+| [`LevenshteinWfst`](../design/levenshtein-wfst.md) | `usize` | small–moderate ($`0`$ – $`3`$) | $`\mathcal{O}(n)`$ (per query) | $`O\!\bigl(\delta(1{+}c)\bigr)`$ / state | $`(n{+}1)(k{+}1)(1{+}c)`$ | — |
+| [`BoundUniversalWfst`](../design/universal-wfst.md) / [`UniversalLevenshteinWfst`](../design/universal-wfst.md) | `u8` | small–moderate, $`k \le 255`$ | factory $`\mathcal{O}(1)`$; `with_query` $`O\!\bigl(n(n{+}k)\bigr)`$ | $`\lvert\Sigma\rvert`$-independent walk | $`(n{+}1)^2(2k{+}1)`$ | — |
+| [`WallBreakerWfst`](../design/wallbreaker-wfst.md) | `usize` | **large** ($`\ge 4`$–$`5`$) | **eager**: whole query at construction | view over the finished forest | — (finite forest) | — |
+| [`GeneralizedWfst`](../design/generalized-wfst.md) | `u8` (default $`2`$) | small–moderate | lazy product graph | $`\mathcal{O}(\delta)`$ / state | registry-bounded | — |
+| [`RewriteWfst`](../design/phonetic-rewrite-wfst.md) | — | n/a (not edit-bounded) | from a rule list | `num_states() = 1 + `continuations | $`1 + \text{continuations}`$ | — |
 | [`PhoneticNfaWfst`](../design/phonetic-nfa-wfst.md) | — | n/a | lazy powerset over a compiled `NFAChar` | subset-construction / state | registry-bounded | `phonetic-rules` |
-| [`PhoneticWfst`](../design/phonetic-wfst.md) | `u8` | small–moderate | compile regex → NFA → triple product (lazy) | `` $`O(\delta)`$ `` / state | `` $`\max\!\bigl((k{+}1)\cdot 1000,\ 10000\bigr)`$ `` | `phonetic-rules` |
+| [`PhoneticWfst`](../design/phonetic-wfst.md) | `u8` | small–moderate | compile regex → NFA → triple product (lazy) | $`\mathcal{O}(\delta)`$ / state | $`\max\!\bigl((k{+}1)\cdot 1000,\ 10000\bigr)`$ | `phonetic-rules` |
 | [`PhoneticPipelineBuilder`](../design/phonetic-pipeline-builder.md) | `u8` (config) | — (front-end) | assembles one stage | — (not a WFST) | — | mixed¹ |
 
 ¹ `build_rewrite_wfst()` needs no feature; `build_phonetic_nfa()` and `build()` need `phonetic-rules`.
 
 ### Reading the thresholds
 
-- **Why WallBreaker only at large `` $`k`$ ``?** Its strength is jumping the combinatorial *wall* that
-  grows exponentially with `` $`k`$ `` ([theory/06](../theory/06-wallbreaker-and-the-wall-effect.md),
-  Theorem 6.1). At small `` $`k`$ `` the plain automaton's band is already narrow, so
+- **Why WallBreaker only at large $`k`$?** Its strength is jumping the combinatorial *wall* that
+  grows exponentially with $`k`$ ([theory/06](../theory/06-wallbreaker-and-the-wall-effect.md),
+  Theorem 6.1). At small $`k`$ the plain automaton's band is already narrow, so
   `LevenshteinWfst` / universal are simpler and avoid the SCDAWG requirement; WallBreaker also does its
   work *eagerly at construction* (see the caveat in [03 · Composing pipelines](03-composing-pipelines.md#6-wallbreaker-is-eager-and-borrows-its-dictionary)).
-- **Why universal for many queries?** It builds the **query-agnostic** automaton `` $`U_k`$ `` once and
+- **Why universal for many queries?** It builds the **query-agnostic** automaton $`U_k`$ once and
   reuses it across queries ([theory/05](../theory/05-universal-automata.md)); per-query cost is the
   dictionary walk plus final-weight extraction from the active universal positions, and it is
-  independent of the alphabet size `` $`\lvert\Sigma\rvert`$ ``. Reuse it through the
-  `BoundUniversalWfst<V, D>` factory: build once, call `with_query` per query. The `` $`k \le 255`$ ``
+  independent of the alphabet size $`\lvert\Sigma\rvert`$. Reuse it through the
+  `BoundUniversalWfst<V, D>` factory: build once, call `with_query` per query. The $`k \le 255`$
   ceiling is the `u8` type of `max_distance`.
 - **Damerau–Levenshtein (adjacent transpositions)** is available in `LevenshteinWfst` (via
   `Algorithm::Transposition`), `BoundUniversalWfst::<Transposition, _>`, and

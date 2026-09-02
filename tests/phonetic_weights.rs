@@ -31,7 +31,7 @@ fn follow_term(wfst: &mut PhoneticWfst<DynamicDawgChar<()>>, term: &str) -> (Sta
         state = next;
     }
 
-    wfst.expand(state);
+    wfst.expand(state).expect("valid state expands");
     (state, path_weight)
 }
 
@@ -85,7 +85,7 @@ fn phonetic_wfst_nonfinal_dictionary_prefix_has_infinite_final_weight() {
     assert!(!wfst.is_final(prefix));
     assert!(wfst.final_weight(prefix).value().is_infinite());
 
-    wfst.expand(prefix);
+    wfst.expand(prefix).expect("valid prefix state expands");
 
     assert!(!wfst.is_final(prefix));
     assert!(wfst.final_weight(prefix).value().is_infinite());

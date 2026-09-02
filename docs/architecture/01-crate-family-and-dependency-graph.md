@@ -21,7 +21,7 @@ The "crate family" is therefore **duallity plus its three dependencies**:
 |-------|--------------|----------------|----------------------------|
 | [**liblevenshtein**](https://github.com/vinary-tree/liblevenshtein-rust) | red-pink | fuzzy matching / automata | `Algorithm`; the universal automaton and its `PositionVariant` (`Standard` / `Transposition` / `MergeAndSplit`); `OperationSet` and `GeneralizedAutomaton`; the phonetic regex + NFA (`parse`, `compile`, `NFAChar`); and `wallbreaker`. |
 | [**libdictenstein**](https://github.com/vinary-tree/libdictenstein) | green | dictionary containers | the `Dictionary` trait and its backends — `DynamicDawgChar` (and `DoubleArrayTrieChar`, …), `SubstringDictionary`, and `Scdawg` / SCDAWG. |
-| [**lling-llang**](https://github.com/vinary-tree/lling-llang) | yellow | the WFST algebra | the `Wfst` / `LazyWfst` / `StateSource` / `LatticeBackend` traits, `TropicalWeight` (the tropical semiring `` $`\mathbb{T}`$ ``), `CachePolicy`, and `compose`. |
+| [**lling-llang**](https://github.com/vinary-tree/lling-llang) | yellow | the WFST algebra | the `Wfst` / `LazyWfst` / `StateSource` / `LatticeBackend` traits, `TropicalWeight` (the tropical semiring $`\mathbb{T}`$), `CachePolicy`, and `compose`. |
 | **duallity** | blue | the WFST adapters (**this crate**) | — it wraps the first two so they satisfy the third. |
 
 The colors above are the [shared documentation legend](../diagrams/README.md); every diagram in this
@@ -79,7 +79,7 @@ Because duallity is the **only** place where liblevenshtein and lling-llang meet
 right home for code that needs both. The resulting graph is a **directed acyclic graph (DAG)**: duallity
 points at all three siblings, and — critically — **nothing points back at duallity**. Each crate can
 now version independently, and the crate boundary falls exactly on the liblevenshtein
-`` $`\rightleftarrows`$ `` lling-llang cut that would otherwise be a cycle.
+$`\rightleftarrows`$ lling-llang cut that would otherwise be a cycle.
 
 ## 4. What duallity re-exports from each sibling
 
@@ -149,7 +149,7 @@ The full mapping (adapters flatten to `duallity::*`; dictionaries move to `libdi
 
 ## 6. Version matrix and MSRV
 
-duallity **4.0.0-rc.4** (edition 2021) is built against the versions declared in its
+duallity **4.0.0-rc.6** (edition 2021) is built against the versions declared in its
 [`Cargo.toml`](../../Cargo.toml) and pinned by its own `Cargo.lock`:
 
 | Dependency | Version requirement |
@@ -161,7 +161,7 @@ duallity **4.0.0-rc.4** (edition 2021) is built against the versions declared in
 
 Beyond the three siblings, duallity pulls three small direct dependencies used by the relocated `wfst`
 sources: `rustc-hash` (the `FxHashMap` used throughout the caches and registries), `smallvec` (the
-inline `` $`\le 4`$ ``-transition buffers of a Levenshtein cell), and `rand` (sampling and universal
+inline $`\le 4`$-transition buffers of a Levenshtein cell), and `rand` (sampling and universal
 automata). The optional `phonetic-rules` feature turns on the phonetic variants and additionally
 enables `liblevenshtein/phonetic-rules`; see
 [guides/README · Feature flags](../guides/README.md) for what each feature turns on.

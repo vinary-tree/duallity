@@ -21,9 +21,9 @@ because it is the single most common misconception about this type.
 
 ## 2. Type-state semantics
 
-> **Notation.** `` $`\langle T \rangle`$ `` denotes the builder's type parameter `` $`D = T`$ ``;
-> `` $`()`$ `` is the unit type (no dictionary attached). `` $`\varnothing`$ `` is the empty set;
-> `` $`\le_{\mathrm{lex}}`$ `` is lexicographic order. Weights and costs are `f64` in the tropical
+> **Notation.** $`\langle T \rangle`$ denotes the builder's type parameter $`D = T`$;
+> $`()`$ is the unit type (no dictionary attached). $`\varnothing`$ is the empty set;
+> $`\le_{\mathrm{lex}}`$ is lexicographic order. Weights and costs are `f64` in the tropical
 > convention (lower is better).
 
 **The two type-states and the transition.** The builder is a two-node state machine over its type
@@ -35,9 +35,9 @@ parameter. The dictionary-attaching method rewrites the type; every other fluent
 \texttt{PhoneticPipelineBuilder}\langle D2\rangle .
 ```
 
-The `dictionary` method **borrows** `` `&d` `` and clones it into the builder (bounds
-`` $`D2 : \texttt{Dictionary} + \texttt{Clone} + \texttt{Send} + \texttt{Sync} + \texttt{'static}`$ ``,
-`char` units), so the `` $`\langle D2\rangle`$ `` state owns its dictionary and can surrender it to
+The `dictionary` method **borrows** `&d` and clones it into the builder (bounds
+$`D2 : \texttt{Dictionary} + \texttt{Clone} + \texttt{Send} + \texttt{Sync} + \texttt{'static}`$,
+`char` units), so the $`\langle D2\rangle`$ state owns its dictionary and can surrender it to
 `build()`.
 
 **The three exits.** Each build method is a guarded projection from the configuration to a concrete
@@ -63,11 +63,11 @@ stage:
 So a configuration carrying **both** a pattern and rewrite rules is rejected by the NFA/dictionary
 exits — this prevents silently dropping rewrite rules from a dictionary-backed build. The guard is
 one-directional: `build_rewrite_wfst()` never calls it and simply **ignores any pattern**, emitting a
-rewriter from the rules (or an identity-only rewriter when `rewrite_rules = ` `` $`\varnothing`$ ``).
+rewriter from the rules (or an identity-only rewriter when `rewrite_rules = ` $`\varnothing`$).
 
 **`PhoneticMatch` ordering.** The result type is a total order (usable in a `BinaryHeap` /
 `BTreeSet`), sorted ascending by total cost then term, with `f64::total_cmp` so it stays total even
-over `NaN` and `` $`\pm\infty`$ ``:
+over `NaN` and $`\pm\infty`$:
 
 ```math
 m_1 \le m_2 \iff \bigl(m_1.\texttt{total\_cost},\ m_1.\texttt{term}\bigr)
@@ -76,7 +76,7 @@ m_1 \le m_2 \iff \bigl(m_1.\texttt{total\_cost},\ m_1.\texttt{term}\bigr)
 \texttt{total\_cost} = \texttt{phonetic\_cost} + \texttt{edit\_cost}.
 ```
 
-## 3. API surface (duallity 4.0.0-rc.4)
+## 3. API surface (duallity 4.0.0-rc.6)
 
 `PhoneticPipelineBuilder`, `PhoneticPipelineConfig`, and `PhoneticMatch` are exported from the crate
 root with **no feature gate** (`src/composed_phonetic.rs`); the two build exits that produce
@@ -146,8 +146,8 @@ The scoring knobs are stored in the config and applied by the *emitted* stages, 
 - **`phonetic_weight`** is passed to `PhoneticNfaWfst` / `PhoneticWfst` and charged on each consuming
   phonetic transition (§2 of those pages).
 - **`edit_weight`** is passed to `PhoneticWfst` and scales its accepting edit-distance final weight.
-- **`max_edit_distance(k)`** sets the **unweighted** edit bound `` $`0 \le k \le 255`$ ``. It
-  determines the set of product states explored within `` $`k`$ ``; the weight multipliers affect
+- **`max_edit_distance(k)`** sets the **unweighted** edit bound $`0 \le k \le 255`$. It
+  determines the set of product states explored within $`k`$; the weight multipliers affect
   *ranking*, not that set.
 
 `build_rewrite_wfst` and `build_phonetic_nfa` ignore `edit_weight` and `max_distance` (a rewriter and
@@ -234,10 +234,10 @@ matches.sort();                                       // ascending: total_cost, 
 
 ## 7. Diagram
 
-The builder advances from `` $`\langle()\rangle`$ `` to `` $`\langle D\rangle`$ `` and offers three
+The builder advances from $`\langle()\rangle`$ to $`\langle D\rangle`$ and offers three
 exits; the caller — not the builder — composes and searches:
 
-<img src="../diagrams/composed-pipeline-typestate.svg" alt="PhoneticPipelineBuilder advances from the ⟨()⟩ type-state to ⟨D⟩ when a dictionary is attached; it exposes three exits (build_rewrite_wfst, build_phonetic_nfa, build) that emit WFST stages, after which the caller composes the stages and runs a shortest-path search, constructing PhoneticMatch results" width="820"/>
+<img src="../diagrams/composed-pipeline-typestate.svg" alt="PhoneticPipelineBuilder advances from the empty type-state to the dictionary-attached type-state; it exposes three exits (build_rewrite_wfst, build_phonetic_nfa, build) that emit WFST stages, after which the caller composes the stages and runs a shortest-path search, constructing PhoneticMatch results" width="820"/>
 
 ## See also
 

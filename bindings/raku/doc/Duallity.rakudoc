@@ -1,0 +1,62 @@
+=begin pod
+
+=NAME Duallity
+
+=SUBTITLE Composable fuzzy-query automata over Vinary Tree dictionaries
+
+=DESCRIPTION
+
+C<Duallity> captures an immutable Unicode dictionary revision as a lazy
+weighted finite-state transducer. The returned
+C<Vinary::Tree::Interop::Wfst> composes directly with native and host-defined
+C<Lling::Llang> graphs.
+
+=head1 Public API
+
+=item C<abi-version> and C<api-revision> report the loaded native contract.
+
+=item C<wfst($dictionary, $query, :maximum-distance, :algorithm, :kind)>
+returns one independently owned lazy graph. C<$dictionary> is a Vinary Tree
+C<Resource> or C<Dictionary> implementing C<vt.dictionary.v1> with Unicode
+scalar units.
+
+=item C<Algorithm> provides C<STANDARD>, C<TRANSPOSITION>,
+C<MERGE-AND-SPLIT>, and C<DAMERAU-LEVENSHTEIN>.
+
+=item C<WfstKind> provides C<LEVENSHTEIN>, the three C<UNIVERSAL-*>, the four
+C<GENERALIZED-*>, and C<FZF> variants. FZF uses Arctic weights; all others use
+tropical weights.
+
+=head1 Example
+
+=begin code :lang<raku>
+my $dictionary = dynamic-dawg;
+$dictionary.insert-batch([cat => Nil, cot => Nil]);
+my $view = $dictionary.snapshot;
+my $graph = wfst($view, 'cat', maximum-distance => 1);
+$view.close;
+say $graph.arcs($graph.start).elems;
+$graph.close;
+$dictionary.close;
+=end code
+
+=head1 Ownership and composition
+
+Construction captures one immutable dictionary snapshot in constant time with
+respect to dictionary size. Closing or mutating the source cannot alter the
+graph. C<Lling::Llang::compose> retains both operands and expands only reachable
+product states. Close every returned graph deterministically.
+
+=head1 Failure, concurrency, and security
+
+Native failures throw C<X::Duallity> with a stable C<Status>, operation, and
+copied diagnostic. Provider callbacks are capability- and domain-checked, page
+validated, and serialized unless they truthfully advertise parallel
+reentrancy. Treat a foreign provider as synchronous plugin code and constrain
+its work.
+
+See the packaged C<README.md> and C<t/01-conformance.rakutest> for every
+selector, weight domain, troubleshooting case, benchmark, and executable
+composition example.
+
+=end pod

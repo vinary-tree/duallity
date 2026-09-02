@@ -7,12 +7,12 @@
 # It runs the fence-aware scanner (scripts/doc-math-prescan.raku) in --lint mode over the
 # curated living-doc set (Bucket A), and fails if any of them still carries old-style
 # math: Unicode-literal formulae (backticked or bare), bare undelimited `O(...)`
-# in prose, leaked bare-dollar LaTeX, or a letter abutting a `$ opening delimiter.
+# in prose, leaked bare-dollar LaTeX, or a letter abutting a dollar-backtick opening delimiter.
 #
 # The living-doc set is read from a manifest (one repo-relative path per line, `#` comments
-# allowed). This is deliberately an *allow-list*: the append-only historical archives
-# (docs/archive/, Bucket B) keep their notation and are never listed here; living docs
-# not yet converted join the manifest as they are brought into conformance.
+# allowed). The manifest contains every tracked Markdown document outside docs/archive/**.
+# The larger historical archive also conforms and can be scanned explicitly, but remains outside
+# this fast default gate.
 #
 #   Manifest resolution order:
 #     1. --manifest FILE

@@ -75,7 +75,7 @@ The bibliography is partitioned into four groups, each answering one question ab
 
 | Group | Question it answers | Bibliography nos. |
 |-------|---------------------|:-----------------:|
-| **Edit distance and Levenshtein automata** | What is the metric, and what automaton accepts a `` $`k`$ ``-neighborhood? | 1–7 |
+| **Edit distance and Levenshtein automata** | What is the metric, and what automaton accepts a $`k`$-neighborhood? | 1–7 |
 | **Weighted transducers and semirings** | Why must a matcher *be* a WFST to compose, and over what weight algebra? | 8–14 |
 | **Regular languages and complexity** | What can a finite-state machine express, and where are its limits? | 15–19 |
 | **Systems and large-distance search** | How is similarity search kept tractable past the wall effect? | 20 |
@@ -92,8 +92,8 @@ Follow this checklist so the local lists, the global list, and the mapping table
    global sequence 1..N so numbering stays contiguous and topic-ordered.
 4. **Add or adjust the page-local entry** in the `## References` footer of every chapter that cites
    the work, using that chapter's own local numbering and the [house entry
-   format](bibliography.md) (`**Author, A.** (year). *Title.* Venue vol(issue), pp. [doi:…](…) —
-   note.`).
+   format](bibliography.md): **Author, A.** (year). *Title.* Venue vol(issue), pp.
+   [doi:…](…) — note.
 5. **Update the mapping table** so the work's row lists every citing page (and each citing page's row
    lists the work).
 6. **Sync the [glossary](glossary.md)** if the work introduces a term, symbol, or acronym that the

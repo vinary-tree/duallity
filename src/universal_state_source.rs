@@ -13,7 +13,8 @@
 use std::sync::Arc;
 
 use lling_llang::prelude::{
-    LazyState, Semiring, StateId, StateSource, TropicalWeight, WeightedTransition,
+    ExpansionFailure, ExpansionRequest, Semiring, StateExpansion, StateId, StateSource,
+    TropicalWeight, WeightedTransition,
 };
 use smallvec::SmallVec;
 
@@ -29,6 +30,7 @@ use crate::universal_state_support::{
     precompute_relevant_subwords, universal_accepting_weight, universal_query_state_factor,
     universal_state_key, UniversalStateRegistry,
 };
+use crate::{fulfill_expansion_request, DirectStateSource};
 
 /// State source for Universal Levenshtein WFST computation.
 ///
@@ -382,6 +384,32 @@ where
     }
 }
 
+impl<V, D> DirectStateSource<char, TropicalWeight> for UniversalLevenshteinStateSource<V, D>
+where
+    V: PositionVariant + Clone + Send + Sync,
+    V::State: Send + Sync,
+    D: Dictionary + Clone + Send + Sync,
+    D::Node: Send + Sync,
+    <D::Node as DictionaryNode>::Unit: Into<char> + TryFrom<char> + Copy + Send + Sync,
+{
+    fn expand_state(&self, state: StateId) -> StateExpansion<char, TropicalWeight> {
+        let Some((dict_node_id, automaton_state_id)) =
+            state_encoding::decode(state, self.max_automaton_states)
+        else {
+            return StateExpansion::failed(ExpansionFailure::invalid_state(state));
+        };
+
+        let (is_final, final_weight, transitions) =
+            self.compute_transitions(dict_node_id, automaton_state_id);
+
+        if is_final {
+            StateExpansion::final_state(final_weight, transitions)
+        } else {
+            StateExpansion::non_final(transitions)
+        }
+    }
+}
+
 impl<V, D> StateSource<char, TropicalWeight> for UniversalLevenshteinStateSource<V, D>
 where
     V: PositionVariant + Clone + Send + Sync,
@@ -390,21 +418,8 @@ where
     D::Node: Send + Sync,
     <D::Node as DictionaryNode>::Unit: Into<char> + TryFrom<char> + Copy + Send + Sync,
 {
-    fn compute_state(&self, state: StateId) -> LazyState<char, TropicalWeight> {
-        let Some((dict_node_id, automaton_state_id)) =
-            state_encoding::decode(state, self.max_automaton_states)
-        else {
-            return LazyState::non_final(SmallVec::new());
-        };
-
-        let (is_final, final_weight, transitions) =
-            self.compute_transitions(dict_node_id, automaton_state_id);
-
-        if is_final {
-            LazyState::final_state(final_weight, transitions)
-        } else {
-            LazyState::non_final(transitions)
-        }
+    fn compute_state(&self, request: ExpansionRequest<'_>) -> StateExpansion<char, TropicalWeight> {
+        fulfill_expansion_request(self, request)
     }
 
     fn start(&self) -> StateId {
@@ -643,13 +658,12 @@ mod tests {
         assert_eq!(registered_dictionary_node_count(&source), 1);
         assert_eq!(crate::read_lock(&source.state_registry).len(), 1);
 
-        match source.compute_state(source.start()) {
-            LazyState::Computed { transitions, .. } => {
+        match source.expand_state(source.start()) {
+            StateExpansion::Expanded { transitions, .. } => {
                 assert!(transitions.is_empty());
             }
-            LazyState::Pending => {
-                pending_eager_state("Universal state source should compute eagerly")
-            }
+            StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+            StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
         }
 
         assert_eq!(registered_dictionary_node_count(&source), 1);
@@ -663,8 +677,8 @@ mod tests {
 
         assert_eq!(registered_dictionary_node_count(&source), 1);
 
-        match source.compute_state(source.start()) {
-            LazyState::Computed { transitions, .. } => {
+        match source.expand_state(source.start()) {
+            StateExpansion::Expanded { transitions, .. } => {
                 assert!(
                     !transitions
                         .iter()
@@ -672,9 +686,8 @@ mod tests {
                     "mismatched dictionary edge must be pruned at distance zero"
                 );
             }
-            LazyState::Pending => {
-                pending_eager_state("Universal state source should compute eagerly")
-            }
+            StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+            StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
         }
 
         assert_eq!(registered_dictionary_node_count(&source), 1);
@@ -685,7 +698,7 @@ mod tests {
         let dict = DynamicDawgChar::<()>::from_terms(vec!["abcd"]);
         let source = UniversalLevenshteinStateSource::<Standard, _>::new(&dict, "a", 0);
 
-        let _ = source.compute_state(source.start());
+        let _ = source.expand_state(source.start());
 
         let registered_nodes = registered_dictionary_node_count(&source);
         let states_per_dictionary_node =
@@ -722,8 +735,8 @@ mod tests {
     ) -> Vec<(Option<char>, Option<char>, f64)> {
         let dict = DynamicDawgChar::<()>::from_terms(dict_terms);
         let source = UniversalLevenshteinStateSource::<Standard, _>::new(&dict, query, 1);
-        match source.compute_state(source.start()) {
-            LazyState::Computed { transitions, .. } => transitions
+        match source.expand_state(source.start()) {
+            StateExpansion::Expanded { transitions, .. } => transitions
                 .iter()
                 .map(|transition| {
                     (
@@ -733,7 +746,7 @@ mod tests {
                     )
                 })
                 .collect(),
-            LazyState::Pending => Vec::new(),
+            StateExpansion::Failed(_) | StateExpansion::Cancelled(_) => Vec::new(),
         }
     }
 
@@ -752,10 +765,6 @@ mod tests {
             })
     }
 
-    fn pending_eager_state<T>(message: &str) -> T {
-        std::panic::panic_any(message.to_owned())
-    }
-
     fn accepts_any_path(
         source: &UniversalLevenshteinStateSource<Standard, DynamicDawgChar<()>>,
     ) -> bool {
@@ -767,8 +776,8 @@ mod tests {
                 continue;
             }
 
-            match source.compute_state(state_id) {
-                LazyState::Computed {
+            match source.expand_state(state_id) {
+                StateExpansion::Expanded {
                     is_final,
                     transitions,
                     ..
@@ -778,8 +787,9 @@ mod tests {
                     }
                     stack.extend(transitions.iter().map(|transition| transition.to));
                 }
-                LazyState::Pending => {
-                    pending_eager_state("Universal state source should compute eagerly")
+                StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+                StateExpansion::Cancelled(reason) => {
+                    panic!("state expansion cancelled: {reason:?}")
                 }
             }
         }
@@ -806,8 +816,8 @@ mod tests {
             }
             best_by_state.insert(state_id, cost);
 
-            match source.compute_state(state_id) {
-                LazyState::Computed {
+            match source.expand_state(state_id) {
+                StateExpansion::Expanded {
                     is_final,
                     final_weight,
                     transitions,
@@ -825,8 +835,9 @@ mod tests {
                             .map(|transition| (transition.to, cost + transition.weight.value())),
                     );
                 }
-                LazyState::Pending => {
-                    pending_eager_state("Universal state source should compute eagerly")
+                StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+                StateExpansion::Cancelled(reason) => {
+                    panic!("state expansion cancelled: {reason:?}")
                 }
             }
         }
@@ -847,8 +858,8 @@ mod tests {
                 continue;
             }
 
-            match source.compute_state(state_id) {
-                LazyState::Computed {
+            match source.expand_state(state_id) {
+                StateExpansion::Expanded {
                     is_final,
                     transitions,
                     ..
@@ -873,8 +884,9 @@ mod tests {
                         }
                     }
                 }
-                LazyState::Pending => {
-                    pending_eager_state("Universal state source should compute eagerly")
+                StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+                StateExpansion::Cancelled(reason) => {
+                    panic!("state expansion cancelled: {reason:?}")
                 }
             }
         }
@@ -951,8 +963,8 @@ mod tests {
         let dict = DynamicDawgChar::<()>::from_terms(vec!["ab"]);
         let source = UniversalLevenshteinStateSource::<Standard, _>::new(&dict, "xy", 2);
 
-        let first_target = match source.compute_state(source.start()) {
-            LazyState::Computed { transitions, .. } => transitions
+        let first_target = match source.expand_state(source.start()) {
+            StateExpansion::Expanded { transitions, .. } => transitions
                 .iter()
                 .find(|transition| {
                     transition.input == Some('x')
@@ -961,13 +973,12 @@ mod tests {
                 })
                 .map(|transition| transition.to)
                 .expect("expected first substitution transition"),
-            LazyState::Pending => {
-                pending_eager_state("Universal state source should compute eagerly")
-            }
+            StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+            StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
         };
 
-        match source.compute_state(first_target) {
-            LazyState::Computed { transitions, .. } => {
+        match source.expand_state(first_target) {
+            StateExpansion::Expanded { transitions, .. } => {
                 assert!(
                     transitions.iter().any(|transition| {
                         transition.input == Some('y') && transition.output == Some('b')
@@ -981,9 +992,8 @@ mod tests {
                     "query position must not be recovered from abstract offsets"
                 );
             }
-            LazyState::Pending => {
-                pending_eager_state("Universal state source should compute eagerly")
-            }
+            StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
+            StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
         }
     }
 }

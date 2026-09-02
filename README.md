@@ -11,7 +11,7 @@
 
 ## What is duallity?
 
-`duallity` exposes [liblevenshtein](https://github.com/vinary-tree/liblevenshtein-rust)'s **Levenshtein automata** as [lling-llang](https://github.com/vinary-tree/lling-llang) **Weighted Finite-State Transducers (WFSTs)**. Once a fuzzy matcher *is* a WFST, it stops being a closed black box that only emits "all terms within edit distance `` $`k`$ ``" — it becomes an algebraic object you can **compose** with other transducers:
+`duallity` exposes [liblevenshtein](https://github.com/vinary-tree/liblevenshtein-rust)'s **Levenshtein automata** as [lling-llang](https://github.com/vinary-tree/lling-llang) **Weighted Finite-State Transducers (WFSTs)**. Once a fuzzy matcher *is* a WFST, it stops being a closed black box that only emits "all terms within edit distance $`k`$" — it becomes an algebraic object you can **compose** with other transducers:
 
 ```text
    query + dictionary  ──►  Levenshtein WFST  ──∘──  phonetic / language-model WFST  ──►  best paths
@@ -53,13 +53,13 @@ guideline-driven corpus with reading orders for newcomers, implementers, and res
 
 ## What is a WFST, and what is composition?
 
-A **Weighted Finite-State Transducer** is a finite automaton whose transitions carry an *input* label, an *output* label, and a *weight* drawn from a **semiring** `` $`(\mathbb{K}, \oplus, \otimes, \bar{0}, \bar{1})`$ ``:
+A **Weighted Finite-State Transducer** is a finite automaton whose transitions carry an *input* label, an *output* label, and a *weight* drawn from a **semiring** $`(\mathbb{K}, \oplus, \otimes, \bar{0}, \bar{1})`$:
 
-- `` $`\oplus`$ `` (*plus*) combines **alternative** paths to the same place — it is how you sum over ways to do something.
-- `` $`\otimes`$ `` (*times*) combines the weights **along** a single path — it is how you accumulate a path's cost.
-- `` $`\bar{0}`$ `` is the identity for `` $`\oplus`$ `` (an unreachable / forbidden path); `` $`\bar{1}`$ `` is the identity for `` $`\otimes`$ `` (a free step).
+- $`\oplus`$ (*plus*) combines **alternative** paths to the same place — it is how you sum over ways to do something.
+- $`\otimes`$ (*times*) combines the weights **along** a single path — it is how you accumulate a path's cost.
+- $`\bar{0}`$ is the identity for $`\oplus`$ (an unreachable / forbidden path); $`\bar{1}`$ is the identity for $`\otimes`$ (a free step).
 
-A path's weight is the `` $`\otimes`$ ``-product of its transition weights; the weight a transducer assigns to an input/output string pair is the `` $`\oplus`$ ``-sum over all paths carrying that pair.
+A path's weight is the $`\otimes`$-product of its transition weights; the weight a transducer assigns to an input/output string pair is the $`\oplus`$-sum over all paths carrying that pair.
 
 `duallity` works in the **tropical semiring** — lling-llang's `TropicalWeight`:
 
@@ -70,20 +70,20 @@ A path's weight is the `` $`\otimes`$ ``-product of its transition weights; the 
 
 <img src="docs/diagrams/tropical-semiring-algebra.svg" alt="The tropical (min, +) semiring: plus is min (best alternative wins), times is plus (costs add along a path), zero is +infinity, one is 0" width="760"/>
 
-Under `` $`(\min, +)`$ ``, "`` $`\oplus`$ ``-sum over all paths" becomes "**minimum-cost path**", and "`` $`\otimes`$ ``-product along a path" becomes "**sum of edge costs**". So a shortest path *is* the best answer.
+Under $`(\min, +)`$, "$`\oplus`$-sum over all paths" becomes "**minimum-cost path**", and "$`\otimes`$-product along a path" becomes "**sum of edge costs**". So a shortest path *is* the best answer.
 
-> ⚠️ **Naming gotcha.** `TropicalWeight::zero()` is the value `` $`+\infty`$ `` (the additive identity `` $`\bar{0}`$ ``, "no path") and `TropicalWeight::one()` is the value `` $`0`$ `` (the multiplicative identity `` $`\bar{1}`$ ``, "a free step"). The method names follow the *algebraic* role, not the numeric value.
+> ⚠️ **Naming gotcha.** `TropicalWeight::zero()` is the value $`+\infty`$ (the additive identity $`\bar{0}`$, "no path") and `TropicalWeight::one()` is the value $`0`$ (the multiplicative identity $`\bar{1}`$, "a free step"). The method names follow the *algebraic* role, not the numeric value.
 
 ### The Levenshtein automaton as a WFST
 
-For a query `` $`q`$ `` and bound `` $`k`$ ``, the Levenshtein automaton accepts exactly the strings within edit distance `` $`k`$ `` of `` $`q`$ ``. As a tropical WFST it is more than a yes/no acceptor — **its minimum path weight from start to an accepting state for a dictionary term `` $`w`$ `` is precisely `` $`d_{\mathrm{lev}}(q, w)`$ ``** (capped at `` $`k`$ ``). Each transition is one edit operation (input = query side, output = dictionary side):
+For a query $`q`$ and bound $`k`$, the Levenshtein automaton accepts exactly the strings within edit distance $`k`$ of $`q`$. As a tropical WFST it is more than a yes/no acceptor — **its minimum path weight from start to an accepting state for a dictionary term $`w`$ is precisely $`d_{\mathrm{lev}}(q, w)`$** (capped at $`k`$). Each transition is one edit operation (input = query side, output = dictionary side):
 
 | Operation | Condition | Label / weight |
 |---|---|---|
-| **match** | `` $`q[i] = c`$ `` | `` $`q[i] : c \,/\, 0`$ `` (a free step, `` $`\bar{1}`$ ``) |
-| **substitute** | `` $`q[i] \neq c`$ `` | `` $`q[i] : c \,/\, 1`$ `` |
-| **insert** | (extra dictionary char) | `` $`\varepsilon : c \,/\, 1`$ `` |
-| **delete** | (missing dictionary char) | `` $`q[i] : \varepsilon \,/\, 1`$ `` |
+| **match** | $`q[i] = c`$ | $`q[i] : c \,/\, 0`$ (a free step, $`\bar{1}`$) |
+| **substitute** | $`q[i] \neq c`$ | $`q[i] : c \,/\, 1`$ |
+| **insert** | (extra dictionary char) | $`\varepsilon : c \,/\, 1`$ |
+| **delete** | (missing dictionary char) | $`q[i] : \varepsilon \,/\, 1`$ |
 
 `duallity` builds this **lazily**: the product state space (dictionary node × automaton state) is never materialized in full. A composite `StateId` packs the pair —
 
@@ -91,17 +91,17 @@ For a query `` $`q`$ `` and bound `` $`k`$ ``, the Levenshtein automaton accepts
 \mathrm{StateId} \;=\; d \cdot M + a
 ```
 
-— where `` $`d`$ `` is the dictionary-node id, `` $`a`$ `` the automaton-state id, and `` $`M`$ `` the per-engine radix; states are expanded and cached on first touch. The dictionary `` $`D`$ `` is generic over any [libdictenstein](https://github.com/vinary-tree/libdictenstein) backend whose edge unit converts to `char`, so byte and Unicode dictionaries both work; edit distance is computed **per Unicode scalar**, not per byte.
+— where $`d`$ is the dictionary-node id, $`a`$ the automaton-state id, and $`M`$ the per-engine radix; states are expanded and cached on first touch. The dictionary $`D`$ is generic over any [libdictenstein](https://github.com/vinary-tree/libdictenstein) backend whose edge unit converts to `char`, so byte and Unicode dictionaries both work; edit distance is computed **per Unicode scalar**, not per byte.
 
-### Composition `` $`T_1 \circ T_2`$ ``
+### Composition $`T_1 \circ T_2`$
 
-Composition chains two transducers: `` $`(T_1 \circ T_2)`$ `` reads what `` $`T_1`$ `` reads, writes what `` $`T_2`$ `` writes, and matches `` $`T_1`$ ``'s **output** tape against `` $`T_2`$ ``'s **input** tape. In the tropical semiring its weight is
+Composition chains two transducers: $`(T_1 \circ T_2)`$ reads what $`T_1`$ reads, writes what $`T_2`$ writes, and matches $`T_1`$'s **output** tape against $`T_2`$'s **input** tape. In the tropical semiring its weight is
 
 ```math
 (T_1 \circ T_2)(x, z) \;=\; \min_{y}\,\bigl[\, T_1(x, y) + T_2(y, z) \,\bigr] .
 ```
 
-`lling_llang::composition::compose(t1, t2)` returns a **lazy** composition — product states are computed only as a shortest-path search visits them, so the pipeline never pays for the full Cartesian state space. This is the whole point of `duallity`: make the Levenshtein matcher a `` $`T_1`$ `` you can feed into that `` $`\min`$ ``-over-`` $`y`$ `` fold. A plain result *set* discards the `` $`T_1(x, y)`$ `` weights and cannot enter that fold; only the WFST keeps the weighted relation.
+`lling_llang::composition::compose(t1, t2)` returns a **lazy** composition — product states are computed only as a shortest-path search visits them, so the pipeline never pays for the full Cartesian state space. This is the whole point of `duallity`: make the Levenshtein matcher a $`T_1`$ you can feed into that $`\min`$-over-$`y`$ fold. A plain result *set* discards the $`T_1(x, y)`$ weights and cannot enter that fold; only the WFST keeps the weighted relation.
 
 ---
 
@@ -113,9 +113,9 @@ Every wrapper below implements lling-llang's `Wfst<char, TropicalWeight>` (and `
 |---|---|---|
 | **Levenshtein** | `LevenshteinWfst<D>` | The core adapter: a query-parameterized Levenshtein automaton × dictionary, as a lazy tropical WFST. Start here. |
 | **Universal** | `UniversalLevenshteinWfst<V, D>`, `BoundUniversalWfst<V, D>` | liblevenshtein's *universal* (query-agnostic) automaton — built once per `max_distance` and reused across queries. `V` is the position variant (`Standard` / `Transposition` / `MergeAndSplit`). |
-| **WallBreaker** | `WallBreakerWfst<'a, D>`, `WallBreakerWfstBuilder` | Defeats the "wall effect" at large `` $`k`$ ``: splits the query (pigeonhole), finds exact substring seeds via an SCDAWG, and extends bidirectionally. Needs a `SubstringDictionary`. |
+| **WallBreaker** | `WallBreakerWfst<'a, D>`, `WallBreakerWfstBuilder` | Defeats the "wall effect" at large $`k`$: splits the query (pigeonhole), finds exact substring seeds via an SCDAWG, and extends bidirectionally. Needs a `SubstringDictionary`. |
 | **Generalized** | `GeneralizedWfst<D>`, `GeneralizedWfstBuilder` | A runtime-configurable automaton: mix standard, transposition, merge/split, and phonetic-digraph (`ph↔f`, `ck↔k`) operations via an `OperationSet`. |
-| **Phonetic** | `PhoneticWfst<D>` / `…Builder`, `PhoneticNfaWfst`, `RewriteWfst`, `PhoneticPipelineBuilder` | Sound-alike matching. `RewriteWfst` applies rule-based rewrites (`ph→f`); `PhoneticNfaWfst` / `PhoneticWfst` compile a phonetic regex (`(ph|f)one`) into an NFA-backed transducer (feature `phonetic-rules`). |
+| **Phonetic** | `PhoneticWfst<D>` / `…Builder`, `PhoneticNfaWfst`, `RewriteWfst`, `PhoneticPipelineBuilder` | Sound-alike matching. `RewriteWfst` applies rule-based rewrites ($`\texttt{ph} \to \texttt{f}`$); `PhoneticNfaWfst` / `PhoneticWfst` compile a phonetic regex (`(ph|f)one`) into an NFA-backed transducer (feature `phonetic-rules`). |
 
 Supporting types are public too: `DictionaryBackend` (adapts a dictionary to lling-llang's `LatticeBackend`), `LevenshteinStateSource` / `UniversalLevenshteinStateSource` (the lazy `StateSource` engines), `InvalidWeightError`, and the `state_encoding` module (`try_encode` / `decode` / `estimate_automaton_states`).
 
@@ -219,7 +219,7 @@ duallity = { version = "0.3", features = ["phonetic-rules"] }
 ## Performance & safety at a glance
 
 - **Lazy + cached.** Product states are computed on first touch and memoized in a per-WFST `LazyStateCache`; a `CachePolicy` (`CacheAll` / `Lru { max_states }` / `NoCache`) bounds memory. See [architecture/04](docs/architecture/04-lazy-evaluation-and-caching.md) and [guides/05](docs/guides/05-performance-and-tuning.md).
-- **`unsafe`-free compute core, panic-free public surface.** The Rust compute core carries no `unsafe`; the optional C-ABI boundary (`src/ffi.rs`, `src/bindings.rs`) uses contained, `catch_unwind`-guarded `unsafe` for foreign-pointer and resource handling, never leaking a panic. Fallible operations return `Result`/`Option` (`try_encode`, `decode`, `try_intern`, weight setters → `InvalidWeightError`); `.expect`/`.unwrap` live only under `#[cfg(test)]`. See [engineering/safety-and-panics](docs/engineering/safety-and-panics.md).
+- **`unsafe`-free compute core, panic-free public surface.** The Rust compute core carries no `unsafe`; the optional C-ABI boundary (`src/ffi.rs`, `src/bindings.rs`) uses contained, `catch_unwind`-guarded `unsafe` for foreign-pointer and resource handling, never leaking a panic. Fallible operations return `Result`/`Option` through `try_encode`, `decode`, `try_intern`, and the weight setters; invalid weights produce `InvalidWeightError`. `.expect`/`.unwrap` live only under `#[cfg(test)]`. See [engineering/safety-and-panics](docs/engineering/safety-and-panics.md).
 - **`Clone + Send + Sync`.** Registries are `Arc<RwLock<…>>` with poison recovery; clones are cheap. See [engineering/concurrency-and-locking](docs/engineering/concurrency-and-locking.md).
 - **Pure compute.** No I/O, no network, no deserialization; the one real risk is resource exhaustion, bounded by `max_distance` and the cache policy. See [security/threat-model](docs/security/threat-model.md).
 
@@ -243,7 +243,8 @@ use duallity::LevenshteinWfst;
 use duallity::DictionaryBackend;
 ```
 
-The dictionary types themselves also moved out of liblevenshtein into **libdictenstein** — see that crate's migration note (`use liblevenshtein::dictionary::X` → `use libdictenstein::X`).
+The dictionary types themselves also moved out of liblevenshtein into **libdictenstein** — replace
+`use liblevenshtein::dictionary::X` with `use libdictenstein::X`; see that crate's migration note.
 
 ---
 

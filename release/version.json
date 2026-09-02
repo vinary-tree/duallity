@@ -1,21 +1,27 @@
 {
   "schemaVersion": 1,
   "component": "duallity",
-  "canonical": "4.0.0-rc.4",
+  "canonical": "4.0.0-rc.6",
+  "coordinates": {
+    "npmPackage": "@vinary-tree/duallity"
+  },
   "registries": {
-    "cargo": "4.0.0-rc.4",
-    "cmake": "4.0.0-rc.4",
-    "npm": "4.0.0-rc.4",
-    "pkgConfig": "4.0.0-rc.4"
+    "cargo": "4.0.0-rc.6",
+    "cmake": "4.0.0-rc.6",
+    "npm": "4.0.0-rc.6",
+    "pkgConfig": "4.0.0-rc.6"
   },
   "dependencies": {
-    "duallity": "4.0.0-rc.4",
-    "libdictenstein": "4.0.0-rc.4",
-    "liblevenshtein": "4.0.0-rc.4",
-    "lling-llang": "4.0.0-rc.4",
-    "vinary-tree-interop": "4.0.0-rc.4",
-    "@vinary-tree/interop": "4.0.0-rc.4",
-    "@vinary-tree/vinary-tree": "4.0.0-rc.4"
+    "duallity": "4.0.0-rc.6",
+    "libdictenstein": "4.0.0-rc.6",
+    "liblevenshtein": "4.0.0-rc.6",
+    "lling-llang": "4.0.0-rc.6",
+    "vinary-tree-interop": "4.0.0-rc.6",
+    "@vinary-tree/vinary-tree-interop": "4.0.0-rc.6",
+    "@vinary-tree/javascript-runtime": "4.0.0-rc.6"
   },
-  "publication": { "distTag": "next" }
+  "publication": {
+    "distTag": "next",
+    "sourceTag": "v4.0.0-rc.6"
+  }
 }

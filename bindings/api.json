@@ -13,7 +13,7 @@
     "crate": "vinary-tree-interop",
     "cPrefix": "vt_",
     "cHeader": "vinary_tree_interop.h",
-    "npm": "@vinary-tree/interop",
+    "npm": "@vinary-tree/vinary-tree-interop",
     "resourceLayout": [
       "context",
       "vtable"
@@ -23,7 +23,9 @@
   },
   "packages": {
     "cratesIo": "duallity",
-    "npm": "@vinary-tree/duallity"
+    "npm": "@vinary-tree/duallity",
+    "julia": "Duallity",
+    "zef": "Duallity"
   },
   "supportTiers": {
     "tier1": [
@@ -31,7 +33,9 @@
       "cpp",
       "javascript",
       "typescript",
-      "clojurescript"
+      "clojurescript",
+      "julia",
+      "raku"
     ]
   },
   "documentation": {
@@ -97,12 +101,52 @@
           "Executable conformance evidence",
           "Maintainer workflow"
         ]
+      },
+      "julia": {
+        "languages": [
+          "Julia"
+        ],
+        "guide": "bindings/julia/Duallity/README.md",
+        "example": "bindings/julia/Duallity/test/runtests.jl",
+        "requiredHeadings": [
+          "Install",
+          "Quickstart",
+          "Ownership & memory model",
+          "Errors",
+          "Concurrency",
+          "Zero-copy paths",
+          "Security and provider trust",
+          "Troubleshooting",
+          "Version compatibility",
+          "Executable conformance evidence",
+          "Maintainer workflow"
+        ]
+      },
+      "raku": {
+        "languages": [
+          "Raku"
+        ],
+        "guide": "bindings/raku/README.md",
+        "example": "bindings/raku/t/01-conformance.rakutest",
+        "requiredHeadings": [
+          "Install",
+          "Quickstart",
+          "Ownership & memory model",
+          "Errors",
+          "Concurrency",
+          "Zero-copy paths",
+          "Security and provider trust",
+          "Troubleshooting",
+          "Version compatibility",
+          "Executable conformance evidence",
+          "Maintainer workflow"
+        ]
       }
     }
   },
-  "packageVersion": "4.0.0-rc.4",
+  "packageVersion": "4.0.0-rc.6",
   "abiVersion": 1,
-  "apiRevision": 1,
+  "apiRevision": 2,
   "cPrefix": "duallity_",
   "cHeader": "duallity.h",
   "cppHeader": "duallity.hpp",
@@ -200,6 +244,10 @@
       "rustModule": "ffi"
     },
     {
+      "name": "duallity_wfst_new_ref",
+      "rustModule": "ffi"
+    },
+    {
       "name": "duallity_wfst_free",
       "rustModule": "ffi"
     },
@@ -214,13 +262,13 @@
   ],
   "javascript": {
     "package": "@vinary-tree/duallity",
-    "version": "4.0.0-rc.4",
+    "version": "4.0.0-rc.6",
     "engines": {
       "node": ">=22.14"
     },
     "dependencies": {
-      "@vinary-tree/interop": "4.0.0-rc.4",
-      "@vinary-tree/vinary-tree": "4.0.0-rc.4"
+      "@vinary-tree/vinary-tree-interop": "4.0.0-rc.6",
+      "@vinary-tree/javascript-runtime": "4.0.0-rc.6"
     },
     "exports": {
       ".": {
@@ -258,7 +306,7 @@
     ]
   },
   "wasm": {
-    "umbrellaPackage": "@vinary-tree/vinary-tree",
+    "runtimePackage": "@vinary-tree/javascript-runtime",
     "projectPackage": "@vinary-tree/duallity",
     "runtimeIdentityGuard": true,
     "nodeDefault": "native-napi",
@@ -268,13 +316,14 @@
     ]
   },
   "release": {
-    "canonical": "4.0.0-rc.4",
+    "canonical": "4.0.0-rc.6",
     "registries": {
-      "cargo": "4.0.0-rc.4",
-      "cmake": "4.0.0-rc.4",
-      "npm": "4.0.0-rc.4",
-      "pkgConfig": "4.0.0-rc.4"
+      "cargo": "4.0.0-rc.6",
+      "cmake": "4.0.0-rc.6",
+      "npm": "4.0.0-rc.6",
+      "pkgConfig": "4.0.0-rc.6"
     },
-    "distTag": "next"
+    "distTag": "next",
+    "sourceTag": "v4.0.0-rc.6"
   }
 }

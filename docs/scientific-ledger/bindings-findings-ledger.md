@@ -144,8 +144,8 @@ queries/distances through the boundary against an in-process oracle.
 `DuallityStatus` variant is produced by at least one test through the C
 symbols, every `DuallityWfstKind` value is constructed through
 `duallity_wfst_new`, and a property block relates boundary results to direct
-`create_wfst` results. Falsification of this entry's counts: `grep -c
-'pub \(unsafe \)\?extern "C" fn duallity_' src/ffi.rs` (expect 7) and
+`create_wfst` results. Falsification of this entry's counts:
+`grep -c 'pub \(unsafe \)\?extern "C" fn duallity_' src/ffi.rs` (expect 7) and
 `grep -rn 'proptest!' src tests benches examples` (expect exactly the two
 listed sites at the recorded commit).
 
@@ -285,8 +285,8 @@ surface; releasing the borrowed ldict resource would unbalance the ledger.
 
 **Evidence.** Running the release-built four-cdylib family test under valgrind
 surfaced 2 contexts of "Conditional jump or move depends on uninitialised
-value(s)" originating in `duallity::state_source::LevenshteinStateSource::
-compute_state` (reached via lling's WFST walk). No leak; all 338 assertions
+value(s)" originating in `duallity::state_source::LevenshteinStateSource::compute_state`
+(reached via lling's WFST walk). No leak; all 338 assertions
 pass; results are correct.
 
 **Analysis.** The entire duallity crate OUTSIDE its C boundary is `unsafe`-free:
@@ -397,8 +397,8 @@ box is already an unowned raw pointer, so nothing drops it and the retained
 snapshot leaks. Dropping a `*mut T` is a no-op, so the functional test still saw
 `status == NullPointer` with `out_wfst` untouched; the defect was invisible to
 safe Rust and `catch_unwind` and visible only to lsan. `duallity_wfst_resource`
-carried the identical latent pattern — `*output(out_resource, ..)? =
-wfst.resource.clone().into_raw()` retains before the null check — leaking one
+carried the identical latent pattern —
+`*output(out_resource, ..)? = wfst.resource.clone().into_raw()` retains before the null check — leaking one
 VtResource retain on a null `out_resource` (no test exercised that path, so lsan
 did not reach it).
 

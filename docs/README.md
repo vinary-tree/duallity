@@ -36,14 +36,14 @@ docs/
 
 ## Reading orders
 
-**Newcomer (≈30 min)** — understand the idea and run it:
+**Newcomer ($`\approx 30\ \text{minutes}`$)** — understand the idea and run it:
 1. crate [README](../README.md)
 2. [theory/01 · Semirings and WFSTs](theory/01-semirings-and-wfsts.md)
 3. [theory/02 · Edit distance and Levenshtein automata](theory/02-edit-distance-and-levenshtein-automata.md)
 4. [guides/01 · Quickstart](guides/01-quickstart.md)
 5. [guides/02 · Choosing a variant](guides/02-choosing-a-variant.md)
 
-**Implementer (≈2 h)** — integrate or extend duallity:
+**Implementer ($`\approx 2\ \text{hours}`$)** — integrate or extend duallity:
 1. the Newcomer path, then
 2. [theory/03 · The Levenshtein automaton as a transducer](theory/03-levenshtein-as-transducer.md) and [theory/04 · Composition](theory/04-composition.md)
 3. all of [architecture/](architecture/README.md)
@@ -51,14 +51,14 @@ docs/
 5. [guides/03 · Composing pipelines](guides/03-composing-pipelines.md) and [guides/05 · Performance and tuning](guides/05-performance-and-tuning.md)
 6. [engineering/](engineering/README.md) and [security/](security/README.md)
 
-**Researcher (≈3 h)** — the full theory and provenance:
+**Researcher ($`\approx 3\ \text{hours}`$)** — the full theory and provenance:
 1. all of [theory/](theory/README.md) (01 → 07), including the complete correctness proofs
 2. [references/bibliography](references/bibliography.md)
 3. the [design](design/README.md) pages for exact semantics
 4. [theory/06 · WallBreaker](theory/06-wallbreaker-and-the-wall-effect.md) and [theory/07 · Regular-language limits](theory/07-regular-language-limits.md)
 
-**Binding author (≈45 min)** — call duallity from C, C++, or JavaScript:
-1. [architecture/06 · The resource ABI and language bindings](architecture/06-resource-abi-and-bindings.md) — the seven-function C ABI, the nine kinds, capture-once, and the double adapter
+**Binding author ($`\approx 45\ \text{minutes}`$)** — call duallity from C, C++, or JavaScript:
+1. [architecture/06 · The resource ABI and language bindings](architecture/06-resource-abi-and-bindings.md) — the eight-function C ABI, the nine kinds, capture-once, and the double adapter
 2. [guides/07 · Language bindings](guides/07-language-bindings.md) — the nine-section per-language guide
 3. the [binding hub](bindings/README.md), then the per-language C, C++, or JavaScript-family guide
 4. [security/threat-model](security/threat-model.md) — why a foreign dictionary is untrusted input
@@ -66,8 +66,8 @@ docs/
 ## Conventions
 
 - **Mathematics is GitHub-flavored MathJax.** Inline math is a backtick span wrapped in dollar signs —
-  e.g. `` $`\oplus`$ `` renders `` $`\oplus`$ `` — and display math is a fenced block whose info-string
-  is `math`. (A literal dollar character is written as an inline code span, `` `$` ``.) Every symbol is
+  e.g. $`\oplus`$ renders $`\oplus`$ — and display math is a fenced block whose info-string
+  is `math`. (A literal dollar character is written as an inline code span, `$`.) Every symbol is
   defined once in the [master notation table](theory/README.md#master-notation); the
   [glossary](references/glossary.md) mirrors those renderings in prose. These two files plus the
   diagram [color legend](diagrams/README.md) are the three **single sources of truth** the rest of the

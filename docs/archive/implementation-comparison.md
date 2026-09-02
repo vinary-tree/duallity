@@ -46,7 +46,7 @@ This document analyzes the efficiency characteristics of each approach to guide 
 
 | Aspect | Standalone | Integrated | Winner |
 |--------|------------|------------|--------|
-| Lattice complexity | O(K^N) | O(K×N) | Integrated |
+| Lattice complexity | $`\mathcal{O}(K^N)`$ | $`\mathcal{O}(K \times N)`$ | Integrated |
 | Memory (100K words) | ~12 MB | ~3 MB | Integrated |
 | Parse time | 847 ms | 142 ms | Integrated |
 | Inter-tier transfer | Serialization | Zero-copy | Integrated |
@@ -95,7 +95,7 @@ From `docs/wfst/architecture.md` (Phases 1-6):
 
 - **Self-contained**: No external dependencies beyond Rust ecosystem
 - **Storage**: Each tier maintains its own data structures
-- **Candidate enumeration**: Standard path enumeration O(K^N)
+- **Candidate enumeration**: Standard path enumeration $`\mathcal{O}(K^N)`$
 - **Inter-tier communication**: Serialization/deserialization required
 
 ### Implementation Roadmap
@@ -145,7 +145,7 @@ From `docs/integration/mork/README.md` and `docs/mettail/correction-wfst/`:
 | Phase | Component | Description |
 |-------|-----------|-------------|
 | A | FuzzySource Adapter | MORK adapter wraps liblevenshtein transducer |
-| B | Lattice | MORK `query_multi_i()` at O(K×N) |
+| B | Lattice | MORK `query_multi_i()` at $`\mathcal{O}(K \times N)`$ |
 | C | Full WFST | NFA × FST composition |
 | D | CFG | MORK pattern/template pairs |
 
@@ -304,10 +304,10 @@ Total:               ~6 MB (2.7× smaller)
 
 | Operation | Standalone | Integrated | Notes |
 |-----------|------------|------------|-------|
-| Exact lookup | O(k) ~1-2 μs | O(k) <1 μs | PathMap mmap faster |
-| Prefix scan | O(k + m) ~10 μs | O(k + m) <10 μs | Similar |
-| Fuzzy query (d=2) | O(k × 3^d) ~100 μs | O(k × 3^d) <100 μs | Similar |
-| Inter-tier transfer | 10-50 μs (serialize) | 0 μs (zero-copy) | Integrated wins |
+| Exact lookup | $`\mathcal{O}(k)`$ ~1-2 µs | $`\mathcal{O}(k)`$ <1 µs | PathMap mmap faster |
+| Prefix scan | $`\mathcal{O}(k + m)`$ ~10 µs | $`\mathcal{O}(k + m)`$ <10 µs | Similar |
+| Fuzzy query ($`d=2`$) | $`\mathcal{O}(k \times 3^d)`$ ~100 µs | $`\mathcal{O}(k \times 3^d)`$ <100 µs | Similar |
+| Inter-tier transfer | 10-50 µs (serialize) | 0 µs (zero-copy) | Integrated wins |
 | CFG parse (lattice) | 847 ms | 142 ms | 6× faster |
 
 ### End-to-End Latency
@@ -404,7 +404,7 @@ let results = mork.query_lattice(lattice, grammar_patterns);
 ```
 
 **Advantages**:
-- Native lattice input (O(K×N) edges, not O(K^N) paths)
+- Native lattice input ($`\mathcal{O}(K \times N)`$ edges, not $`\mathcal{O}(K^N)`$ paths)
 - Shared computation via MORK's pattern engine
 - Cross-tier queries without serialization (shared zipper)
 
@@ -443,7 +443,7 @@ let results = mork.query_lattice(lattice, grammar_patterns);
 ### Integrated Advantages
 
 1. **Efficiency**:
-   - O(K×N) vs O(K^N) complexity
+   - $`\mathcal{O}(K \times N)`$ vs $`\mathcal{O}(K^N)`$ complexity
    - 6× faster parsing
    - 4× less memory
 
@@ -506,7 +506,7 @@ let results = mork.query_lattice(lattice, grammar_patterns);
 
 The **integrated PathMap/MORK/MeTTaIL approach is more efficient** for:
 
-1. **Algorithmic complexity**: O(K×N) vs O(K^N) - exponential to linear reduction
+1. **Algorithmic complexity**: $`\mathcal{O}(K \times N)`$ vs $`\mathcal{O}(K^N)`$ - exponential to linear reduction
 2. **Memory**: 4× reduction through shared storage and prefix compression
 3. **Latency**: 6× faster through native lattice parsing and zero-copy transfer
 4. **Scalability**: Handles N=10+ words where standalone fails (OOM)
@@ -519,7 +519,7 @@ The **standalone approach is simpler** for:
 
 ### Recommendation
 
-**For production systems requiring grammar correction at scale**: Use the integrated approach. The complexity reduction from O(K^N) to O(K×N) is the decisive factor.
+**For production systems requiring grammar correction at scale**: Use the integrated approach. The complexity reduction from $`\mathcal{O}(K^N)`$ to $`\mathcal{O}(K \times N)`$ is the decisive factor.
 
 **For simple spelling-only correction or embedded use**: The standalone FST layer (Tier 1) remains efficient without integration.
 

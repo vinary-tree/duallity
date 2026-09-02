@@ -785,8 +785,8 @@ pure sequence-to-sequence modeling alone.
 **Classic Reference**: Chomsky, N. (1956). "Three models for the description of language"
 
 **Hierarchy**:
-- **Type 3 (Regular)**: FST/NFA, O(n) recognition
-- **Type 2 (Context-Free)**: CFG, O(n³) CYK parsing
+- **Type 3 (Regular)**: FST/NFA, $`\mathcal{O}(n)`$ recognition
+- **Type 2 (Context-Free)**: CFG, $`\mathcal{O}(n^{3})`$ CYK parsing
 - **Type 1 (Context-Sensitive)**: LBA, PSPACE-complete
 - **Type 0 (Recursively Enumerable)**: Turing machine, undecidable
 

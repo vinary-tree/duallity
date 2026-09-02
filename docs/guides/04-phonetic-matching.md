@@ -2,7 +2,7 @@
 
 *Phonetic* matching asks *"which dictionary terms **sound like** this?"* rather than *"which are spelled
 like it?"*. duallity answers it two ways — a **rule** route and a **regex** route — over the same
-`` $`\min`$ ``-plus [tropical](../theory/README.md#semirings-and-weights) WFST algebra as every other
+$`\min`$-plus [tropical](../theory/README.md#semirings-and-weights) WFST algebra as every other
 variant, so a phonetic stage composes in front of a fuzzy matcher and the total score decomposes into
 *sound-alike cost* + *edit distance* ([theory/04 · Composition](../theory/04-composition.md)).
 
@@ -18,10 +18,10 @@ This guide picks a route, wires it, traces it end-to-end, and states its limits.
 |---|---|---|
 | Type | [`RewriteWfst`](../design/phonetic-rewrite-wfst.md) | [`PhoneticWfst`](../design/phonetic-wfst.md) |
 | Feature flag | **none** (always available) | **`phonetic-rules`** |
-| You supply | a fixed list of rewrites (`ph→f`, `ck→k`) | a phonetic pattern (`(ph|f)one`, classes, `a?`, `a*`) |
+| You supply | a fixed list of rewrites ($`\texttt{ph} \to \texttt{f}`$, $`\texttt{ck} \to \texttt{k}`$) | a phonetic pattern (`(ph|f)one`, classes, `a?`, `a*`) |
 | Dictionary | none — it is a front stage you compose | fused in — walks the dictionary as `NFA × Levenshtein × Dictionary` |
 | Edit tolerance | from the Levenshtein stage you compose behind it | built in (`max_distance`, a `u8`) |
-| Cost knob | per-rule `cost` (finite, `` $`\ge 0`$ ``) | `phonetic_weight` per consumed char, `edit_weight` scaling the accepting distance |
+| Cost knob | per-rule `cost` (finite, $`\ge 0`$) | `phonetic_weight` per consumed char, `edit_weight` scaling the accepting distance |
 | Reach for it when | you have a small, explicit sound-alike table | the query is a *pattern* and the target is a *dictionary* |
 
 The heuristic: **a fixed table of substitutions → Route A; a pattern language → Route B.** Route A is
@@ -29,8 +29,8 @@ feature-free and orthography-only; Route B is the end-to-end phonetic query but 
 `phonetic-rules` feature and its NFA machinery.
 
 > ⚠ **NEW diagram (pending central render):** a decision flowchart
-> [`phonetic-route-decision`](../diagrams/phonetic-route-decision.svg) — *"fixed rule table?"* → Route A
-> (`RewriteWfst`, no feature), *"pattern with alternation/classes?"* → Route B (`PhoneticWfst`,
+> [`phonetic-route-decision`](../diagrams/phonetic-route-decision.svg) — *"fixed rule table?"* leads to
+> Route A (`RewriteWfst`, no feature); *"pattern with alternation/classes?"* leads to Route B (`PhoneticWfst`,
 > `phonetic-rules`), with the bare-NFA and digraph side-doors — belongs here and in the
 > [diagram catalog](../diagrams/README.md#catalog) (next free id **D18**). Rendered from
 > `docs/diagrams/src/phonetic-route-decision.*` per the [rendering recipe](../diagrams/README.md#rendering).
@@ -44,7 +44,7 @@ no edits), and the fixed-weight digraph operations of
 
 ## 2. Route A — rule-based rewriting (`RewriteWfst`)
 
-`RewriteWfst` applies orthography rules as char/`` $`\varepsilon`$ `` transition chains and composes
+`RewriteWfst` applies orthography rules as char/$`\varepsilon`$ transition chains and composes
 **in front of** a Levenshtein matcher ([design/phonetic-rewrite-wfst](../design/phonetic-rewrite-wfst.md)).
 It knows nothing about dictionaries or edit distance — it is a *normalizing front stage*, so a pipeline's
 cost splits cleanly into *rewrite cost* + *edit distance*.
@@ -53,12 +53,12 @@ Its shape (full semantics in
 [design §2](../design/phonetic-rewrite-wfst.md#2-operational-semantics)):
 
 - **The whole cost of a rule is paid once**, on its first step; the rest of the chain is free
-  (`` $`\bar{1} = 0`$ ``, the tropical [free step](../theory/README.md#semirings-and-weights)).
+  ($`\bar{1} = 0`$, the tropical [free step](../theory/README.md#semirings-and-weights)).
 - **Unmatched printable-ASCII characters pass through for free** via identity self-loops (95 scalars,
-  `` `' '` `` = `` $`\texttt{0x20}`$ `` through `` `'~'` `` = `` $`\texttt{0x7E}`$ ``), when
+  `' '` = $`\texttt{0x20}`$ through `'~'` = $`\texttt{0x7E}`$), when
   `allow_identity` is on (the default).
 - **Rule costs must be finite and non-negative.** Every constructor that takes a cost returns
-  `Result<_, InvalidWeightError>`, rejecting `NaN`, `` $`\pm\infty`$ ``, and negatives; the preset
+  `Result<_, InvalidWeightError>`, rejecting `NaN`, $`\pm\infty`$, and negatives; the preset
   constructors and `RewriteRule::new` take already-valid literals and are infallible.
 
 ```rust,ignore
@@ -87,24 +87,24 @@ let _matcher = compose(english, lev);          // RewriteWfst ∘ LevenshteinWfs
 throughout; the rows below are **verified verbatim against `src/phonetic_rewrite_wfst.rs`** (the
 `CommonPhoneticRules::{english, german, french}` constructors).
 
-| Set | Rules — `input → output (cost)` |
+| Set | Rules — $`\texttt{input} \to \texttt{output (cost)}`$ |
 |-----|---------------------------------|
-| `english()` | `ph→f (0.1)`, `gh→f (0.2)`, `ck→k (0.1)`, `qu→kw (0.1)`, `x→ks (0.1)`, `c→k (0.2)`, `c→s (0.2)` |
-| `german()`  | `sch→sh (0.1)`, `ch→x (0.1)`, `ß→ss (0.1)`, `ä→ae (0.1)`, `ö→oe (0.1)`, `ü→ue (0.1)` |
-| `french()`  | `eau→o (0.1)`, `aux→o (0.1)`, `ai→e (0.1)`, `ph→f (0.1)`, `qu→k (0.1)` |
+| `english()` | $`\texttt{ph} \to \texttt{f (0.1)}`$, $`\texttt{gh} \to \texttt{f (0.2)}`$, $`\texttt{ck} \to \texttt{k (0.1)}`$, $`\texttt{qu} \to \texttt{kw (0.1)}`$, $`\texttt{x} \to \texttt{ks (0.1)}`$, $`\texttt{c} \to \texttt{k (0.2)}`$, $`\texttt{c} \to \texttt{s (0.2)}`$ |
+| `german()`  | $`\texttt{sch} \to \texttt{sh (0.1)}`$, $`\texttt{ch} \to \texttt{x (0.1)}`$, $`\texttt{ß} \to \texttt{ss (0.1)}`$, $`\texttt{ä} \to \texttt{ae (0.1)}`$, $`\texttt{ö} \to \texttt{oe (0.1)}`$, $`\texttt{ü} \to \texttt{ue (0.1)}`$ |
+| `french()`  | $`\texttt{eau} \to \texttt{o (0.1)}`$, $`\texttt{aux} \to \texttt{o (0.1)}`$, $`\texttt{ai} \to \texttt{e (0.1)}`$, $`\texttt{ph} \to \texttt{f (0.1)}`$, $`\texttt{qu} \to \texttt{k (0.1)}`$ |
 
 Notes that matter for cost and state count (full derivation in
 [design §3 · the preset rule sets](../design/phonetic-rewrite-wfst.md#3-api-surface-duallity-030)):
 
-- **`gh→f` costs `0.2`, not `0.1`** — the `rough → ruff` reduction is charged higher than the other
-  English rules; `c→k` and `c→s` are the two `0.2` *coarse* alternatives (see §7).
-- **German `ß`, `ä`, `ö`, `ü` are single Unicode `char`s** (`` $`\lvert\mathrm{in}\rvert = 1`$ ``), so
-  `ß→ss` is a one-to-two rewrite — matched by its explicit rule edge, not by an identity loop (those are
+- **$`\texttt{gh} \to \texttt{f}`$ costs `0.2`, not `0.1`** — the $`\texttt{rough} \to \texttt{ruff}`$ reduction is charged higher than the other
+  English rules; $`\texttt{c} \to \texttt{k}`$ and $`\texttt{c} \to \texttt{s}`$ are the two `0.2` *coarse* alternatives (see §7).
+- **German `ß`, `ä`, `ö`, `ü` are single Unicode `char`s** ($`\lvert\mathrm{in}\rvert = 1`$), so
+  $`\texttt{ß} \to \texttt{ss}`$ is a one-to-two rewrite — matched by its explicit rule edge, not by an identity loop (those are
   printable-ASCII only; §7).
-- A rule spanning `` $`s = \max(\lvert\mathrm{in}\rvert, \lvert\mathrm{out}\rvert)`$ `` symbols
-  contributes `` $`s-1`$ `` continuation states. English and French each total
-  `` $`\sum (s{-}1) = 5`$ `` continuation states (`` $`\lvert Q\rvert = 6`$ ``); German totals `3`
-  (`sch→sh` alone contributes `2`).
+- A rule spanning $`s = \max(\lvert\mathrm{in}\rvert, \lvert\mathrm{out}\rvert)`$ symbols
+  contributes $`s-1`$ continuation states. English and French each total
+  $`\sum (s{-}1) = 5`$ continuation states ($`\lvert Q\rvert = 6`$); German totals `3`
+  ($`\texttt{sch} \to \texttt{sh}`$ alone contributes `2`).
 
 ### 2.2 Custom rules and priority
 
@@ -131,10 +131,10 @@ custom.set_allow_identity(false);
 `priority` **orders, it does not gate**: a higher-priority rule's step-0 edge is enumerated first from
 the home state, with insertion order breaking ties — but every applicable rule stays available. Overlap
 is resolved not by priority but by `prune_dominated_transitions`, which keeps the minimum-weight edge per
-`` $`(\text{from}, \text{in}, \text{out}, \text{to})`$ `` key
+$`(\text{from}, \text{in}, \text{out}, \text{to})`$ key
 ([design §2](../design/phonetic-rewrite-wfst.md#2-operational-semantics)).
 
-## 3. Worked trace — `"fone"` through `RewriteWfst ∘ LevenshteinWfst`
+## 3. Worked trace — `"fone"` through $`\texttt{RewriteWfst} \circ \texttt{LevenshteinWfst}`$
 
 The canonical two-stage phonetic pipeline: `RewriteWfst` *normalizes* the `ph`/`f` orthography, then
 `LevenshteinWfst` *fuzzes* the rest against the dictionary.
@@ -151,11 +151,11 @@ let lev      = LevenshteinWfst::new(&dict, "fone", 2);
 let composed = compose(rewrite, lev);          // RewriteWfst ∘ LevenshteinWfst
 ```
 
-**The char/`` $`\varepsilon`$ `` chains inside `RewriteWfst`.** Every rule is a chain of arcs rooted at
-the accepting home state `` $`0`$ ``; the whole cost sits on step 0, and `` $`h : \varepsilon`$ ``
-shortens the input tape. The English `ph→f` rule (the bridge that connects the dictionary spelling
+**The char/$`\varepsilon`$ chains inside `RewriteWfst`.** Every rule is a chain of arcs rooted at
+the accepting home state $`0`$; the whole cost sits on step 0, and $`h : \varepsilon`$
+shortens the input tape. The English $`\texttt{ph} \to \texttt{f}`$ rule (the bridge that connects the dictionary spelling
 `phone` to the query `fone`) and the free identity self-loops that carry `o`, `n`, `e` are exactly
-(weights shown as their numeric tropical value, `` $`\bar{1} = 0`$ ``):
+(weights shown as their numeric tropical value, $`\bar{1} = 0`$):
 
 ```text
    ┌────────────────────── the ph→f rule (whole cost on step 0) ──────────────────────┐
@@ -167,14 +167,14 @@ shortens the input tape. The English `ph→f` rule (the bridge that connects the
 ```
 
 Reading the correspondence `phone ⇄ fone`, the rewrite stage pays `0.1` **once** for the `ph`/`f`
-alternation and `0` for every other character — total rewrite cost `` $`0.1`$ ``. These are the
+alternation and `0` for every other character — total rewrite cost $`0.1`$. These are the
 many-to-one and one-to-many tape shapes of **diagram D10**
 ([`rewrite-char-epsilon-chains`](../diagrams/rewrite-char-epsilon-chains.svg); see
 [design §7](../design/phonetic-rewrite-wfst.md#7-diagram)).
 
 **Composition folds the two costs.** `compose(rewrite, lev)` matches the rewrite's *output* tape against
 the Levenshtein stage's *input* tape, so the `ph`/`f` correspondence becomes reachable to the search at
-cost `` $`0.1`$ `` and the Levenshtein stage charges only the **residual** edit distance. Every accepting
+cost $`0.1`$ and the Levenshtein stage charges only the **residual** edit distance. Every accepting
 path's tropical weight is therefore
 
 ```math
@@ -209,22 +209,22 @@ let _wfst = PhoneticWfstBuilder::new(dict, 2)               // k = 2 (a u8)
 ```
 
 Two weights, two roles ([design §2](../design/phonetic-wfst.md#2-operational-semantics--the-triple-product)):
-`phonetic_weight` (`` $`\omega_p`$ ``) is charged on each *consumed* dictionary/NFA edge; `edit_weight`
-(`` $`\omega_e`$ ``) scales the accepting **edit-distance** final weight. Both must be finite and
-non-negative. `max_distance` is the **unweighted** bound `` $`k \le 255`$ `` baked into the product — the
+`phonetic_weight` ($`\omega_p`$) is charged on each *consumed* dictionary/NFA edge; `edit_weight`
+($`\omega_e`$) scales the accepting **edit-distance** final weight. Both must be finite and
+non-negative. `max_distance` is the **unweighted** bound $`k \le 255`$ baked into the product — the
 weights scale *reported* costs for ranking; they do **not** change which states are explored.
 
 **Wide labels are finite-alphabet-relative.** `lling_llang::Wfst` transitions carry *concrete* labels, so
 `.`, negated classes, and unbounded positive classes are exact **only over the configured alphabet**
-`` $`\Sigma`$ `` (default: the 95 printable-ASCII scalars). A literal `Char(c)` and any explicit range of
-width `` $`\le 256`$ `` are always exact; supply a domain alphabet with `with_alphabet` when the default
+$`\Sigma`$ (default: the 95 printable-ASCII scalars). A literal `Char(c)` and any explicit range of
+width $`\le 256`$ are always exact; supply a domain alphabet with `with_alphabet` when the default
 is wrong. This is the alphabet contract of
 [design/phonetic-nfa-wfst §4](../design/phonetic-nfa-wfst.md#4-alphabet-contract-for-wide-labels).
 
 **The bare NFA stage.** [`PhoneticNfaWfst`](../design/phonetic-nfa-wfst.md) is the same pattern transducer
 *without* a dictionary or edit distance — a lazy subset construction over the compiled NFA, one identity
 edge per consumed character at `phonetic_weight`. Use it when you want the pattern transducer *itself* to
-compose by hand or inspect; use `PhoneticWfst` for the end-to-end *pattern-against-dictionary-within-`` $`k`$ ``*
+compose by hand or inspect; use `PhoneticWfst` for the end-to-end *pattern-against-dictionary-within-$`k`$*
 query. Both are gated behind `phonetic-rules`.
 
 ## 5. One builder for both routes
@@ -262,30 +262,30 @@ and search them yourself ([guides/03](03-composing-pipelines.md)).
 A third, feature-free option lives in [`GeneralizedWfst`](../design/generalized-wfst.md): its
 `with_phonetic_digraphs()` operation set adds **restricted** two-character rewrites
 (`ch↔k`, `sh↔s`, `ph↔f`, `th↔t`, `qu↔kw`) directly into the edit metric, each a two-arc continuation
-chain at a **fixed** cost `` $`0.15`$ ``. Reach for it when you want digraph rewrites *fused into one
+chain at a **fixed** cost $`0.15`$. Reach for it when you want digraph rewrites *fused into one
 edit-distance automaton over a `char` dictionary* rather than composed as a separate stage — and when the
-fixed `` $`0.15`$ `` weight is acceptable (it exposes no knob; retune by building a custom `OperationSet`).
+fixed $`0.15`$ weight is acceptable (it exposes no knob; retune by building a custom `OperationSet`).
 For tunable, rule-based phonetics, prefer Route A.
 
 ## 7. ⚠ Limitations
 
 - **Rules are unconditional.** `RewriteRule` stores only `input` / `output` / `cost` / `priority` — no
-  left/right context, lookahead, or word-boundary condition. The English `c→k` and `c→s` presets are
+  left/right context, lookahead, or word-boundary condition. The English $`\texttt{c} \to \texttt{k}`$ and $`\texttt{c} \to \texttt{s}`$ presets are
   therefore *coarse alternatives offered simultaneously* (both fire), not lexically-conditioned choices.
   Model context by **expanding it into explicit consumed-context rules** before construction: a
-  right-context rule *"`c→s` before `e`"* becomes the consumed-context rule `ce→se` (the `e` passes
+  right-context rule *"$`\texttt{c} \to \texttt{s}`$ before `e`"* becomes the consumed-context rule $`\texttt{ce} \to \texttt{se}`$ (the `e` passes
   through as part of the output). This is the intended workaround, and it is exact
   ([design/phonetic-rewrite-wfst §6](../design/phonetic-rewrite-wfst.md#6--honest-limitations)).
 - **`priority` orders, it does not suppress.** Higher priority only enumerates a rule's step-0 edge
   earlier; every applicable rule remains available. Use it to influence enumeration order, not to gate
   alternatives.
-- **The identity alphabet is printable ASCII only** (95 scalars, `` $`\texttt{0x20}`$ `` …
-  `` $`\texttt{0x7E}`$ ``). A character outside that range (an emoji, a CJK ideograph, most accented
+- **The identity alphabet is printable ASCII only** (95 scalars, $`\texttt{0x20}`$ …
+  $`\texttt{0x7E}`$). A character outside that range (an emoji, a CJK ideograph, most accented
   Latin letters) has **no** free identity self-loop, so with `allow_identity` on it is accepted only if
   some rule consumes it. Preset rules whose *inputs* are wide scalars (German `ä`, `ö`, `ü`, `ß`) match
   through their explicit edges. For full-Unicode alternation use Route B with a custom alphabet.
 - **Route B is feature-gated and edit-bounded at `u8`.** `PhoneticWfst` / `PhoneticNfaWfst` exist only
-  under `phonetic-rules`, and `max_distance` is `` $`k \le 255`$ ``; its weights are ranking-only and do
+  under `phonetic-rules`, and `max_distance` is $`k \le 255`$; its weights are ranking-only and do
   not widen the explored set.
 - **Both routes are Type 3.** A finite rule set and a phonetic regular expression each denote a
   *rational relation* — expressive within the regular tier, but unable to enforce unbounded nested or
@@ -297,6 +297,6 @@ For tunable, rule-based phonetics, prefer Route A.
 - [design/phonetic-wfst](../design/phonetic-wfst.md) · [design/phonetic-nfa-wfst](../design/phonetic-nfa-wfst.md) — Route B and its bare-NFA left factor.
 - [design/phonetic-pipeline-builder](../design/phonetic-pipeline-builder.md) — the fluent front-end of §5.
 - [design/generalized-wfst](../design/generalized-wfst.md) — the fixed-weight digraph operations of §6.
-- [theory/04 · Composition](../theory/04-composition.md) — how `` $`\text{rewrite} \circ \text{lev}`$ `` folds the two cost components.
+- [theory/04 · Composition](../theory/04-composition.md) — how $`\text{rewrite} \circ \text{lev}`$ folds the two cost components.
 - [theory/07 · Regular-language limits](../theory/07-regular-language-limits.md) — why both routes stay Type 3.
 - [guides/02 · Choosing a variant](02-choosing-a-variant.md) · [guides/03 · Composing pipelines](03-composing-pipelines.md) · [guides/05 · Performance and tuning](05-performance-and-tuning.md).

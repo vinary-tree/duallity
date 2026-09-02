@@ -9,9 +9,9 @@
 #                    $`\mathcal{O}(\lvert W\rvert)`$   (dollars OUTSIDE the backtick span)
 #   * display math = a fenced block whose info-string is `math`
 # and forbids (a) Unicode-literal formulae (`𝒪(∣W∣)`, `⟨i,e⟩`, `≤` …) whether backticked or
-# bare, (b) bare undelimited big-O (`O(n)`) in prose, (c) bare `$…$` / `$$…$$`, and (d) the
-# TRANSPOSED nesting `` `$…$` `` (dollars INSIDE the backticks) — GitHub renders that as literal
-# monospace text, not math; the dollars must sit OUTSIDE, as `` $`…`$ ``.
+# bare, (b) bare undelimited big-O (`O(n)`) in prose, (c) bare `$…$` / `$$…$$`, and (d)
+# transposed nesting with dollars inside the backticks. GitHub renders the transposed form as
+# literal monospace text, not math; the canonical source form is `$`…`$`.
 #
 # This scanner reports what still needs converting. It NEVER edits anything.
 #
@@ -104,7 +104,7 @@ sub has-math(Str $s --> Bool) { so $s.comb.any ∈ MATH }
 
 # ── Markdown-table column accounting (for the unescaped-pipe check) ──────────────────────
 # A GFM table cell may contain a literal `|` only when it is escaped (`\|`) or sits inside a
-# code span (`` `…` `` — which includes inline math `$`…`$`); an unescaped bare pipe is parsed
+# code span (a matching single-backtick pair, including the pair inside `$`…`$`); an unescaped bare pipe is parsed
 # as an extra column delimiter and silently corrupts the row. `table-cell-count` returns a
 # row's delimiter-cell count with code spans blanked and `\|` neutralised (or -1 if the line
 # is not a table row); `is-separator` recognises the `|---|:--:|` alignment row.
@@ -147,6 +147,19 @@ sub scan-file(Str $path) {
         my @spans = %cs<spans>.list;
         my $prose = %cs<prose>;
 
+        # (0) structural delimiter hygiene. The documentation house style never needs an inline
+        # multi-backtick wrapper: those wrappers were the source of the historical
+        # redundant outer-wrapper corruption. Backtick runs must also pair on the same line; canonical
+        # inline MathJax and ordinary inline code both satisfy that invariant.
+        if $line.contains('``') {
+            @findings.push([$lno, 'noncanonical-multibacktick-span', $line.trim]);
+        }
+        my %run-count;
+        %run-count{$_}++ for $line.comb(/ '`'+ /)>>.Str;
+        if %run-count.keys.grep({ %run-count{$_} % 2 }) {
+            @findings.push([$lno, 'unbalanced-backtick-run', $line.trim]);
+        }
+
         # (a) old-style math inside an inline code span. Greek-letter terminology (π-calculus,
         # λ-theory, ε-transition, α-approximation) is a proper-noun NAME, not a formula, so a span
         # that is exactly "<Greek>-<word>" is exempt (Unicode is correct for such names).
@@ -175,9 +188,21 @@ sub scan-file(Str $path) {
         if $prose ~~ / '$' <-[$]>* '\\' <[a..zA..Z]>+ <-[$]>* '$' / {
             @findings.push([$lno, 'leaked-dollar-latex', ~$/]);
         }
-        # (e) target-form hygiene: an ASCII word char abutting the '$`' opening delimiter. A letter
-        #     directly before `$`` can suppress GitHub's math parse — keep a space/punctuation there.
-        if $line ~~ / <[0..9A..Za..z]> '$`' / {
+        # (d2) a LaTeX command left in prose is inert even without dollar delimiters. Code spans
+        # and fenced blocks have already been removed, so a backslash-letter command here is a
+        # genuine delimiter omission.
+        if $prose ~~ / '\\' <[a..zA..Z]>+ / {
+            @findings.push([$lno, 'bare-latex-command', ~$/]);
+        }
+        # (d3) remove the dollar pair around each blanked canonical code span, then reject any
+        # residual literal dollar. A literal dollar belongs in an ordinary inline-code span.
+        my $dollar-prose = $prose.subst(/ '$' \x[2420]+ '$' /, '', :g);
+        if $dollar-prose.contains('$') {
+            @findings.push([$lno, 'stray-dollar', $line.trim]);
+        }
+        # (e) target-form hygiene: an ASCII word char abutting the dollar-backtick opening delimiter.
+        #     A letter directly before that delimiter can suppress GitHub's math parse.
+        if $prose ~~ / <[0..9A..Za..z]> '$`' / {
             @findings.push([$lno, 'letter-abuts-open', ~$/]);
         }
         # (f) markdown-table column consistency. An unescaped bare `|` in a cell (not `\|`, not in

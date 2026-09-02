@@ -3,10 +3,10 @@
 `@vinary-tree/duallity` is the JavaScript, TypeScript, and ClojureScript facade for duallity:
 **dictionary-backed edit and phonetic WFSTs** (**W**eighted **F**inite-**S**tate **T**ransducers).
 Given a dictionary resource and a query, it captures the dictionary once and returns a lazy, composable
-WFST resource that hands off in `` $`O(1)`$ `` to `@vinary-tree/lling-llang` composition — no
+WFST resource that hands off in $`\mathcal{O}(1)`$ to `@vinary-tree/lling-llang` composition — no
 serialization, no full state-space materialization.
 
-It is a thin skin over the seven-function `duallity_*` C ABI documented in
+It is a thin skin over the eight-function `duallity_*` C ABI documented in
 [docs/architecture/06](../../docs/architecture/06-resource-abi-and-bindings.md); this README is the
 JavaScript-specific guide. The task-oriented cross-language walkthrough is
 [docs/guides/07 · Language bindings](../../docs/guides/07-language-bindings.md).
@@ -40,11 +40,11 @@ TypeScript declarations ship in [`index.d.ts`](index.d.ts). A ClojureScript name
 ## Install
 
 ```sh
-npm install @vinary-tree/duallity @vinary-tree/interop
+npm install @vinary-tree/duallity @vinary-tree/vinary-tree-interop
 ```
 
-Requires **Node 22.14 or newer**. The package depends on `@vinary-tree/vinary-tree` (the umbrella
-runtime) and peers on `@vinary-tree/interop`. Entry points: native N-API (the Node default), `./wasm`,
+Requires **Node 22.14 or newer**. The package depends on `@vinary-tree/javascript-runtime` (the shared
+runtime) and `@vinary-tree/vinary-tree-interop`. Entry points: native N-API (the Node default), `./wasm`,
 and `./wasi`; a `./typescript` and a `./clojurescript` facade are also exported.
 
 ## Quickstart
@@ -92,14 +92,14 @@ A failed construction throws; the thrown error carries the boundary message
 see the [error-mapping totality table](../../docs/guides/07-language-bindings.md#5-error-mapping-totality).
 Common cases: a non-`UnicodeScalar` dictionary or stale interop ABI throws `INCOMPATIBLE_RESOURCE`; a
 misbehaving dictionary provider throws `PROVIDER_ERROR`; an out-of-range `kind`/`algorithm` or a
-`` $`k > 255`$ `` distance for a universal/generalized kind throws `INVALID_ARGUMENT`.
+$`k > 255`$ distance for a universal/generalized kind throws `INVALID_ARGUMENT`.
 
 ## Concurrency and zero-copy
 
 - **Same-runtime handoff is copy-free.** A `runtimeIdentity` guard ensures a resource composes with
   lling-llang in-process as a handle, not a serialized graph. Mixing native and WASM resources is
   refused rather than silently copied.
-- **Capture and handoff are `` $`O(1)`$ ``.** No dictionary terms are copied at construction, and the
+- **Capture and handoff are $`\mathcal{O}(1)`$.** No dictionary terms are copied at construction, and the
   resource is a two-word handle; product states expand lazily during search.
 - **The resource is reentrant.** Independent expansions share the registries and the captured snapshot
   behind reference-counted structural sharing ([architecture/06 §6](../../docs/architecture/06-resource-abi-and-bindings.md#6-the-double-adapter-bridge)).
@@ -108,14 +108,14 @@ misbehaving dictionary provider throws `PROVIDER_ERROR`; an out-of-range `kind`/
 
 | Component | Version |
 |-----------|---------|
-| `@vinary-tree/duallity` | `4.0.0-rc.4` |
-| `@vinary-tree/interop` (dependency) | `4.0.0-rc.4` |
-| `@vinary-tree/vinary-tree` (runtime) | `4.0.0-rc.4` |
+| `@vinary-tree/duallity` | `4.0.0-rc.6` |
+| `@vinary-tree/vinary-tree-interop` (dependency) | `4.0.0-rc.6` |
+| `@vinary-tree/javascript-runtime` (runtime) | `4.0.0-rc.6` |
 | Node | `>= 22.14` |
-| duallity C ABI | version `1`, revision `1` |
+| duallity C ABI | version `1`, revision `2` |
 
 > **Release policy.** Evaluate the candidate through the exact
-> `4.0.0-rc.4` version or npm's `next` tag. The package and both shared
+> `4.0.0-rc.6` version or npm's `next` tag. The package and both shared
 > dependencies are exact pins so a mixed runtime family fails during
 > resolution rather than at resource handoff.
 
@@ -152,7 +152,7 @@ guard with private handle fields or move a resource between workers/runtimes.
 
 | Symptom | Likely cause and response |
 |---|---|
-| different-runtime `TypeError` | Deduplicate the umbrella runtime and use only one of native, WebAssembly, or WASI in a resource domain. |
+| different-runtime `TypeError` | Deduplicate the shared runtime and use only one of native, WebAssembly, or WASI in a resource domain. |
 | incompatible-resource error | Supply a Unicode-scalar `vt.dictionary.v1` object from the same runtime. |
 | invalid selector/distance | Check the nine kind strings and each kind's represented maximum distance. |
 | native module load failure | Verify Node version, OS/CPU artifact, exact family pins, and reinstall the package. |

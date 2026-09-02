@@ -26,7 +26,7 @@ where
             return false;
         }
 
-        wfst.expand(state);
+        wfst.expand(state).expect("reachable state expands");
 
         if input_pos == input.len()
             && output_pos == output.len()

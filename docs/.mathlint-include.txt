@@ -1,41 +1,44 @@
-# Living-doc allow-list for scripts/doc-mathlint.sh. Seeded 2026-08-08 with every
-# document that passes the fence-aware scanner today (Bucket A: living/explanatory/
-# reference docs, including the conformantly-written scientific-ledger records).
-# Excluded: docs/archive/** (append-only historical records, Bucket B, kept verbatim)
-# and living docs that still carry pre-campaign notation — those join this manifest
-# as they are brought into conformance:
-#   docs/README.md
-#   docs/architecture/04-lazy-evaluation-and-caching.md
-#   docs/design/phonetic-nfa-wfst.md
-#   docs/design/phonetic-pipeline-builder.md
-#   docs/design/phonetic-wfst.md
-#   docs/engineering/testing.md
-#   docs/guides/03-composing-pipelines.md
-#   docs/guides/04-phonetic-matching.md
-#   docs/theory/03-levenshtein-as-transducer.md
-#   docs/theory/04-composition.md
+# Living-doc allow-list for scripts/doc-mathlint.sh. It contains every tracked
+# Markdown document outside docs/archive/**. The historical archive also passes
+# the scanner, but the default fast gate keeps that larger corpus separate.
+CHANGELOG.md
 README.md
+bindings/c/README.md
+bindings/c/tests/README.md
 bindings/cpp/README.md
 bindings/javascript/README.md
+bindings/julia/Duallity/README.md
+bindings/julia/Duallity/docs/src/index.md
+bindings/julia/README.md
+bindings/raku/README.md
+docs/README.md
 docs/architecture/01-crate-family-and-dependency-graph.md
 docs/architecture/02-wfst-trait-surface.md
 docs/architecture/03-state-encoding-and-product-space.md
+docs/architecture/04-lazy-evaluation-and-caching.md
 docs/architecture/05-registries-and-interning.md
 docs/architecture/06-resource-abi-and-bindings.md
 docs/architecture/README.md
+docs/bindings/README.md
 docs/design/README.md
 docs/design/fzf-wfst.md
 docs/design/generalized-wfst.md
 docs/design/levenshtein-wfst.md
+docs/design/phonetic-nfa-wfst.md
+docs/design/phonetic-pipeline-builder.md
 docs/design/phonetic-rewrite-wfst.md
+docs/design/phonetic-wfst.md
 docs/design/universal-wfst.md
 docs/design/wallbreaker-wfst.md
 docs/diagrams/README.md
 docs/engineering/README.md
 docs/engineering/concurrency-and-locking.md
 docs/engineering/safety-and-panics.md
+docs/engineering/testing.md
 docs/guides/01-quickstart.md
 docs/guides/02-choosing-a-variant.md
+docs/guides/03-composing-pipelines.md
+docs/guides/04-phonetic-matching.md
 docs/guides/05-performance-and-tuning.md
 docs/guides/06-fzf-dictionary-ranking.md
 docs/guides/07-language-bindings.md
@@ -43,6 +46,7 @@ docs/guides/README.md
 docs/references/README.md
 docs/references/bibliography.md
 docs/references/glossary.md
+docs/releasing.md
 docs/scientific-ledger/bindings-findings-ledger.md
 docs/scientific-ledger/fzf-prefix-bound-2026-08-02.md
 docs/security/README.md
@@ -51,6 +55,8 @@ docs/security/hashing-and-collisions.md
 docs/security/threat-model.md
 docs/theory/01-semirings-and-wfsts.md
 docs/theory/02-edit-distance-and-levenshtein-automata.md
+docs/theory/03-levenshtein-as-transducer.md
+docs/theory/04-composition.md
 docs/theory/05-universal-automata.md
 docs/theory/06-wallbreaker-and-the-wall-effect.md
 docs/theory/07-regular-language-limits.md

@@ -2,14 +2,14 @@
 
 This guide defines the release operation for the `duallity` bridge crate,
 native SDK, and `@vinary-tree/duallity` JavaScript facade. The current
-candidate is `4.0.0-rc.4`.
+candidate is `4.0.0-rc.6`.
 
 ## Immutable source graph
 
-Create `v4.0.0-rc.4` from the reviewed `release/4.0.0-rc.4` branch commit,
+Create `v4.0.0-rc.6` from the reviewed `release/4.0.0-rc.6` branch commit,
 not from the independently changing primary worktree. The tag must agree with
 `release/version.json`, `Cargo.toml`, native metadata, and the npm manifest.
-Validation checks out `llattice@v0.1.0` and the exact `v4.0.0-rc.4` tags for
+Validation checks out `llattice@v0.1.0` and the exact `v4.0.0-rc.6` tags for
 interop, libdictenstein, liblevenshtein, and lling-llang.
 
 The repository synchronizer owns every family entry in `Cargo.lock`. A
@@ -33,34 +33,33 @@ The checksummed GitHub prerelease is also a repository mutation. Its
 `github-release` environment requires an operator review and a `v*` tag policy;
 it stores no secret and gates only the job-scoped `GITHUB_TOKEN`.
 
-The canonical RC.4 source predates crates.io Trusted Publishing and therefore
-cannot consume the package-level GitHub OIDC trust. Append-only corrective
-source `v4.0.0-rc.4-release.1` changes only release authority, authentication,
-and this runbook: it accepts positive numbered corrective tags, grants
+The RC.5 train starts from the canonical source tag recorded as
+`publication.sourceTag` in `release/version.json`. The workflow grants
 `id-token: write` only to the crates.io job, obtains a short-lived token with
-`rust-lang/crates-io-auth-action@v1`, and revokes that token after the job.
-The package remains `4.0.0-rc.4`; the canonical tag is not moved.
+`rust-lang/crates-io-auth-action@v1`, and revokes that token after the job. If
+a workflow-only correction is required before a coordinate is published, use
+the next positive `v4.0.0-rc.6-release.N` tag; never move an existing tag.
 
 ```bash
 gh workflow run release-bindings.yml \
   --repo vinary-tree/duallity \
-  --ref v4.0.0-rc.4-release.1 \
+  --ref v4.0.0-rc.6 \
   -f registry=validate-only
 
 gh workflow run release-bindings.yml \
   --repo vinary-tree/duallity \
-  --ref v4.0.0-rc.4-release.1 \
+  --ref v4.0.0-rc.6 \
   -f registry=npm
 ```
 
-Use the same corrective ref with `registry=crates-io`. A corrective ref may
-publish only while the exact coordinate remains absent; a public RC.4 artifact
+Use the same reviewed source ref with `registry=crates-io`. A corrective ref may
+publish only while the exact coordinate remains absent; a public RC.5 artifact
 must never be rebuilt or overwritten.
 
 Because duallity is the top Rust bridge, publish its crate only after
 libdictenstein, liblevenshtein, lling-llang, and interop resolve publicly.
-Publish npm only after `@vinary-tree/interop` and
-`@vinary-tree/vinary-tree` resolve at `4.0.0-rc.4`. npm uses trusted
+Publish npm only after `@vinary-tree/vinary-tree-interop` and
+`@vinary-tree/javascript-runtime` resolve at `4.0.0-rc.6`. npm uses trusted
 publishing, provenance, `next`, and the protected `npm` environment.
 
 ## Public-byte verification and recovery

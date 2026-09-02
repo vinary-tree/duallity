@@ -14,7 +14,7 @@ title D4 · Lazy state expansion and caching
 
 actor Caller
 participant "LazyWfst\nwrapper" as W #D6EAF8
-participant "StateSource\ncompute_state" as S #D6EAF8
+participant "DirectStateSource\nexpand_state" as S #D6EAF8
 participant "Cache\nFxHashMap<StateId,\nSmallVec<[Transition;4]>>" as C #EAECEE
 participant "DictionaryNodeRegistry\nor DepthDictionaryNodeRegistry\nArc<RwLock<…>>" as R #D5F5E3
 
@@ -23,16 +23,16 @@ Caller -> W : transitions_lazy(s)
 activate W
 W -> C : get(s)
 C --> W : None  (miss)
-W -> S : compute_state(s)
+W -> S : expand_state(s)
 activate S
 S -> R : read-lock → resolve dict node
 R --> S : node
 S -> R : write-lock → register children
 R --> S : child ids
-S --> W : LazyState::Computed{ is_final,\nfinal_weight, transitions }
+S --> W : StateExpansion::Expanded{ is_final,\nfinal_weight, transitions }
 deactivate S
 W -> C : insert(s, CachedState)
-W --> Caller : &[WeightedTransition]
+W --> Caller : Ok(ExpandedEmpty | ExpandedNonempty)\nthen &[WeightedTransition]
 deactivate W
 
 == second touch of state s (cache hit) ==

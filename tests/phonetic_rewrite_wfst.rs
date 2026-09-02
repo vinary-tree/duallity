@@ -1,6 +1,6 @@
 use duallity::{
-    CommonPhoneticRules, LazyState, LazyWfst, RewriteRule, RewriteWfst, Semiring, StateSource,
-    TropicalWeight, Wfst,
+    CommonPhoneticRules, DirectStateSource, ExpansionFailureKind, LazyWfst, RewriteRule,
+    RewriteWfst, Semiring, StateExpansion, StateSource, TropicalWeight, Wfst,
 };
 use lling_llang::wfst::CachePolicy;
 
@@ -60,7 +60,7 @@ fn rewrite_wfst_priority_order_is_used_when_expanding() {
     ];
     let mut wfst = RewriteWfst::with_rules(rules).expect("valid rewrite rules");
     wfst.set_allow_identity(false);
-    wfst.expand(0);
+    wfst.expand(0).expect("start state expands");
 
     let outputs = wfst
         .transitions(0)
@@ -83,7 +83,7 @@ fn rewrite_wfst_add_rewrite_rule_refreshes_prepared_metadata() {
     )
     .expect("valid rewrite rule");
     wfst.set_allow_identity(false);
-    wfst.expand(0);
+    wfst.expand(0).expect("start state expands");
 
     assert_eq!(
         wfst.transitions(0)
@@ -135,7 +135,7 @@ fn rewrite_wfst_expand_materializes_start_state() {
     wfst.add_rule("a", "b", 0.1).expect("valid rewrite rule");
 
     assert!(!wfst.is_expanded(0));
-    wfst.expand(0);
+    wfst.expand(0).expect("start state expands");
     assert!(wfst.is_expanded(0));
 }
 
@@ -145,7 +145,7 @@ fn rewrite_wfst_rejects_invalid_state_without_caching() {
     let invalid_state = 1;
 
     assert!(!wfst.is_valid_state(invalid_state));
-    wfst.expand(invalid_state);
+    assert!(wfst.expand(invalid_state).is_err());
 
     assert_eq!(wfst.computed_states(), 0);
     assert!(wfst.transitions_lazy(invalid_state).is_empty());
@@ -156,19 +156,12 @@ fn rewrite_wfst_rejects_invalid_state_without_caching() {
 fn rewrite_wfst_statesource_rejects_invalid_state() {
     let source = RewriteWfst::new();
 
-    match StateSource::<char, TropicalWeight>::compute_state(&source, 1) {
-        LazyState::Computed {
-            is_final,
-            final_weight,
-            transitions,
-        } => {
-            assert!(!is_final);
-            assert_eq!(final_weight, TropicalWeight::zero());
-            assert!(transitions.is_empty());
+    match source.expand_state(1) {
+        StateExpansion::Failed(failure) => {
+            assert_eq!(failure.kind(), ExpansionFailureKind::InvalidState);
         }
-        LazyState::Pending => {
-            std::panic::panic_any("RewriteWfst StateSource should compute eagerly")
-        }
+        StateExpansion::Expanded { .. } => panic!("invalid state unexpectedly expanded"),
+        StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
     }
 }
 
@@ -203,7 +196,7 @@ fn rewrite_wfst_lru_policy_evicts_least_recently_used_state() {
     assert!(wfst.is_expanded(0));
     assert_eq!(wfst.computed_states(), 1);
 
-    wfst.expand(next);
+    wfst.expand(next).expect("valid state expands");
 
     assert_eq!(wfst.computed_states(), 1);
     assert!(!wfst.is_expanded(0));
@@ -214,7 +207,7 @@ fn rewrite_wfst_lru_policy_evicts_least_recently_used_state() {
 fn rewrite_wfst_transitions_include_rewrite_edges() {
     let mut wfst = RewriteWfst::new();
     wfst.add_rule("a", "b", 0.1).expect("valid rewrite rule");
-    wfst.expand(0);
+    wfst.expand(0).expect("start state expands");
 
     let transition = wfst
         .transitions(0)
@@ -229,7 +222,7 @@ fn rewrite_wfst_one_to_many_output_chain_emits_continuation() {
     let mut wfst = RewriteWfst::new();
     wfst.set_allow_identity(false);
     wfst.add_rule("f", "ph", 0.1).expect("valid rewrite rule");
-    wfst.expand(0);
+    wfst.expand(0).expect("start state expands");
 
     let first = wfst
         .transitions(0)
@@ -240,7 +233,7 @@ fn rewrite_wfst_one_to_many_output_chain_emits_continuation() {
     assert_ne!(first.to, 0);
     assert_eq!(first.weight.value(), 0.1);
 
-    wfst.expand(first.to);
+    wfst.expand(first.to).expect("continuation state expands");
     let continuation = wfst
         .transitions(first.to)
         .iter()
@@ -255,7 +248,7 @@ fn rewrite_wfst_many_to_one_input_chain_consumes_continuation() {
     let mut wfst = RewriteWfst::new();
     wfst.set_allow_identity(false);
     wfst.add_rule("ph", "f", 0.1).expect("valid rewrite rule");
-    wfst.expand(0);
+    wfst.expand(0).expect("start state expands");
 
     let first = wfst
         .transitions(0)
@@ -265,7 +258,7 @@ fn rewrite_wfst_many_to_one_input_chain_consumes_continuation() {
         .clone();
     assert_ne!(first.to, 0);
 
-    wfst.expand(first.to);
+    wfst.expand(first.to).expect("continuation state expands");
     let continuation = wfst
         .transitions(first.to)
         .iter()
@@ -278,7 +271,7 @@ fn rewrite_wfst_many_to_one_input_chain_consumes_continuation() {
 fn rewrite_wfst_identity_transitions_passthrough_printable_symbols() {
     let mut wfst = RewriteWfst::new();
     wfst.set_allow_identity(true);
-    wfst.expand(0);
+    wfst.expand(0).expect("start state expands");
 
     for ch in [' ', '?', 'z', '~'] {
         assert!(
@@ -303,7 +296,7 @@ fn rewrite_wfst_prunes_dominated_identity_equivalent_rewrite() {
     let mut wfst = RewriteWfst::new();
     wfst.set_allow_identity(true);
     wfst.add_rule("a", "a", 0.2).expect("valid rewrite rule");
-    wfst.expand(0);
+    wfst.expand(0).expect("start state expands");
 
     let matching = wfst
         .transitions(0)
@@ -322,20 +315,25 @@ fn rewrite_wfst_statesource_computes_start_state() {
     let mut lazy = RewriteWfst::new();
     lazy.set_allow_identity(false);
     lazy.add_rule("ph", "f", 0.1).expect("valid rewrite rule");
-    lazy.expand(0);
+    lazy.expand(0).expect("start state expands");
 
     let mut source = RewriteWfst::with_rules(vec![
         RewriteRule::with_cost("ph", "f", 0.1).expect("valid rewrite rule")
     ])
     .expect("valid rewrite rules");
     source.set_allow_identity(false);
-    let state = StateSource::<char, TropicalWeight>::compute_state(&source, 0);
+    let state = source.expand_state(0);
 
-    assert!(matches!(state, LazyState::Computed { is_final: true, .. }));
-    assert_eq!(
-        state.transitions().expect("computed transitions"),
-        lazy.transitions(0)
-    );
+    let StateExpansion::Expanded {
+        is_final,
+        transitions,
+        ..
+    } = state
+    else {
+        panic!("valid rewrite state did not expand");
+    };
+    assert!(is_final);
+    assert_eq!(transitions.as_slice(), lazy.transitions(0));
     assert_eq!(
         StateSource::<char, TropicalWeight>::num_states_hint(&source),
         Some(2)

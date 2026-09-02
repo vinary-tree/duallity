@@ -1,16 +1,17 @@
 # Guides
 
-Task-oriented documentation for **duallity 0.3**: install the crate, pick a WFST variant, compose a
+Task-oriented documentation for **duallity 4.0.0-rc.6**: install the crate, pick a WFST variant, compose a
 multi-stage pipeline, do phonetic matching, and tune performance. These guides are the *how-to* layer.
 They build on the concepts in [theory](../theory/) and the exact per-variant API in [design](../design/),
 but you can follow them front to back without reading those first — every guide cross-links back to the
 theory and design pages when you want the underlying *why*.
 
-Each guide is self-contained and grounds every code example in the crate's real 4.0.0-rc.4 surface
+Each guide is self-contained and grounds every code example in the crate's real 4.0.0-rc.6 surface
 (`src/lib.rs` and the per-variant modules). Code blocks are marked `rust,ignore`: they are
 *illustrative and byte-accurate to the public API*, not doctests, so you can read them for signatures
 and intent without a compile step. Mathematics is written in GitHub-flavored MathJax — inline as a
-backtick-wrapped dollar span (e.g. `` $`k \le 255`$ ``) and display as a fenced ` ```math ` block.
+dollar-wrapped code span (for example, $`k \le 255`$) and displayed in a fenced block whose
+info string is `math`.
 
 ---
 
@@ -21,12 +22,12 @@ Start from what you are trying to do; the strip below routes you to the one guid
 | If your goal is… | …read | It answers |
 |---|---|---|
 | "I have a dictionary and a misspelled query — get me ranked corrections, now." | [01 · Quickstart](01-quickstart.md) | the shortest end-to-end path: dictionary → `LevenshteinWfst::new` → `compose` → `accepting_paths`, with expected output. |
-| "Which of the eight variants do I actually want?" | [02 · Choosing a variant](02-choosing-a-variant.md) | a decision tree, `` $`k`$ ``-thresholds, Big-O per variant, and a *backend × variant* compatibility matrix. |
+| "Which of the eight variants do I actually want?" | [02 · Choosing a variant](02-choosing-a-variant.md) | a decision tree, $`k`$-thresholds, Big-O per variant, and a *backend × variant* compatibility matrix. |
 | "I need to chain a rewriter, a matcher, and a language model into one scorer." | [03 · Composing pipelines](03-composing-pipelines.md) | `compose`, `LazyWfstWrapper`, `DictionaryBackend`, and shortest-path search, with per-stage weight math. |
 | "I want sound-alike (phonetic) matching." | [04 · Phonetic matching](04-phonetic-matching.md) | rule-based `RewriteWfst` vs. regex-based `PhoneticWfst`; the English / German / French rule sets. |
 | "It works, but I need it faster or smaller." | [05 · Performance and tuning](05-performance-and-tuning.md) | cache policy, LRU eviction, lazy costs, and eager WallBreaker construction. |
 | "I want fzf V2 ranking over a shared-prefix dictionary." | [06 · fzf dictionary ranking](06-fzf-dictionary-ranking.md) | `FzfScorer`, the balanced DFS visitor, exact scores, and the Arctic WFST exit. |
-| "I want to call duallity from C, C++, or JavaScript." | [07 · Language bindings](07-language-bindings.md) | the seven-function C ABI and the JS/TS/cljs facade: ownership, error totality, concurrency, zero-copy paths, and version pins. |
+| "I want to call duallity from C, C++, JavaScript, Julia, or Raku." | [07 · Language bindings](07-language-bindings.md) | the eight-function C ABI and its C++, JS/TS/cljs, Julia, and Raku facades: ownership, error totality, concurrency, zero-copy paths, and version pins. |
 
 ### The full guide index
 
@@ -38,13 +39,14 @@ Start from what you are trying to do; the strip below routes you to the one guid
 | 04 | [Phonetic matching](04-phonetic-matching.md) | Rewrite rules vs. phonetic regex; the English / German / French rule sets. |
 | 05 | [Performance and tuning](05-performance-and-tuning.md) | Cache policy, eviction, lazy costs, eager WallBreaker construction. |
 | 06 | [fzf dictionary ranking](06-fzf-dictionary-ranking.md) | Rank a character dictionary with prefix-shared FuzzyMatchV2 columns. |
-| 07 | [Language bindings](07-language-bindings.md) | Call the C ABI and the JavaScript facade: ownership, error totality, concurrency, zero-copy. |
+| 07 | [Language bindings](07-language-bindings.md) | Call the C ABI and its C++, JavaScript-family, Julia, and Raku facades: ownership, error totality, concurrency, zero-copy. |
 
 ---
 
 ## Install
 
-duallity 0.3 is built against **liblevenshtein 0.9**, **lling-llang 0.2**, and **libdictenstein 0.2**.
+duallity 4.0.0-rc.6 is built against exact **liblevenshtein 4.0.0-rc.6**,
+**lling-llang 4.0.0-rc.6**, and **libdictenstein 4.0.0-rc.6** candidates.
 The three companions map cleanly onto the three responsibilities in the pipeline: `libdictenstein`
 holds the dictionary, `liblevenshtein` supplies the fuzzy-matching automata, and `lling-llang` provides
 the weighted-transducer algebra (`Wfst`, the tropical semiring, `compose`). duallity is the thin adapter
@@ -52,10 +54,10 @@ that presents the first two *as* the third.
 
 ```toml
 [dependencies]
-duallity = "0.3"
-liblevenshtein = "0.9"
-lling-llang = "0.2"
-libdictenstein = "0.2"
+duallity = "=4.0.0-rc.6"
+liblevenshtein = "=4.0.0-rc.6"
+lling-llang = "=4.0.0-rc.6"
+libdictenstein = "=4.0.0-rc.6"
 ```
 
 You only need to name the companions explicitly in `[dependencies]` when your own code references their
@@ -84,7 +86,8 @@ duallity = { version = "0.3", features = ["phonetic-rules"] }
 ```
 
 > **The rule-based path needs no feature.** `RewriteWfst` and
-> `PhoneticPipelineBuilder::build_rewrite_wfst` apply literal rewrite rules (like `ph → f`) and are
+> `PhoneticPipelineBuilder::build_rewrite_wfst` apply literal rewrite rules (like
+> $`\texttt{ph} \to \texttt{f}`$) and are
 > available in the default build. Only the *regex → NFA* path (`PhoneticWfst`, `PhoneticNfaWfst`, and
 > the pipeline builder's `build` / `build_phonetic_nfa` exits) is gated behind `phonetic-rules`. See
 > [04 · Phonetic matching](04-phonetic-matching.md) for when you want each.
@@ -96,7 +99,7 @@ duallity = { version = "0.3", features = ["phonetic-rules"] }
 - **Concepts and proofs** — [theory/](../theory/) develops semirings, Levenshtein automata,
   composition, universal automata, and the WallBreaker wall effect from first principles, with the
   single-source-of-truth [master notation table](../theory/README.md#master-notation).
-- **Exact per-variant API** — [design/](../design/) documents each variant's 4.0.0-rc.4 signatures,
+- **Exact per-variant API** — [design/](../design/) documents each variant's 4.0.0-rc.6 signatures,
   operational semantics, complexity, worked examples, and honest limitations.
 - **Internals** — [architecture/](../architecture/) covers the WFST trait surface, state encoding,
   lazy evaluation and caching, and the registries.

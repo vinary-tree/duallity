@@ -1,7 +1,8 @@
 #![cfg(feature = "phonetic-rules")]
 
 use duallity::{
-    LazyState, LazyWfst, PhoneticNfaWfst, Semiring, StateId, StateSource, TropicalWeight, Wfst,
+    DirectStateSource, ExpansionFailureKind, LazyWfst, PhoneticNfaWfst, Semiring, StateExpansion,
+    StateId, TropicalWeight, Wfst,
 };
 use liblevenshtein::phonetic::nfa::compiler::compile;
 use liblevenshtein::phonetic::nfa::NFAChar;
@@ -109,7 +110,7 @@ fn phonetic_nfa_wfst_end_anchor_marks_terminal_state_final() {
 
     let start = Wfst::start(&wfst);
     let transition = transition_for(&mut wfst, start, 'a');
-    wfst.expand(transition.to);
+    wfst.expand(transition.to).expect("valid state expands");
 
     assert!(wfst.is_final(transition.to));
     assert_eq!(wfst.final_weight(transition.to), TropicalWeight::one());
@@ -137,7 +138,7 @@ fn phonetic_nfa_wfst_end_anchor_does_not_enable_following_consumption() {
 
     let start = Wfst::start(&wfst);
     let transition = transition_for(&mut wfst, start, 'a');
-    wfst.expand(transition.to);
+    wfst.expand(transition.to).expect("valid state expands");
 
     assert!(!wfst.is_final(transition.to));
     assert!(wfst.transitions(transition.to).is_empty());
@@ -153,22 +154,16 @@ fn phonetic_nfa_wfst_start_state_is_registered() {
 }
 
 #[test]
-fn phonetic_nfa_statesource_invalid_state_is_empty_non_final() {
+fn phonetic_nfa_statesource_classifies_invalid_state() {
     let nfa = compile_pattern("test");
     let wfst = PhoneticNfaWfst::new(nfa);
 
-    match StateSource::<char, TropicalWeight>::compute_state(&wfst, StateId::MAX) {
-        LazyState::Computed {
-            is_final,
-            transitions,
-            ..
-        } => {
-            assert!(!is_final);
-            assert!(transitions.is_empty());
+    match wfst.expand_state(StateId::MAX) {
+        StateExpansion::Failed(failure) => {
+            assert_eq!(failure.kind(), ExpansionFailureKind::InvalidState);
         }
-        LazyState::Pending => {
-            std::panic::panic_any("invalid NFA state should compute as empty non-final")
-        }
+        StateExpansion::Expanded { .. } => panic!("invalid state unexpectedly expanded"),
+        StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
     }
 }
 
@@ -180,7 +175,7 @@ fn phonetic_nfa_wfst_expand_state_materializes_transitions() {
     let start = Wfst::start(&wfst);
     assert!(!wfst.is_expanded(start));
 
-    wfst.expand(start);
+    wfst.expand(start).expect("start state expands");
     assert!(wfst.is_expanded(start));
     assert!(!wfst.transitions(start).is_empty());
 }
@@ -223,7 +218,7 @@ fn phonetic_nfa_wfst_rejects_invalid_state_without_caching() {
     let invalid_state = 1;
 
     assert!(!wfst.is_valid_state(invalid_state));
-    wfst.expand(invalid_state);
+    assert!(wfst.expand(invalid_state).is_err());
 
     assert_eq!(wfst.computed_states(), 0);
     assert!(wfst.transitions_lazy(invalid_state).is_empty());
@@ -262,7 +257,7 @@ fn phonetic_nfa_wfst_lru_policy_evicts_least_recently_used_state() {
     assert!(wfst.is_expanded(start));
     assert_eq!(wfst.computed_states(), 1);
 
-    wfst.expand(next);
+    wfst.expand(next).expect("valid state expands");
 
     assert_eq!(wfst.computed_states(), 1);
     assert!(!wfst.is_expanded(start));
@@ -276,7 +271,7 @@ fn phonetic_nfa_wfst_state_count_grows_from_registry() {
 
     assert_eq!(wfst.num_states(), 1);
 
-    wfst.expand(0);
+    wfst.expand(0).expect("start state expands");
     assert!(wfst.num_states() >= 1);
 }
 
@@ -285,10 +280,9 @@ fn phonetic_nfa_wfst_statesource_computes_start() {
     let nfa = compile_pattern("(a|b)c");
     let wfst = PhoneticNfaWfst::new(nfa);
 
-    let state = StateSource::compute_state(&wfst, 0);
-    assert!(state.is_computed());
-
-    let transitions = state.transitions().expect("expected computed transitions");
+    let StateExpansion::Expanded { transitions, .. } = wfst.expand_state(0) else {
+        panic!("expected computed transitions");
+    };
     assert!(transitions
         .iter()
         .any(|transition| transition.input == Some('a')));
@@ -303,12 +297,15 @@ fn phonetic_nfa_wfst_statesource_matches_lazy_expansion() {
     let mut lazy = PhoneticNfaWfst::new(nfa.clone());
     let source = PhoneticNfaWfst::new(nfa);
 
-    lazy.expand(0);
+    lazy.expand(0).expect("start state expands");
     let lazy_transitions = lazy.transitions(0).to_vec();
-    let source_state = StateSource::compute_state(&source, 0);
-    let source_transitions = source_state
-        .transitions()
-        .expect("expected computed transitions");
+    let StateExpansion::Expanded {
+        transitions: source_transitions,
+        ..
+    } = source.expand_state(0)
+    else {
+        panic!("expected computed transitions");
+    };
 
-    assert_eq!(source_transitions, lazy_transitions.as_slice());
+    assert_eq!(source_transitions.as_slice(), lazy_transitions.as_slice());
 }

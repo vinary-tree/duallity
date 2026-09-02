@@ -32,9 +32,9 @@ end note
 Caller -> SP : shortest_path(N) / accepting_paths()
 activate SP
 loop until N best paths finalized
-  SP -> Prod : compute_state(s)\nexpand next product state on demand
+  SP -> Prod : compute_state(ExpansionRequest{s, snapshot, attempt, cancel})
   activate Prod
-  Prod --> SP : outgoing transitions + tropical weights
+  Prod --> SP : StateExpansion::Expanded\n(outgoing transitions + tropical weights)
   deactivate Prod
 end
 SP --> Caller : ranked best paths

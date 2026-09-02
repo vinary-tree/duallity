@@ -2,7 +2,8 @@
 
 use libdictenstein::{Dictionary, DictionaryNode};
 use lling_llang::prelude::{
-    ArcticWeight, LazyWfst, LazyWfstWrapper, StateId, WeightedTransition, Wfst,
+    ArcticWeight, ExpansionError, ExpansionStatus, LazyWfst, LazyWfstWrapper, StateId,
+    WeightedTransition, Wfst,
 };
 use lling_llang::wfst::CachePolicy;
 
@@ -100,8 +101,8 @@ where
         self.inner.is_expanded(state)
     }
 
-    fn expand(&mut self, state: StateId) {
-        self.inner.expand(state);
+    fn expand(&mut self, state: StateId) -> Result<ExpansionStatus, ExpansionError> {
+        self.inner.expand(state)
     }
 
     fn transitions_lazy(&mut self, state: StateId) -> &[WeightedTransition<char, ArcticWeight>] {
@@ -147,7 +148,7 @@ mod tests {
             weight = weight.times(&transition.weight);
             state = transition.to;
         }
-        wfst.expand(state);
+        wfst.expand(state).expect("terminal state expands");
         assert!(wfst.is_final(state));
         assert!(weight.value() > 0.0);
     }

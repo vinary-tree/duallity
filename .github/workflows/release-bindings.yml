@@ -50,6 +50,7 @@ jobs:
       - run: cargo test --no-default-features --features ffi
       - run: cargo clippy --no-default-features --features ffi --lib -- -D warnings
       - run: npm test --prefix bindings/javascript
+      - run: python3 scripts/generate-raku-abi.py --check
       - run: python3 scripts/check-bindings.py
       - run: python3 scripts/check-binding-docs.py
 

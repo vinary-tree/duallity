@@ -158,12 +158,24 @@ and first-state access independently of dictionary construction.
 
 ## Maintainer workflow
 
-1. Update `bindings/api.json`, Rust exports, the C header, and generated enums
-   together.
-2. Preserve by-value ABI entry points and use additive pointer forms for
-   NativeCall.
-3. Run Rust FFI tests, Raku conformance, rendered Pod, both binding gates, and
+1. Update `bindings/api.json`, the Rust exports, and `include/duallity.h`
+   together. The model records every C signature, API-introduction revision,
+   ownership transfer, and nullability rule.
+2. Regenerate the Raku ABI; never edit `GeneratedAbi.rakumod` by hand.
+
+   ```sh
+   python3 scripts/generate-raku-abi.py --write
+   python3 scripts/generate-raku-abi.py --check
+   ```
+
+   The check validates the model against the public C header before comparing
+   the generated file. It fails on an unknown C-to-NativeCall type mapping, so
+   a new ABI type cannot silently acquire a guessed representation.
+3. Preserve by-value C entry points and use additive pointer forms for
+   NativeCall. Every intentionally unbound by-value function must retain an
+   explicit reason in `bindings/api.json`.
+4. Run Rust FFI tests, Raku conformance, rendered Pod, both binding gates, and
    the mandatory pgmcp bug gate.
-4. Commit implementation, documentation, tests, benchmark, and evidence with a
+5. Commit implementation, documentation, tests, benchmark, and evidence with a
    descriptive enumerated message.
-5. Push only the approved feature branch; do not tag or publish this candidate.
+6. Push only the approved feature branch; do not tag or publish this candidate.

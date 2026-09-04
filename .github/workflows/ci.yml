@@ -30,6 +30,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - name: Generated Raku ABI drift gate
+        run: python3 scripts/generate-raku-abi.py --check
       - name: Binding-surface drift gate
         run: python3 scripts/check-bindings.py
       - name: Binding-documentation gate

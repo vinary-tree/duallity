@@ -812,7 +812,7 @@ def check_julia_raku(report: Report, model: dict) -> None:
 
     modeled = {item["name"] for item in model["cFunctions"]}
     julia_symbols = set(re.findall(r"native\(:(duallity_[a-z0-9_]+)\)", julia_facade))
-    raku_symbols = set(re.findall(r"symbol\('(duallity_[a-z0-9_]+)'\)", raku_facade))
+    raku_symbols = set(re.findall(r"symbol\('(duallity_[a-z0-9_]+)'\)", raku_generated))
     julia_required = {
         "duallity_abi_version",
         "duallity_api_revision",
@@ -821,7 +821,9 @@ def check_julia_raku(report: Report, model: dict) -> None:
         "duallity_wfst_free",
         "duallity_wfst_resource",
     }
-    raku_required = (julia_required - {"duallity_wfst_new"}) | {"duallity_wfst_new_ref"}
+    raku_required = {
+        item["name"] for item in model["cFunctions"] if item["raku"]["bind"]
+    }
     julia_ok = julia_symbols == julia_required and julia_symbols <= modeled
     raku_ok = raku_symbols == raku_required and raku_symbols <= modeled
     report.add(
@@ -833,6 +835,16 @@ def check_julia_raku(report: Report, model: dict) -> None:
         "JR-6-raku-symbols",
         raku_ok,
         f"Raku native symbol set {'agrees' if raku_ok else 'DRIFT'}: {sorted(raku_symbols)}",
+    )
+    handwritten_raku_native = bool(
+        re.search(r"\bis\s+native\b|\bis\s+symbol\(", raku_facade)
+    )
+    report.add(
+        "JR-10-raku-generated-native",
+        not handwritten_raku_native,
+        "Raku NativeCall declarations are generated"
+        if not handwritten_raku_native
+        else "Raku facade still contains handwritten NativeCall declarations",
     )
 
     for check_id, enum_name, values in (

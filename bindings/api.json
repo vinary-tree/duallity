@@ -249,38 +249,273 @@
       ]
     }
   },
+  "ffiTypes": {
+    "DuallityWfst": {
+      "cKind": "opaque",
+      "rakuType": "Pointer",
+      "ownership": "unique-handle"
+    },
+    "VtResource": {
+      "cKind": "imported-struct",
+      "rakuType": "Vinary::Tree::Interop::RawResource",
+      "provider": "vinary-tree-interop",
+      "ownership": "reference-counted-retain"
+    }
+  },
+  "raku": {
+    "module": "Duallity::GeneratedAbi",
+    "library": {
+      "environment": "DUALLITY_LIBRARY",
+      "linux": "libduallity.so",
+      "macos": "libduallity.dylib",
+      "windows": "duallity.dll"
+    }
+  },
   "cFunctions": [
     {
       "name": "duallity_abi_version",
-      "rustModule": "ffi"
+      "rustModule": "ffi",
+      "sinceApiRevision": 1,
+      "return": {
+        "cType": "uint32_t",
+        "ownership": "value",
+        "nullability": "not-applicable"
+      },
+      "parameters": [],
+      "raku": {
+        "bind": true
+      }
     },
     {
       "name": "duallity_api_revision",
-      "rustModule": "ffi"
+      "rustModule": "ffi",
+      "sinceApiRevision": 1,
+      "return": {
+        "cType": "uint32_t",
+        "ownership": "value",
+        "nullability": "not-applicable"
+      },
+      "parameters": [],
+      "raku": {
+        "bind": true
+      }
     },
     {
       "name": "duallity_last_error_message",
-      "rustModule": "ffi"
+      "rustModule": "ffi",
+      "sinceApiRevision": 1,
+      "return": {
+        "cType": "const char*",
+        "ownership": "borrowed-thread-local-until-next-boundary-call",
+        "nullability": "non-null"
+      },
+      "parameters": [],
+      "raku": {
+        "bind": true
+      }
     },
     {
       "name": "duallity_wfst_new",
-      "rustModule": "ffi"
+      "rustModule": "ffi",
+      "sinceApiRevision": 1,
+      "return": {
+        "cType": "DuallityStatus",
+        "ownership": "value",
+        "nullability": "not-applicable"
+      },
+      "parameters": [
+        {
+          "name": "dictionary",
+          "cType": "VtResource",
+          "direction": "in",
+          "ownership": "borrowed-capture-snapshot",
+          "nullability": "invalid-resource-rejected"
+        },
+        {
+          "name": "query_data",
+          "cType": "const uint8_t*",
+          "direction": "in",
+          "ownership": "borrowed-for-call",
+          "nullability": "nullable-if-query_len-is-zero"
+        },
+        {
+          "name": "query_len",
+          "cType": "size_t",
+          "direction": "in",
+          "ownership": "value",
+          "nullability": "not-applicable"
+        },
+        {
+          "name": "maximum_distance",
+          "cType": "size_t",
+          "direction": "in",
+          "ownership": "value",
+          "nullability": "not-applicable"
+        },
+        {
+          "name": "algorithm",
+          "cType": "uint32_t",
+          "direction": "in",
+          "ownership": "value",
+          "nullability": "not-applicable"
+        },
+        {
+          "name": "kind",
+          "cType": "uint32_t",
+          "direction": "in",
+          "ownership": "value",
+          "nullability": "not-applicable"
+        },
+        {
+          "name": "out_wfst",
+          "cType": "DuallityWfst**",
+          "direction": "out",
+          "ownership": "owned-output-on-success",
+          "nullability": "non-null"
+        }
+      ],
+      "raku": {
+        "bind": false,
+        "reason": "NativeCall does not portably pass the imported VtResource C aggregate by value; use duallity_wfst_new_ref"
+      }
     },
     {
       "name": "duallity_wfst_new_ref",
-      "rustModule": "ffi"
+      "rustModule": "ffi",
+      "sinceApiRevision": 2,
+      "return": {
+        "cType": "DuallityStatus",
+        "ownership": "value",
+        "nullability": "not-applicable"
+      },
+      "parameters": [
+        {
+          "name": "dictionary",
+          "cType": "const VtResource*",
+          "direction": "in",
+          "ownership": "borrowed-capture-snapshot",
+          "nullability": "non-null"
+        },
+        {
+          "name": "query_data",
+          "cType": "const uint8_t*",
+          "direction": "in",
+          "ownership": "borrowed-for-call",
+          "nullability": "nullable-if-query_len-is-zero"
+        },
+        {
+          "name": "query_len",
+          "cType": "size_t",
+          "direction": "in",
+          "ownership": "value",
+          "nullability": "not-applicable"
+        },
+        {
+          "name": "maximum_distance",
+          "cType": "size_t",
+          "direction": "in",
+          "ownership": "value",
+          "nullability": "not-applicable"
+        },
+        {
+          "name": "algorithm",
+          "cType": "uint32_t",
+          "direction": "in",
+          "ownership": "value",
+          "nullability": "not-applicable"
+        },
+        {
+          "name": "kind",
+          "cType": "uint32_t",
+          "direction": "in",
+          "ownership": "value",
+          "nullability": "not-applicable"
+        },
+        {
+          "name": "out_wfst",
+          "cType": "DuallityWfst**",
+          "direction": "out",
+          "ownership": "owned-output-on-success",
+          "nullability": "non-null"
+        }
+      ],
+      "raku": {
+        "bind": true
+      }
     },
     {
       "name": "duallity_wfst_free",
-      "rustModule": "ffi"
+      "rustModule": "ffi",
+      "sinceApiRevision": 1,
+      "return": {
+        "cType": "void",
+        "ownership": "none",
+        "nullability": "not-applicable"
+      },
+      "parameters": [
+        {
+          "name": "wfst",
+          "cType": "DuallityWfst*",
+          "direction": "in",
+          "ownership": "consumed-when-non-null",
+          "nullability": "nullable"
+        }
+      ],
+      "raku": {
+        "bind": true
+      }
     },
     {
       "name": "duallity_wfst_resource",
-      "rustModule": "ffi"
+      "rustModule": "ffi",
+      "sinceApiRevision": 1,
+      "return": {
+        "cType": "DuallityStatus",
+        "ownership": "value",
+        "nullability": "not-applicable"
+      },
+      "parameters": [
+        {
+          "name": "wfst",
+          "cType": "const DuallityWfst*",
+          "direction": "in",
+          "ownership": "borrowed-for-call",
+          "nullability": "non-null"
+        },
+        {
+          "name": "out_resource",
+          "cType": "VtResource*",
+          "direction": "out",
+          "ownership": "owned-retain-on-success",
+          "nullability": "non-null"
+        }
+      ],
+      "raku": {
+        "bind": true
+      }
     },
     {
       "name": "duallity_resource_release",
-      "rustModule": "ffi"
+      "rustModule": "ffi",
+      "sinceApiRevision": 1,
+      "return": {
+        "cType": "void",
+        "ownership": "none",
+        "nullability": "not-applicable"
+      },
+      "parameters": [
+        {
+          "name": "resource",
+          "cType": "VtResource",
+          "direction": "in",
+          "ownership": "consumed-retain-if-valid",
+          "nullability": "invalid-resource-is-no-op"
+        }
+      ],
+      "raku": {
+        "bind": false,
+        "reason": "Resource lifetime is owned by Vinary::Tree::Interop::Resource; NativeCall does not portably pass VtResource by value"
+      }
     }
   ],
   "javascript": {

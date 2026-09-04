@@ -65,36 +65,12 @@ class X::Duallity is Exception {
     }
 }
 
-sub native-library(--> Str:D) {
-    return %*ENV<DUALLITY_LIBRARY> if %*ENV<DUALLITY_LIBRARY>:exists;
-    $*DISTRO.is-win ?? 'duallity.dll' !!
-        $*KERNEL.name eq 'darwin' ?? 'libduallity.dylib' !!
-        'libduallity.so'
+sub abi-version(--> UInt:D) is export {
+    Duallity::GeneratedAbi::duallity-abi-version().UInt
 }
-
-sub duallity-abi-version(--> uint32)
-    is native(&native-library) is symbol('duallity_abi_version') { * }
-sub duallity-api-revision(--> uint32)
-    is native(&native-library) is symbol('duallity_api_revision') { * }
-sub duallity-last-error-message(--> Str)
-    is native(&native-library) is symbol('duallity_last_error_message') { * }
-sub duallity-wfst-new-ref(
-    InteropAccess::RawResourceType,
-    Pointer,
-    size_t,
-    size_t,
-    uint32,
-    uint32,
-    Pointer is rw,
-    --> uint32
-) is native(&native-library) is symbol('duallity_wfst_new_ref') { * }
-sub duallity-wfst-free(Pointer)
-    is native(&native-library) is symbol('duallity_wfst_free') { * }
-sub duallity-wfst-resource(Pointer, InteropAccess::RawResourceType --> uint32)
-    is native(&native-library) is symbol('duallity_wfst_resource') { * }
-
-sub abi-version(--> UInt:D) is export { duallity-abi-version().UInt }
-sub api-revision(--> UInt:D) is export { duallity-api-revision().UInt }
+sub api-revision(--> UInt:D) is export {
+    Duallity::GeneratedAbi::duallity-api-revision().UInt
+}
 
 sub check-status(Int:D $code, Str:D $operation --> Nil) {
     my $status = Status($code);
@@ -102,7 +78,8 @@ sub check-status(Int:D $code, Str:D $operation --> Nil) {
     X::Duallity.new(
         :$status,
         :$operation,
-        detail => (try duallity-last-error-message()) // '',
+        detail =>
+            (try Duallity::GeneratedAbi::duallity-last-error-message()) // '',
     ).throw;
 }
 
@@ -117,7 +94,10 @@ multi sub raw-resource(InteropAccess::DictionaryType:D $dictionary
 
 sub adopt-wfst(Pointer:D $handle --> InteropAccess::WfstType:D) {
     my $raw = InteropAccess::RawResourceType.new;
-    check-status(duallity-wfst-resource($handle, $raw), 'wfst-resource');
+    check-status(
+        Duallity::GeneratedAbi::duallity-wfst-resource($handle, $raw),
+        'wfst-resource',
+    );
     InteropAccess::wrap(InteropAccess::adopt($raw))
 }
 
@@ -132,16 +112,19 @@ sub wfst(
     my $bytes = $query.encode('utf8');
     my Pointer $output .= new;
     my $data = $bytes.elems ?? nativecast(Pointer, $bytes) !! Pointer;
-    check-status(duallity-wfst-new-ref(
-        raw-resource($dictionary),
-        $data,
-        $bytes.elems,
-        $maximum-distance,
-        $algorithm,
-        $kind,
-        $output,
-    ), 'wfst-new');
-    LEAVE duallity-wfst-free($output);
+    check-status(
+        Duallity::GeneratedAbi::duallity-wfst-new-ref(
+            raw-resource($dictionary),
+            $data,
+            $bytes.elems,
+            $maximum-distance,
+            $algorithm,
+            $kind,
+            $output,
+        ),
+        'wfst-new',
+    );
+    LEAVE Duallity::GeneratedAbi::duallity-wfst-free($output);
     adopt-wfst($output)
 }
 

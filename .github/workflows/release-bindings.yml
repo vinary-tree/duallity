@@ -155,7 +155,7 @@ jobs:
           node-version: "24"
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with: { name: npm-package, path: dist }
       - run: npm publish --access public --provenance --tag next ./dist/*.tgz
 
@@ -251,12 +251,12 @@ jobs:
     environment: pypi
     permissions: { id-token: write }
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           pattern: python-wheel-*
           path: dist
           merge-multiple: true
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with: { name: python-sdist, path: dist }
       - uses: pypa/gh-action-pypi-publish@release/v1.14
         with:
@@ -297,13 +297,13 @@ jobs:
     environment: github-release
     permissions: { contents: write }
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with: { pattern: native-*, path: assets, merge-multiple: true }
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with: { name: npm-package, path: assets }
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with: { pattern: python-wheel-*, path: assets, merge-multiple: true }
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with: { name: python-sdist, path: assets }
       - run: cd assets && find . -maxdepth 1 -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 -r sha256sum > ../SHA256SUMS && mv ../SHA256SUMS SHA256SUMS
       - uses: softprops/action-gh-release@v2

@@ -109,10 +109,11 @@ jobs:
           python -m pip wheel --no-deps --wheel-dir target/python-sdist-wheel target/python-sdist/duallity-*.tar.gz
           python -m twine check target/python-*-dist/*.whl target/python-sdist/* target/python-sdist-wheel/*.whl
           python -m venv target/python-consumer
-          target/python-consumer/bin/python -m pip install --no-deps target/python-interop-dist/*.whl
-          target/python-consumer/bin/python -m pip install --no-deps target/python-libdict-dist/*.whl
-          target/python-consumer/bin/python -m pip install --no-deps target/python-lling-llang-dist/*.whl
-          target/python-consumer/bin/python -m pip install --no-deps target/python-sdist-wheel/*.whl
+          target/python-consumer/bin/python -m pip install \
+            target/python-interop-dist/*.whl \
+            target/python-libdict-dist/*.whl \
+            target/python-lling-llang-dist/*.whl \
+            target/python-sdist-wheel/*.whl
           target/python-consumer/bin/python bindings/python/examples/family_pipeline.py
 
   julia:

@@ -172,7 +172,7 @@ registry indices $`0, 1, 2, \ldots`$ (`next_nfa_state_id`).
 ## 6. Worked example
 
 ```rust,ignore
-// Cargo.toml:  duallity = { version = "0.3", features = ["phonetic-rules"] }
+// Cargo.toml:  duallity = { version = "=4.0.0-rc.6", features = ["phonetic-rules"] }
 use duallity::PhoneticNfaWfst;
 use liblevenshtein::phonetic::{nfa::compile, regex::parse};
 use lling_llang::prelude::*;

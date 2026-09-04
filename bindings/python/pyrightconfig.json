@@ -1,0 +1,28 @@
+{
+  "include": [
+    "src",
+    "tests",
+    "examples",
+    "benchmark",
+    "setup.py",
+    "_registry_manifest.py"
+  ],
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "extraPaths": [
+        "src",
+        "../../../vinary-tree-interop/bindings/python/src",
+        "../../../libdictenstein/bindings/python/src",
+        "../../../lling-llang/bindings/python/src"
+      ]
+    }
+  ],
+  "pythonVersion": "3.10",
+  "typeCheckingMode": "strict",
+  "reportPrivateUsage": "none",
+  "reportMissingTypeStubs": false,
+  "reportUnknownArgumentType": false,
+  "reportUnknownMemberType": false,
+  "reportUnknownVariableType": false
+}

@@ -208,7 +208,7 @@ The regex → NFA path is feature-gated. The builder **takes the dictionary by v
 weight setters return `Result<_, InvalidWeightError>`; `max_distance` here is a `u8`.
 
 ```rust,ignore
-// Cargo.toml:  duallity = { version = "0.3", features = ["phonetic-rules"] }
+// Cargo.toml:  duallity = { version = "=4.0.0-rc.6", features = ["phonetic-rules"] }
 use duallity::PhoneticWfstBuilder;
 use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 

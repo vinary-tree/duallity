@@ -41,6 +41,80 @@ jobs:
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 
+  python:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.14"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/checkout-dev-siblings
+        with:
+          coordinated-ref: ${{ github.head_ref || github.ref_name }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install Python validation tools and sibling facades
+        run: |
+          python -m pip install --disable-pip-version-check \
+            build==1.6.0 pdoc==16.0.0 pyright==1.1.411 \
+            ruff==0.16.5 tomli==2.2.1 twine==6.2.0
+          python -m pip install --no-deps -e ../vinary-tree-interop/bindings/python
+          python -m pip install --no-deps -e ../libdictenstein/bindings/python
+          python -m pip install --no-deps -e ../lling-llang/bindings/python
+      - name: Build native Python family libraries
+        run: |
+          cargo build --no-default-features --features python-bindings
+          cargo build --manifest-path ../libdictenstein/Cargo.toml \
+            --no-default-features --features python-bindings
+          cargo build --manifest-path ../lling-llang/Cargo.toml \
+            --no-default-features --features python-bindings
+      - name: Type, style, API, and documentation gates
+        env:
+          DUALLITY_LIBRARY: ${{ github.workspace }}/target/debug/libduallity.so
+          LIBDICTENSTEIN_LIBRARY: ${{ github.workspace }}/../libdictenstein/target/debug/liblibdictenstein.so
+          LLING_LLANG_LIBRARY: ${{ github.workspace }}/../lling-llang/target/debug/liblling_llang.so
+          PYTHONPATH: ${{ github.workspace }}/bindings/python/src:${{ github.workspace }}/../vinary-tree-interop/bindings/python/src:${{ github.workspace }}/../libdictenstein/bindings/python/src:${{ github.workspace }}/../lling-llang/bindings/python/src
+        run: |
+          ruff check bindings/python
+          ruff format --check bindings/python
+          pyright -p bindings/python/pyrightconfig.json
+          python scripts/check-bindings.py
+          python scripts/check-binding-docs.py
+          pdoc --output-directory target/python-api duallity
+      - name: Native integration and executable family guide
+        env:
+          DUALLITY_LIBRARY: ${{ github.workspace }}/target/debug/libduallity.so
+          LIBDICTENSTEIN_LIBRARY: ${{ github.workspace }}/../libdictenstein/target/debug/liblibdictenstein.so
+          LLING_LLANG_LIBRARY: ${{ github.workspace }}/../lling-llang/target/debug/liblling_llang.so
+          PYTHONPATH: ${{ github.workspace }}/bindings/python/src:${{ github.workspace }}/../vinary-tree-interop/bindings/python/src:${{ github.workspace }}/../libdictenstein/bindings/python/src:${{ github.workspace }}/../lling-llang/bindings/python/src
+        run: |
+          python -m unittest discover -s bindings/python/tests -v
+          python bindings/python/examples/family_pipeline.py
+      - name: Build and test fresh family wheels
+        if: matrix.python-version == '3.10'
+        env:
+          DUALLITY_PREBUILT_LIBRARY: ${{ github.workspace }}/target/debug/libduallity.so
+          LIBDICTENSTEIN_PREBUILT_LIBRARY: ${{ github.workspace }}/../libdictenstein/target/debug/liblibdictenstein.so
+          LLING_LLANG_PREBUILT_LIBRARY: ${{ github.workspace }}/../lling-llang/target/debug/liblling_llang.so
+        run: |
+          python -m build --wheel --outdir target/python-interop-dist ../vinary-tree-interop/bindings/python
+          python -m build --wheel --outdir target/python-libdict-dist ../libdictenstein/bindings/python
+          python -m build --wheel --outdir target/python-lling-llang-dist ../lling-llang/bindings/python
+          python -m build --wheel --outdir target/python-dist bindings/python
+          python -m build --sdist --outdir target/python-sdist bindings/python
+          python -m pip wheel --no-deps --wheel-dir target/python-sdist-wheel target/python-sdist/duallity-*.tar.gz
+          python -m twine check target/python-*-dist/*.whl target/python-sdist/* target/python-sdist-wheel/*.whl
+          python -m venv target/python-consumer
+          target/python-consumer/bin/python -m pip install --no-deps target/python-interop-dist/*.whl
+          target/python-consumer/bin/python -m pip install --no-deps target/python-libdict-dist/*.whl
+          target/python-consumer/bin/python -m pip install --no-deps target/python-lling-llang-dist/*.whl
+          target/python-consumer/bin/python -m pip install --no-deps target/python-sdist-wheel/*.whl
+          target/python-consumer/bin/python bindings/python/examples/family_pipeline.py
+
   julia:
     name: Julia ${{ matrix.julia-version }}
     runs-on: ubuntu-latest

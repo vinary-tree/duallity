@@ -1,0 +1,10 @@
+include README.md
+include LICENSE
+include _registry_manifest.py
+include pyproject.toml
+include pyrightconfig.json
+include setup.py
+recursive-include benchmark *.py
+recursive-include examples *.py
+recursive-include src *.py py.typed
+recursive-include tests *.py

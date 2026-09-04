@@ -177,7 +177,7 @@ This is the load-bearing caveat for the whole page; read it before using the bui
 One pattern-only configuration drives all three exits, then the caller composes and ranks:
 
 ```rust,ignore
-// Cargo.toml:  duallity = { version = "0.3", features = ["phonetic-rules"] }
+// Cargo.toml:  duallity = { version = "=4.0.0-rc.6", features = ["phonetic-rules"] }
 use duallity::{PhoneticPipelineBuilder, PhoneticMatch};
 use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 

@@ -27,9 +27,10 @@ docs/
 | **Architecture** | [architecture/README](architecture/README.md) |
 | **Design (variants)** | [design/README](design/README.md) — the variant selection matrix |
 | **Guides** | [guides/README](guides/README.md) — install + feature flags |
-| **Foreign-language bindings** | [bindings/README](bindings/README.md) — C, C++, JavaScript, TypeScript, and ClojureScript guides with executable evidence |
+| **Foreign-language bindings** | [bindings/README](bindings/README.md) — C, C++, JavaScript, TypeScript, ClojureScript, Python, Julia, and Raku guides with executable evidence |
 | **Engineering** | [engineering/README](engineering/README.md) |
 | **Security** | [security/README](security/README.md) |
+| **Scientific evidence** | [Python binding construction](scientific-ledger/python-binding-construction-2026-09-04.md) · [binding findings](scientific-ledger/bindings-findings-ledger.md) · [FZF prefix bound](scientific-ledger/fzf-prefix-bound-2026-08-02.md) |
 | **Release engineering** | [releasing](releasing.md) — immutable release-branch tags, validate-only evidence, single-registry dispatch, npm promotion, and failure recovery |
 | **References** | [bibliography](references/bibliography.md) · [glossary](references/glossary.md) |
 | **Diagrams** | [diagrams/README](diagrams/README.md) — catalog + color legend |
@@ -57,10 +58,10 @@ docs/
 3. the [design](design/README.md) pages for exact semantics
 4. [theory/06 · WallBreaker](theory/06-wallbreaker-and-the-wall-effect.md) and [theory/07 · Regular-language limits](theory/07-regular-language-limits.md)
 
-**Binding author ($`\approx 45\ \text{minutes}`$)** — call duallity from C, C++, or JavaScript:
+**Binding author ($`\approx 45\ \text{minutes}`$)** — call duallity from C, C++, JavaScript, Python, Julia, or Raku:
 1. [architecture/06 · The resource ABI and language bindings](architecture/06-resource-abi-and-bindings.md) — the eight-function C ABI, the nine kinds, capture-once, and the double adapter
 2. [guides/07 · Language bindings](guides/07-language-bindings.md) — the nine-section per-language guide
-3. the [binding hub](bindings/README.md), then the per-language C, C++, or JavaScript-family guide
+3. the [binding hub](bindings/README.md), then the guide for your target language
 4. [security/threat-model](security/threat-model.md) — why a foreign dictionary is untrusted input
 
 ## Conventions

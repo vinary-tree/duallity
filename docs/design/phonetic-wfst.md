@@ -168,7 +168,7 @@ than colliding into a neighbour's band.
 ## 5. Worked example
 
 ```rust,ignore
-// Cargo.toml:  duallity = { version = "0.3", features = ["phonetic-rules"] }
+// Cargo.toml:  duallity = { version = "=4.0.0-rc.6", features = ["phonetic-rules"] }
 use duallity::PhoneticWfstBuilder;
 use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 use lling_llang::prelude::*;

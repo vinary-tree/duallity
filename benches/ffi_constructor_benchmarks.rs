@@ -6,8 +6,9 @@
 //! dictionary size (the automaton is expanded lazily during traversal, not at
 //! construction). This benchmark builds `DynamicDawgBinding` dictionaries of
 //! geometrically increasing size and measures the constructor across them;
-//! a flat curve confirms the O(1)-construction contract. Hardware for recorded
-//! results: /home/dylon/.claude/hardware-specifications.md.
+//! a flat curve supports the O(1)-construction contract. Record the complete
+//! host, affinity, governor, load, git ref, and raw samples with every result;
+//! repository evidence must not depend on a machine-local path.
 //!
 //! Run: `cargo bench --features ffi --bench ffi_constructor_benchmarks`
 //! (pin with taskset + the performance governor for stable numbers).

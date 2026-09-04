@@ -1,10 +1,11 @@
-# 07 · Language bindings — C, C++, JavaScript, Julia, and Raku
+# 07 · Language bindings — C, C++, JavaScript, Python, Julia, and Raku
 
 This guide is the task-oriented companion to the reference in
 [architecture/06 · The resource ABI and language bindings](../architecture/06-resource-abi-and-bindings.md).
 It shows how to *use* duallity from outside Rust: through the stable **C ABI** (**A**pplication **B**inary
 **I**nterface) and through the **JavaScript / TypeScript / ClojureScript** facade published as
 [`@vinary-tree/duallity`](../../bindings/javascript/README.md), the
+[`duallity`](../../bindings/python/README.md) Python package,
 [`Duallity.jl`](../../bindings/julia/Duallity/README.md) Julia package, and the
 [`Duallity`](../../bindings/raku/README.md) Raku distribution. A separate C++ header
 ([`include/duallity.hpp`](../../include/duallity.hpp)) provides a thin **RAII** (**R**esource
@@ -45,6 +46,9 @@ transducer — a language model, a phonetic rewriter — with no serialization.
   (`vinary-tree.duallity`, functions `wfst` / `start` / `state` / `close!`) ships alongside.
 - **C++ facade** — [`include/duallity.hpp`](../../include/duallity.hpp) wraps the C ABI in
   `vinary_tree::duallity::{wfst, resource, error}` with move-only handles and exception-based errors.
+- **Python facade** — [`duallity`](../../bindings/python/README.md) exposes typed `Algorithm` and
+  `WfstKind` selectors and returns `vinary_tree_interop.ScalarWfst`, which composes directly with
+  `lling_llang.compose` and accepts Python-hosted dictionary providers.
 - **Julia facade** — [`Duallity.jl`](../../bindings/julia/Duallity/README.md) exposes `wfst` over a
   `Libdictenstein.Dictionary` or `VinaryTreeInterop.Resource` and returns the ordinary
   `VinaryTreeInterop.Wfst` accepted by `LlingLlang.compose`.
@@ -72,6 +76,15 @@ npm install @vinary-tree/duallity @vinary-tree/vinary-tree-interop
 The facade depends on `@vinary-tree/javascript-runtime` (the shared native/WASM runtime) and requires
 **Node 22.14 or newer**. It exposes native (N-API), WASM, and WASI-preview-1 entry points; Node
 defaults to the native N-API build.
+
+**Python.** Install the unscoped project package; the shared interop facade is an exact dependency:
+
+```sh
+python -m pip install --pre duallity
+```
+
+Python 3.10 through 3.14 are supported. Platform wheels bundle the native library and use context
+managers for deterministic ownership.
 
 **Julia.** Develop the family packages from the coordinated source tree until they are registered:
 
@@ -170,6 +183,20 @@ finally
     close(graph)
     close(dictionary)
 end
+```
+
+**Python.** The result is a shared resource and can be composed without materializing either graph:
+
+```python
+import duallity
+import libdictenstein
+import lling_llang
+
+with libdictenstein.DynamicDawg() as dictionary:
+    dictionary.update_many((("cat", None), ("cot", None)))
+    with duallity.wfst(dictionary, "cat", maximum_distance=1) as fuzzy:
+        print(fuzzy.state(fuzzy.start))
+        # lling_llang.compose(fuzzy, another_wfst) retains both snapshots.
 ```
 
 **Raku.** NativeCall uses the pointer constructor but exposes the same ownership model:

@@ -9,7 +9,10 @@ import re
 import sys
 from pathlib import Path
 
-import tomllib
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL_PATH = ROOT / "release/version.json"
@@ -20,6 +23,7 @@ HISTORICAL_DOC_TREE_PARTS = frozenset({"archive", "releases"})
 NPM_PACKAGE = "@vinary-tree/duallity"
 NPM_INTEROP_PACKAGE = "@vinary-tree/vinary-tree-interop"
 NPM_RUNTIME_PACKAGE = "@vinary-tree/javascript-runtime"
+PYPI_PACKAGE = "duallity"
 DEPRECATED_NPM_COORDINATES = {
     "@vinary-tree/" + "interop",
     "@vinary-tree/" + "vinary-tree",
@@ -97,6 +101,11 @@ def raku_dependency(package: str, version: str) -> str:
     return f"{package}:ver<{raku_version(version)}>:auth<zef:vinary-tree>"
 
 
+def python_version(version: str) -> str:
+    """Translate SemVer prerelease spelling to normalized PEP 440 spelling."""
+    return version.replace("-rc.", "rc")
+
+
 def write_versions(model: dict[str, object]) -> None:
     canonical = str(model["canonical"])
     component = str(model["component"])
@@ -149,6 +158,12 @@ def write_versions(model: dict[str, object]) -> None:
             NPM_INTEROP_PACKAGE: deps[NPM_INTEROP_PACKAGE],
             NPM_RUNTIME_PACKAGE: deps[NPM_RUNTIME_PACKAGE],
         }
+        value["packages"]["pypi"] = PYPI_PACKAGE
+        value["python"]["package"] = PYPI_PACKAGE
+        value["python"]["version"] = python_version(canonical)
+        value["python"]["dependencies"] = {
+            "vinary-tree-interop": python_version(str(deps["vinary-tree-interop"]))
+        }
         value["wasm"].pop("umbrellaPackage", None)
         value["wasm"]["runtimePackage"] = NPM_RUNTIME_PACKAGE
         value["release"] = {
@@ -171,6 +186,32 @@ def write_versions(model: dict[str, object]) -> None:
         value.setdefault("publishConfig", {})["tag"] = publication["distTag"]
 
     update_json("bindings/javascript/package.json", npm)
+    python = python_version(canonical)
+    replace(
+        "bindings/python/pyproject.toml",
+        r'^version = "[^"]+"$',
+        f'version = "{python}"',
+    )
+    replace(
+        "bindings/python/pyproject.toml",
+        r'^description = "[^"]+"$',
+        f'description = "{metadata["description"]}"',
+    )
+    for package, dependency in (
+        ("vinary-tree-interop", "vinary-tree-interop"),
+        ("libdictenstein", "libdictenstein"),
+        ("lling-llang", "lling-llang"),
+    ):
+        replace(
+            "bindings/python/pyproject.toml",
+            rf'"{re.escape(package)}==[^"]+"',
+            f'"{package}=={python_version(str(deps[dependency]))}"',
+        )
+    replace(
+        "bindings/python/src/duallity/__init__.py",
+        r'^__version__ = "[^"]+"$',
+        f'__version__ = "{python}"',
+    )
     replace(
         "bindings/julia/Duallity/Project.toml",
         r'^version = "[^"]+"$',
@@ -256,8 +297,10 @@ def validate(model: dict[str, object]) -> list[str]:
     metadata = model.get("metadata")
     deps = model["dependencies"]
     publication = model.get("publication")
-    if coordinates != {"npmPackage": NPM_PACKAGE}:
-        failures.append(f"npm package coordinate must be exactly {NPM_PACKAGE}")
+    if coordinates != {"npmPackage": NPM_PACKAGE, "pypiPackage": PYPI_PACKAGE}:
+        failures.append(
+            f"package coordinates must be npm={NPM_PACKAGE} and PyPI={PYPI_PACKAGE}"
+        )
     expected_metadata = {
         "summary": "Compose fuzzy dictionary search with phonetics, grammars, and language models",
         "description": "Turn fuzzy dictionary queries into lazy weighted transducers that compose with phonetic rewrites, grammars, language models, and custom lling-llang pipelines.",
@@ -319,6 +362,7 @@ def validate(model: dict[str, object]) -> list[str]:
         "cmake": canonical,
         "julia": canonical,
         "npm": canonical,
+        "pypi": python_version(canonical),
         "pkgConfig": canonical,
         "zef": canonical,
     }
@@ -361,6 +405,11 @@ def validate(model: dict[str, object]) -> list[str]:
         or api.get("wasm", {}).get("runtimePackage") != NPM_RUNTIME_PACKAGE
         or "umbrellaPackage" in api.get("wasm", {})
         or api.get("javascript", {}).get("dependencies") != expected_npm_dependencies
+        or api.get("packages", {}).get("pypi") != PYPI_PACKAGE
+        or api.get("python", {}).get("package") != PYPI_PACKAGE
+        or api.get("python", {}).get("version") != python_version(canonical)
+        or api.get("python", {}).get("dependencies")
+        != {"vinary-tree-interop": python_version(str(deps["vinary-tree-interop"]))}
     ):
         failures.append("binding model release identity is stale")
     package = json.loads(
@@ -374,6 +423,32 @@ def validate(model: dict[str, object]) -> list[str]:
         or package.get("dependencies") != expected_npm_dependencies
     ):
         failures.append("npm package release identity is stale")
+    python_project = tomllib.loads(
+        (ROOT / "bindings/python/pyproject.toml").read_text(encoding="utf-8")
+    )["project"]
+    expected_python_dependencies = [
+        f"vinary-tree-interop=={python_version(str(deps['vinary-tree-interop']))}"
+    ]
+    expected_python_test_dependencies = {
+        f"libdictenstein=={python_version(str(deps['libdictenstein']))}",
+        f"lling-llang=={python_version(str(deps['lling-llang']))}",
+    }
+    if (
+        python_project.get("name") != PYPI_PACKAGE
+        or python_project.get("version") != expected_registries["pypi"]
+        or python_project.get("description") != expected_metadata["description"]
+        or python_project.get("dependencies") != expected_python_dependencies
+        or set(python_project.get("optional-dependencies", {}).get("test", []))
+        != expected_python_test_dependencies
+    ):
+        failures.append(
+            "Python package release identity or exact dependencies are stale"
+        )
+    python_init = (ROOT / "bindings/python/src/duallity/__init__.py").read_text(
+        encoding="utf-8"
+    )
+    if f'__version__ = "{expected_registries["pypi"]}"' not in python_init:
+        failures.append("Python facade version is stale")
     julia = tomllib.loads(
         (ROOT / "bindings/julia/Duallity/Project.toml").read_text(encoding="utf-8")
     )

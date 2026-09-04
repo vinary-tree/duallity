@@ -47,6 +47,7 @@ guideline-driven corpus with reading orders for newcomers, implementers, and res
 - **[Architecture](docs/architecture/README.md)** — the crate family, the WFST trait surface, state encoding, lazy evaluation, registries.
 - **[Design](docs/design/README.md)** — one page per WFST variant, with exact semantics and honest limitations.
 - **[Guides](docs/guides/README.md)** — quickstart, choosing a variant, composing pipelines, phonetic matching, performance.
+- **[Foreign-language bindings](docs/bindings/README.md)** — C, C++, JavaScript/TypeScript/ClojureScript, Python, Julia, and Raku APIs with executable examples.
 - **[Engineering](docs/engineering/README.md)** · **[Security](docs/security/README.md)** · **[References](docs/references/bibliography.md)** · **[Glossary](docs/references/glossary.md)** · **[Diagrams](docs/diagrams/README.md)**.
 
 ---
@@ -125,10 +126,10 @@ Supporting types are public too: `DictionaryBackend` (adapts a dictionary to lli
 
 ```toml
 [dependencies]
-duallity = "0.3"
-liblevenshtein = "0.9"
-lling-llang = "0.2"
-libdictenstein = "0.2"
+duallity = "=4.0.0-rc.6"
+liblevenshtein = "=4.0.0-rc.6"
+lling-llang = "=4.0.0-rc.6"
+libdictenstein = "=4.0.0-rc.6"
 ```
 
 **Wrap a Levenshtein automaton, then compose it.** Examples are marked `ignore` because they pull in the sibling crates; the constructor signatures are exact.
@@ -187,7 +188,7 @@ let phonetic_fuzzy = compose(rewrite, lev);
 **Compile a phonetic regex into a transducer** — requires `features = ["phonetic-rules"]`:
 
 ```rust,ignore
-// Cargo.toml:  duallity = { version = "0.3", features = ["phonetic-rules"] }
+// Cargo.toml:  duallity = { version = "=4.0.0-rc.6", features = ["phonetic-rules"] }
 use duallity::PhoneticWfstBuilder;
 use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 
@@ -211,7 +212,7 @@ let wfst = PhoneticWfstBuilder::new(dict, 2)
 | `phonetic-rules` | NFA-backed phonetic variants: `PhoneticWfst` / `PhoneticWfstBuilder`, `PhoneticNfaWfst`, `PhoneticStateSource`, and `PhoneticPipelineBuilder::build` / `build_phonetic_nfa` | `liblevenshtein/phonetic-rules` |
 
 ```toml
-duallity = { version = "0.3", features = ["phonetic-rules"] }
+duallity = { version = "=4.0.0-rc.6", features = ["phonetic-rules"] }
 ```
 
 ---
@@ -229,7 +230,7 @@ duallity = { version = "0.3", features = ["phonetic-rules"] }
 
 <img src="docs/diagrams/crate-dependency-graph.svg" alt="duallity sits at the top and depends on liblevenshtein, lling-llang, and libdictenstein; liblevenshtein uses libdictenstein dictionaries; lling-llang provides the WFST algebra" width="620"/>
 
-`duallity` sits at the top and depends on **liblevenshtein 0.9**, **lling-llang 0.2**, and **libdictenstein 0.2** — the only place where all three meet, which is exactly why it can break the former liblevenshtein ⇄ lling-llang cycle.
+`duallity` sits at the top and depends on **liblevenshtein 4.0.0-rc.6**, **lling-llang 4.0.0-rc.6**, and **libdictenstein 4.0.0-rc.6** — the only place where all three meet, which is exactly why it can break the former liblevenshtein ⇄ lling-llang cycle.
 
 **Migrating from liblevenshtein's old `wfst` module?** The types are unchanged; only the path moved:
 

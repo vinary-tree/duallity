@@ -24,6 +24,7 @@
   "packages": {
     "cratesIo": "duallity",
     "npm": "@vinary-tree/duallity",
+    "pypi": "duallity",
     "julia": "Duallity",
     "zef": "Duallity"
   },
@@ -34,6 +35,7 @@
       "javascript",
       "typescript",
       "clojurescript",
+      "python",
       "julia",
       "raku"
     ]
@@ -92,6 +94,27 @@
         "requiredHeadings": [
           "Install",
           "Quickstart",
+          "Ownership and memory model",
+          "Errors",
+          "Concurrency and zero-copy",
+          "Security and provider trust",
+          "Troubleshooting",
+          "Version compatibility",
+          "Executable conformance evidence",
+          "Maintainer workflow"
+        ]
+      },
+      "python": {
+        "languages": [
+          "Python"
+        ],
+        "guide": "bindings/python/README.md",
+        "example": "bindings/python/examples/family_pipeline.py",
+        "requiredHeadings": [
+          "Install",
+          "Quickstart",
+          "API, selectors, and domains",
+          "Host-defined dictionaries",
           "Ownership and memory model",
           "Errors",
           "Concurrency and zero-copy",
@@ -305,6 +328,26 @@
       "close!"
     ]
   },
+  "python": {
+    "package": "duallity",
+    "version": "4.0.0rc6",
+    "requiresPython": ">=3.10",
+    "dependencies": {
+      "vinary-tree-interop": "4.0.0rc6"
+    },
+    "facadeExports": [
+      "ABI_VERSION",
+      "API_REVISION",
+      "Algorithm",
+      "NativeError",
+      "Status",
+      "Wfst",
+      "WfstKind",
+      "abi_version",
+      "api_revision",
+      "wfst"
+    ]
+  },
   "wasm": {
     "runtimePackage": "@vinary-tree/javascript-runtime",
     "projectPackage": "@vinary-tree/duallity",
@@ -322,6 +365,7 @@
       "cmake": "4.0.0-rc.6",
       "julia": "4.0.0-rc.6",
       "npm": "4.0.0-rc.6",
+      "pypi": "4.0.0rc6",
       "pkgConfig": "4.0.0-rc.6",
       "zef": "4.0.0-rc.6"
     },

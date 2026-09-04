@@ -27,7 +27,7 @@ Start from what you are trying to do; the strip below routes you to the one guid
 | "I want sound-alike (phonetic) matching." | [04 · Phonetic matching](04-phonetic-matching.md) | rule-based `RewriteWfst` vs. regex-based `PhoneticWfst`; the English / German / French rule sets. |
 | "It works, but I need it faster or smaller." | [05 · Performance and tuning](05-performance-and-tuning.md) | cache policy, LRU eviction, lazy costs, and eager WallBreaker construction. |
 | "I want fzf V2 ranking over a shared-prefix dictionary." | [06 · fzf dictionary ranking](06-fzf-dictionary-ranking.md) | `FzfScorer`, the balanced DFS visitor, exact scores, and the Arctic WFST exit. |
-| "I want to call duallity from C, C++, JavaScript, Julia, or Raku." | [07 · Language bindings](07-language-bindings.md) | the eight-function C ABI and its C++, JS/TS/cljs, Julia, and Raku facades: ownership, error totality, concurrency, zero-copy paths, and version pins. |
+| "I want to call duallity from C, C++, JavaScript, Python, Julia, or Raku." | [07 · Language bindings](07-language-bindings.md) | the eight-function C ABI and its C++, JS/TS/cljs, Python, Julia, and Raku facades: ownership, error totality, concurrency, zero-copy paths, and version pins. |
 
 ### The full guide index
 
@@ -39,7 +39,7 @@ Start from what you are trying to do; the strip below routes you to the one guid
 | 04 | [Phonetic matching](04-phonetic-matching.md) | Rewrite rules vs. phonetic regex; the English / German / French rule sets. |
 | 05 | [Performance and tuning](05-performance-and-tuning.md) | Cache policy, eviction, lazy costs, eager WallBreaker construction. |
 | 06 | [fzf dictionary ranking](06-fzf-dictionary-ranking.md) | Rank a character dictionary with prefix-shared FuzzyMatchV2 columns. |
-| 07 | [Language bindings](07-language-bindings.md) | Call the C ABI and its C++, JavaScript-family, Julia, and Raku facades: ownership, error totality, concurrency, zero-copy. |
+| 07 | [Language bindings](07-language-bindings.md) | Call the C ABI and its C++, JavaScript-family, Python, Julia, and Raku facades: ownership, error totality, concurrency, zero-copy. |
 
 ---
 
@@ -82,7 +82,7 @@ surface — every variant you need for fuzzy matching, composition, and rule-bas
 | `phonetic-rules` | the NFA-backed phonetic variants: `PhoneticWfst` / `PhoneticWfstBuilder`, `PhoneticNfaWfst`, `PhoneticStateSource`, and `PhoneticPipelineBuilder::{build, build_phonetic_nfa}` | `liblevenshtein/phonetic-rules` |
 
 ```toml
-duallity = { version = "0.3", features = ["phonetic-rules"] }
+duallity = { version = "=4.0.0-rc.6", features = ["phonetic-rules"] }
 ```
 
 > **The rule-based path needs no feature.** `RewriteWfst` and

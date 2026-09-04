@@ -3,7 +3,8 @@
   "component": "duallity",
   "canonical": "4.0.0-rc.6",
   "coordinates": {
-    "npmPackage": "@vinary-tree/duallity"
+    "npmPackage": "@vinary-tree/duallity",
+    "pypiPackage": "duallity"
   },
   "metadata": {
     "summary": "Compose fuzzy dictionary search with phonetics, grammars, and language models",
@@ -14,6 +15,7 @@
     "cmake": "4.0.0-rc.6",
     "julia": "4.0.0-rc.6",
     "npm": "4.0.0-rc.6",
+    "pypi": "4.0.0rc6",
     "pkgConfig": "4.0.0-rc.6",
     "zef": "4.0.0-rc.6"
   },

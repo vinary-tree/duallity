@@ -194,7 +194,7 @@ fused with the dictionary as the triple product `NFA × Levenshtein × Dictionar
 ([design/phonetic-wfst](../design/phonetic-wfst.md)):
 
 ```rust,ignore
-// Cargo.toml:  duallity = { version = "0.3", features = ["phonetic-rules"] }
+// Cargo.toml:  duallity = { version = "=4.0.0-rc.6", features = ["phonetic-rules"] }
 use duallity::PhoneticWfstBuilder;
 use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 

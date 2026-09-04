@@ -5,7 +5,7 @@
 [resource ABI](../architecture/06-resource-abi-and-bindings.md) ·
 [threat model](../security/threat-model.md)
 
-duallity exposes one eight-function C ABI and five standalone facade guides.
+duallity exposes one eight-function C ABI and six standalone facade guides.
 JavaScript, TypeScript, and ClojureScript share the same npm package and
 singleton runtime, so their common laws and language-specific syntax live in
 one guide.
@@ -15,6 +15,7 @@ one guide.
 | [C](../../bindings/c/README.md) | C17/C23 | Direct `duallity_*` ABI | [`family_pipeline.c`](../../bindings/c/tests/family_pipeline.c) |
 | [C++](../../bindings/cpp/README.md) | C++17+ | Header-only move-only RAII | [`package_smoke.cpp`](../../bindings/cpp/tests/package_smoke.cpp) |
 | [JavaScript family](../../bindings/javascript/README.md) | JavaScript, TypeScript, ClojureScript | npm facade over N-API/WebAssembly/WASI | [`facades.test.mjs`](../../bindings/javascript/test/facades.test.mjs) |
+| [Python](../../bindings/python/README.md) | Python 3.10+ | `ctypes` facade returning shared `ScalarWfst` resources | [`family_pipeline.py`](../../bindings/python/examples/family_pipeline.py) |
 | [Julia](../../bindings/julia/Duallity/README.md) | Julia 1.10+ | `ccall` facade returning standard `VinaryTreeInterop.Wfst` resources | [`runtests.jl`](../../bindings/julia/Duallity/test/runtests.jl) |
 | [Raku](../../bindings/raku/README.md) | Raku 6.d | NativeCall facade returning standard `Vinary::Tree::Interop::Wfst` resources | [`01-conformance.rakutest`](../../bindings/raku/t/01-conformance.rakutest) |
 

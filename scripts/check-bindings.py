@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Dependency-free architectural and packaging checks for duallity's bindings.
 
-The gate cross-checks four authorities that must never drift:
+The gate cross-checks five authorities that must never drift:
 
   1. the binding model            bindings/api.json
   2. the Rust C ABI               src/ffi.rs (+ the WfstKind enum in src/bindings.rs)
   3. the public C/C++ headers     include/duallity.h, include/duallity.hpp
   4. the npm facade package       bindings/javascript/**
+  5. the PyPI facade package      bindings/python/**
 
 Check groups (stable ids):
 
@@ -21,6 +22,8 @@ Check groups (stable ids):
           Cargo.toml and the model.
   JR-*    Julia/Raku package identity, version, generated ABI enum/constant,
           and native-symbol parity against the same binding model.
+  PY-*    Python package identity, version, ABI/API/enum/symbol parity,
+          zero-copy resource handoff, and platform-wheel contents.
   MSRV-*  the README rustc badge (and MSRV prose) must equal Cargo.toml's
           `rust-version`.
   ID-*    identity guard: no foreign project identity strings in any
@@ -32,12 +35,16 @@ Output: a human-readable report (default) or `--json`; exit 1 on any failure.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import sys
 from pathlib import Path
 
-import tomllib
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -67,6 +74,7 @@ SKIP_DIR_PARTS = {
 
 JULIA_ROOT = ROOT / "bindings" / "julia" / "Duallity"
 RAKU_ROOT = ROOT / "bindings" / "raku"
+PYTHON_ROOT = ROOT / "bindings" / "python"
 
 
 class Report:
@@ -156,6 +164,40 @@ def match_arm_values(
             rf"(\d+)\s*=>\s*Ok\({enum_path}::(\w+)\)", match.group(1)
         )
     }
+
+
+def python_class_constants(source: str, class_name: str) -> dict[str, int] | None:
+    """Read integer assignments from one Python enum without importing it."""
+    tree = ast.parse(source)
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            values: dict[str, int] = {}
+            for statement in node.body:
+                if (
+                    isinstance(statement, ast.Assign)
+                    and len(statement.targets) == 1
+                    and isinstance(statement.targets[0], ast.Name)
+                    and isinstance(statement.value, ast.Constant)
+                    and isinstance(statement.value.value, int)
+                ):
+                    values[statement.targets[0].id] = statement.value.value
+            return values
+    return None
+
+
+def python_literal_assignment(source: str, name: str) -> object | None:
+    """Read one module-level literal assignment without executing package code."""
+    tree = ast.parse(source)
+    for node in tree.body:
+        if isinstance(node, (ast.Assign, ast.AnnAssign)) and isinstance(
+            node.value, (ast.Constant, ast.List, ast.Tuple, ast.Dict)
+        ):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(
+                isinstance(target, ast.Name) and target.id == name for target in targets
+            ):
+                return ast.literal_eval(node.value)
+    return None
 
 
 def compare_maps(
@@ -823,6 +865,184 @@ def check_julia_raku(report: Report, model: dict) -> None:
         )
 
 
+# ── PY: Python facade and wheel parity ──────────────────────────────────────
+
+
+def check_python(report: Report, model: dict) -> None:
+    pyproject_text = read_text(report, "PY-1-project", PYTHON_ROOT / "pyproject.toml")
+    abi_source = read_text(
+        report, "PY-2-abi", PYTHON_ROOT / "src" / "duallity" / "_abi.py"
+    )
+    facade_source = read_text(
+        report, "PY-3-facade", PYTHON_ROOT / "src" / "duallity" / "__init__.py"
+    )
+    setup_source = read_text(report, "PY-4-wheel", PYTHON_ROOT / "setup.py")
+    manifest_source = read_text(report, "PY-4-wheel", PYTHON_ROOT / "MANIFEST.in")
+    typed = PYTHON_ROOT / "src" / "duallity" / "py.typed"
+    if any(
+        value is None
+        for value in (
+            pyproject_text,
+            abi_source,
+            facade_source,
+            setup_source,
+            manifest_source,
+        )
+    ):
+        return
+    assert pyproject_text is not None
+    assert abi_source is not None
+    assert facade_source is not None
+    assert setup_source is not None
+    assert manifest_source is not None
+
+    project = tomllib.loads(pyproject_text)["project"]
+    python_model = model["python"]
+    expected_dependency = (
+        f"vinary-tree-interop=={python_model['dependencies']['vinary-tree-interop']}"
+    )
+    project_ok = (
+        project.get("name") == model["packages"]["pypi"] == python_model["package"]
+        and project.get("version") == python_model["version"]
+        and project.get("requires-python") == python_model["requiresPython"]
+        and project.get("dependencies") == [expected_dependency]
+    )
+    report.add(
+        "PY-1-project",
+        project_ok,
+        (
+            f"PyPI package {project.get('name')} {project.get('version')} has exact interop pin"
+            if project_ok
+            else "Python project identity, version, interpreter range, or dependency pin drifted"
+        ),
+    )
+
+    constants_ok = (
+        python_literal_assignment(abi_source, "ABI_VERSION") == model["abiVersion"]
+        and python_literal_assignment(abi_source, "API_REVISION")
+        == model["apiRevision"]
+        and python_literal_assignment(facade_source, "__version__")
+        == python_model["version"]
+    )
+    report.add(
+        "PY-2-constants",
+        constants_ok,
+        f"Python ABI/API/package constants {'agree' if constants_ok else 'DRIFT'}",
+    )
+
+    for check_id, class_name, key in (
+        ("PY-3-status-enum", "Status", "status"),
+        ("PY-4-algorithm-enum", "Algorithm", "algorithm"),
+        ("PY-5-kind-enum", "WfstKind", "wfstKind"),
+    ):
+        compare_maps(
+            report,
+            check_id,
+            f"Python {class_name}",
+            {name: int(value) for name, value in model["enums"][key]["values"].items()},
+            python_class_constants(abi_source, class_name),
+            "bindings/python/src/duallity/_abi.py",
+        )
+
+    modeled = {item["name"] for item in model["cFunctions"]}
+    symbols = set(re.findall(r'_bind\(\s*"(duallity_[a-z0-9_]+)"', abi_source))
+    required = {
+        "duallity_abi_version",
+        "duallity_api_revision",
+        "duallity_last_error_message",
+        "duallity_wfst_new_ref",
+        "duallity_wfst_free",
+        "duallity_wfst_resource",
+    }
+    symbols_ok = symbols == required and symbols <= modeled
+    report.add(
+        "PY-6-symbols",
+        symbols_ok,
+        f"Python native symbol set {'agrees' if symbols_ok else 'DRIFT'}: {sorted(symbols)}",
+    )
+
+    exports = python_literal_assignment(facade_source, "__all__")
+    modeled_exports = set(python_model["facadeExports"])
+    actual_exports = set(exports) if isinstance(exports, list) else set()
+    exports_ok = modeled_exports <= actual_exports
+    report.add(
+        "PY-7-exports",
+        exports_ok,
+        (
+            f"Python facade exports every modeled name ({len(modeled_exports)})"
+            if exports_ok
+            else f"Python facade lacks {sorted(modeled_exports - actual_exports)}"
+        ),
+    )
+
+    wheel_markers = (
+        "DUALLITY_PREBUILT_LIBRARY",
+        '"python-bindings"',
+        'return "py3", "none", platform_tag',
+        'shutil.copy2(REPOSITORY_ROOT / "LICENSE"',
+    )
+    wheel_ok = (
+        all(marker in setup_source for marker in wheel_markers)
+        and typed.is_file()
+        and project.get("license-files") == ["LICENSE"]
+        and (PYTHON_ROOT / "LICENSE").read_bytes() == (ROOT / "LICENSE").read_bytes()
+    )
+    report.add(
+        "PY-8-wheel",
+        wheel_ok,
+        (
+            "wheel embeds the native library, license, and py.typed marker"
+            if wheel_ok
+            else "wheel staging, native build feature, license, or py.typed marker is missing"
+        ),
+    )
+
+    facade_ok = (
+        "class Wfst(ScalarWfst):" in facade_source
+        and "duallity_wfst_new_ref" in facade_source
+        and "return Wfst.adopt(resource)" in facade_source
+        and "DUALLITY_LIBRARY" in abi_source
+    )
+    report.add(
+        "PY-9-resource-handoff",
+        facade_ok,
+        (
+            "Python uses pointer-form construction and zero-copy ScalarWfst adoption"
+            if facade_ok
+            else "Python resource construction/handoff contract is incomplete"
+        ),
+    )
+
+    manifest_entries = set(manifest_source.splitlines())
+    required_manifest_entries = {
+        "include LICENSE",
+        "include _registry_manifest.py",
+        "include pyrightconfig.json",
+        "recursive-include benchmark *.py",
+        "recursive-include examples *.py",
+        "recursive-include tests *.py",
+    }
+    sdist_markers = (
+        "class SelfContainedSourceDistribution(sdist):",
+        'destination / "Cargo.toml"',
+        "registry_text(",
+        'shutil.copytree(REPOSITORY_ROOT / "src"',
+        '"sdist": SelfContainedSourceDistribution',
+    )
+    sdist_ok = required_manifest_entries <= manifest_entries and all(
+        marker in setup_source for marker in sdist_markers
+    )
+    report.add(
+        "PY-10-sdist",
+        sdist_ok,
+        (
+            "source distribution carries validated registry Rust source, tests, examples, and benchmark"
+            if sdist_ok
+            else "source-distribution Rust source or Python evidence inventory is incomplete"
+        ),
+    )
+
+
 # ── MSRV: badge guard ────────────────────────────────────────────────────────
 
 
@@ -935,6 +1155,7 @@ def main() -> int:
         check_enums(report, model)
         check_javascript(report, model)
         check_julia_raku(report, model)
+        check_python(report, model)
     check_msrv(report)
     check_identity(report)
 

@@ -117,7 +117,65 @@ Run compilation and proof commands with the same process limits; the status
 proof needs only a 2 GiB ceiling. Capture output with `tee` and enable shell
 `pipefail` so a failing command cannot be hidden by a successful log write.
 
-## 5. Interpretation and remaining campaign scope
+## 5. Bounded runtime and memory observation
+
+The existing `wfst_expansion` Criterion harness was built from the clean source
+graph and run with filter `generalized`. It constructs deterministic dictionaries
+of 1,000 and 10,000 distinct 5–7-character terms, chooses one substitution from
+a mid-corpus term, and uses standard generalized operations at radius two.
+Dictionary construction is outside the timed regions. The construction group
+measures WFST construction and destruction; the expansion group measures
+breadth-first traversal of at most 2,000 states, including traversal bookkeeping
+and WFST cleanup, with WFST construction in Criterion's untimed batch setup.
+
+| Workload | Criterion estimate | Reported confidence interval |
+|---|---:|---:|
+| Construct, 1,000 terms | 1.0254 microseconds | 1.0246–1.0264 microseconds |
+| Construct, 10,000 terms | 1.0246 microseconds | 1.0239–1.0254 microseconds |
+| Bounded expansion, 1,000 terms | 1.9699 milliseconds | 1.9666–1.9752 milliseconds |
+| Bounded expansion, 10,000 terms | 3.2380 milliseconds | 3.2361–3.2407 milliseconds |
+
+These are Criterion's default 95% confidence intervals, not independent
+whole-process replications. Construction used 20 samples, one second of warm-up,
+and a two-second measurement target. The expansion group's explicit settings
+override those global settings: 30 samples, two seconds of warm-up, and a
+five-second target (actual collections 5.4896 and 6.0145 seconds).
+
+The host is an AMD Ryzen Threadripper PRO 5975WX with 32 physical cores and one
+active hardware thread per core. The benchmark was pinned to CPU 4, which was
+97.01% idle in the immediately preceding three-second observation; aggregate
+idle was 83.52%. The performance governor and boost were enabled. Frequency
+was not locked, and unrelated work continued on other cores. A separate
+40-second per-core monitor covered the run and its tail; its average includes
+post-benchmark idle time and must not be interpreted as benchmark utilization.
+
+The complete benchmark process took 23.49 seconds. GNU time reported peak
+resident memory of 52,804 KiB, 99% CPU utilization, zero swaps, 341 voluntary
+and 368 involuntary context switches. Peak RSS includes Criterion, dictionary
+fixtures and all four cases; it is not per-expansion heap usage or an allocation
+count. User-mode perf counters reported 99,973,570,310 cycles and
+259,804,032,388 instructions. The user-only context-switch/migration counters
+were zero; they do not establish absence of scheduling interference, as GNU
+time's switch counts demonstrate.
+
+The measured invocation used the executable printed by
+`cargo bench --all-features --bench wfst_expansion --no-run`, with:
+
+```text
+--bench generalized --noplot --sample-size 20 --measurement-time 2 --warm-up-time 1
+```
+
+It ran under `systemd-run` with a 4 GiB memory ceiling, no swap, a 200% CPU quota,
+and `taskset -c 4`. The quota exceeds the pinned workload's one-core ceiling,
+avoiding an intentional 100% cgroup-throttling boundary. `perf stat` and
+`/usr/bin/time -v` captured counters and memory. All logs and Criterion data
+were written beneath the repository's on-disk `target` directory.
+
+This is a bounded native observation, not a Java comparison or a causal
+before/after experiment. No old implementation was measured in the same
+session, and the results do not justify a speedup percentage.
+
+## 6. Interpretation and remaining campaign scope
 
 The evidence supports exact pruning/identity, complete logical publication,
 explicit resource exhaustion, and scoped callback failure handling for the

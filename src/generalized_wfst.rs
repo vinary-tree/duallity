@@ -40,12 +40,10 @@ use std::sync::{Arc, RwLock};
 
 use libdictenstein::{Dictionary, DictionaryNode};
 use liblevenshtein::transducer::generalized::GeneralizedAutomaton;
-use liblevenshtein::transducer::OperationSet;
 #[cfg(test)]
 use liblevenshtein::transducer::OperationType;
+use liblevenshtein::transducer::{OperationSet, OperationSetValidationError};
 
-#[cfg(test)]
-use crate::generalized_ops::OperationApplicability;
 use crate::generalized_ops::{
     bounded_operation_set, canonical_cost, compute_query_only_costs, operation_applies,
     prepare_operations, str_segment_by_char_width, PreparedOperation,
@@ -105,7 +103,7 @@ where
     /// Runtime-configurable operation set used for lazy product transitions.
     operations: OperationSet,
 
-    /// Cached operation widths, weights, and applicability classes.
+    /// Cached operation indexes, widths, and weights.
     prepared_operations: Vec<PreparedOperation>,
 
     /// Minimum cost to consume each query suffix without producing dictionary output.
@@ -127,7 +125,28 @@ where
     D::Node: DictionaryNode<Unit = char>,
 {
     /// Create a new generalized WFST.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `operations` is not a valid bounded alignment grammar. Use
+    /// [`Self::try_new`] when operation sets come from an untrusted or dynamic
+    /// source and the caller must handle validation errors.
     pub fn new(dictionary: &D, query: &str, max_distance: u8, operations: OperationSet) -> Self {
+        Self::try_new(dictionary, query, max_distance, operations)
+            .expect("invalid generalized WFST operation set")
+    }
+
+    /// Create a generalized WFST after validating the complete operation set.
+    ///
+    /// Validation precedes budget filtering and semantic deduplication so an
+    /// invalid operation cannot disappear before its error is reported.
+    pub fn try_new(
+        dictionary: &D,
+        query: &str,
+        max_distance: u8,
+        operations: OperationSet,
+    ) -> Result<Self, OperationSetValidationError> {
+        operations.validate()?;
         let operations = bounded_operation_set(max_distance, operations);
         let automaton = GeneralizedAutomaton::with_operations(max_distance, operations.clone());
         let prepared_operations = prepare_operations(&operations);
@@ -136,7 +155,7 @@ where
         let node_registry = Arc::new(RwLock::new(DictionaryNodeRegistry::new(dictionary.root())));
         let state_registry = Arc::new(RwLock::new(StateRegistry::new()));
 
-        Self {
+        Ok(Self {
             dictionary: dictionary.clone(),
             query: query.to_string(),
             automaton,
@@ -146,7 +165,7 @@ where
             node_registry,
             state_registry,
             cache: LazyStateCache::new(DEFAULT_MAX_CACHE_SIZE),
-        }
+        })
     }
 
     /// Get the query string.
@@ -758,10 +777,47 @@ mod tests {
         assert_eq!(wfst.prepared_operations.len(), 1);
         assert_eq!(wfst.operations.operations()[0].name(), "match");
         assert_eq!(wfst.prepared_operations[0].index, 0);
-        assert_eq!(
-            wfst.prepared_operations[0].applicability,
-            OperationApplicability::Match
-        );
+        assert_eq!(wfst.prepared_operations[0].consume_x, 1);
+        assert_eq!(wfst.prepared_operations[0].consume_y, 1);
+        assert_eq!(wfst.prepared_operations[0].weight, 0.0);
+    }
+
+    #[test]
+    fn test_generalized_try_new_validates_before_budget_filtering() {
+        let dict = DynamicDawgChar::<()>::from_terms(vec!["a"]);
+        let invalid_over_budget = OperationSetBuilder::new()
+            .with_operation(OperationType::new(0, 0, 2.0, "no_progress"))
+            .build();
+
+        assert!(matches!(
+            GeneralizedWfst::try_new(&dict, "a", 0, invalid_over_budget),
+            Err(OperationSetValidationError::NoProgress { .. })
+        ));
+
+        let invalid_equal_over_budget = OperationSetBuilder::new()
+            .with_operation(OperationType::with_applicability(
+                2,
+                1,
+                2.0,
+                liblevenshtein::transducer::OperationApplicability::Equal,
+                "wrong_equal_arity",
+            ))
+            .build();
+        assert!(matches!(
+            GeneralizedWfst::try_new(&dict, "a", 0, invalid_equal_over_budget),
+            Err(OperationSetValidationError::ApplicabilityArity { .. })
+        ));
+    }
+
+    #[test]
+    fn test_generalized_try_new_accepts_empty_operation_set() {
+        let dict = DynamicDawgChar::<()>::from_terms(vec!["a"]);
+
+        let wfst = GeneralizedWfst::try_new(&dict, "a", 0, OperationSetBuilder::new().build())
+            .expect("an empty operation set is a valid alignment grammar");
+
+        assert!(wfst.operations.is_empty());
+        assert!(wfst.prepared_operations.is_empty());
     }
 
     #[test]

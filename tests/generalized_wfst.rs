@@ -4,11 +4,91 @@ use duallity::{
 };
 use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
 use liblevenshtein::transducer::{
-    OperationSet, OperationSetBuilder, OperationType, SubstitutionSet,
+    generalized::GeneralizedAutomaton, OperationApplicability, OperationSet, OperationSetBuilder,
+    OperationType, SubstitutionSet,
 };
 use lling_llang::wfst::CachePolicy;
+use std::collections::{HashMap, VecDeque};
 
 type TestDict = DynamicDawgChar<()>;
+
+fn consume_label(labels: &[char], position: usize, label: Option<char>) -> Option<usize> {
+    match label {
+        None => Some(position),
+        Some(label) if labels.get(position) == Some(&label) => Some(position + 1),
+        Some(_) => None,
+    }
+}
+
+fn relation_cost(
+    dictionary_term: &str,
+    query: &str,
+    max_distance: u8,
+    operations: OperationSet,
+) -> Option<f64> {
+    let dictionary = DynamicDawgChar::<()>::from_terms(vec![dictionary_term]);
+    let mut wfst = GeneralizedWfst::try_new(&dictionary, query, max_distance, operations)
+        .expect("test operation set must validate");
+    let input = query.chars().collect::<Vec<_>>();
+    let output = dictionary_term.chars().collect::<Vec<_>>();
+    let start = Wfst::start(&wfst);
+    let mut queue = VecDeque::from([(start, 0usize, 0usize, 0.0f64)]);
+    let mut best_by_configuration = HashMap::from([((start, 0usize, 0usize), 0.0f64)]);
+    let mut accepted: Option<f64> = None;
+
+    while let Some((state, input_position, output_position, cost)) = queue.pop_front() {
+        if cost
+            > best_by_configuration
+                .get(&(state, input_position, output_position))
+                .copied()
+                .unwrap_or(f64::INFINITY)
+        {
+            continue;
+        }
+
+        if input_position == input.len() && output_position == output.len() && wfst.is_final(state)
+        {
+            let candidate = cost + wfst.final_weight(state).value();
+            accepted = Some(accepted.map_or(candidate, |current| current.min(candidate)));
+        }
+
+        for transition in wfst.transitions_lazy(state).to_vec() {
+            let Some(next_input) = consume_label(&input, input_position, transition.input) else {
+                continue;
+            };
+            let Some(next_output) = consume_label(&output, output_position, transition.output)
+            else {
+                continue;
+            };
+            let next_cost = cost + transition.weight.value();
+            let configuration = (transition.to, next_input, next_output);
+            let previous = best_by_configuration
+                .get(&configuration)
+                .copied()
+                .unwrap_or(f64::INFINITY);
+            if next_cost < previous {
+                best_by_configuration.insert(configuration, next_cost);
+                queue.push_back((transition.to, next_input, next_output, next_cost));
+            }
+        }
+    }
+
+    accepted
+}
+
+fn binary_words(max_len: usize) -> Vec<String> {
+    let mut words = vec![String::new()];
+    for len in 1..=max_len {
+        for bits in 0..(1usize << len) {
+            words.push(
+                (0..len)
+                    .map(|index| if bits & (1 << index) == 0 { 'a' } else { 'b' })
+                    .collect(),
+            );
+        }
+    }
+    words
+}
 
 fn transitions_for(
     wfst: &mut GeneralizedWfst<TestDict>,
@@ -77,6 +157,100 @@ fn generalized_wfst_deduplicates_equivalent_runtime_operations() {
             .count(),
         1
     );
+}
+
+#[test]
+fn generalized_wfst_honors_isolated_native_applicability_predicates() {
+    let any = OperationSetBuilder::new()
+        .with_operation(OperationType::new(1, 1, 1.0, "transpose"))
+        .build();
+    assert_eq!(relation_cost("a", "a", 1, any.clone()), Some(1.0));
+    assert_eq!(relation_cost("a", "b", 1, any), Some(1.0));
+
+    let equal = OperationSetBuilder::new()
+        .with_operation(OperationType::with_applicability(
+            1,
+            1,
+            1.0,
+            OperationApplicability::Equal,
+            "positive_equal",
+        ))
+        .build();
+    assert_eq!(relation_cost("é", "é", 1, equal.clone()), Some(1.0));
+    assert_eq!(relation_cost("é", "e", 1, equal), None);
+
+    let transpose = OperationSetBuilder::new()
+        .with_operation(OperationType::adjacent_transposition(1.0, "renamed"))
+        .build();
+    assert_eq!(relation_cost("ab", "ba", 1, transpose.clone()), Some(1.0));
+    assert_eq!(relation_cost("aa", "aa", 1, transpose.clone()), Some(1.0));
+    assert_eq!(relation_cost("ab", "cd", 1, transpose), None);
+}
+
+#[test]
+fn generalized_wfst_honors_directed_multi_scalar_listed_rules() {
+    let mut pairs = SubstitutionSet::new();
+    pairs.allow_str("ph", "f");
+    let operations = OperationSetBuilder::new()
+        .with_operation(OperationType::with_restriction(
+            2, 1, 0.25, pairs, "digraph",
+        ))
+        .build();
+
+    assert_eq!(relation_cost("ph", "f", 1, operations.clone()), Some(0.25));
+    assert_eq!(relation_cost("f", "ph", 1, operations), None);
+}
+
+#[test]
+fn generalized_wfst_acceptance_matches_native_generalized_automaton_exhaustively() {
+    let mut listed_pairs = SubstitutionSet::new();
+    listed_pairs.allow('a', 'b');
+    let operation_sets = [
+        OperationSet::standard(),
+        OperationSet::with_transposition(),
+        OperationSet::with_merge_split(),
+        OperationSetBuilder::new()
+            .with_operation(OperationType::new(1, 1, 1.0, "any"))
+            .with_operation(OperationType::with_applicability(
+                1,
+                1,
+                1.0,
+                OperationApplicability::Equal,
+                "equal",
+            ))
+            .build(),
+        OperationSetBuilder::new()
+            .with_match()
+            .with_operation(OperationType::with_restriction(
+                1,
+                1,
+                1.0,
+                listed_pairs,
+                "a_to_b",
+            ))
+            .build(),
+    ];
+    let words = binary_words(3);
+
+    for operations in operation_sets {
+        for max_distance in 0..=2 {
+            let native = GeneralizedAutomaton::with_operations(max_distance, operations.clone());
+            for dictionary_term in &words {
+                for query in &words {
+                    let native_accepts = native
+                        .try_accepts(dictionary_term, query)
+                        .expect("fixed operation sets validate");
+                    let wfst_accepts =
+                        relation_cost(dictionary_term, query, max_distance, operations.clone())
+                            .is_some();
+                    assert_eq!(
+                        wfst_accepts, native_accepts,
+                        "set={operations:?}, distance={max_distance}, dictionary={dictionary_term:?}, query={query:?}"
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[test]
@@ -312,6 +486,29 @@ fn generalized_wfst_builder_requires_query() {
     let result = GeneralizedWfstBuilder::new(&dict).build();
 
     assert!(result.is_err());
+}
+
+#[test]
+fn generalized_wfst_builder_reports_invalid_operations_before_filtering() {
+    let dict = DynamicDawgChar::<()>::from_terms(vec!["test"]);
+    let operations = OperationSetBuilder::new()
+        .with_operation(OperationType::new(0, 0, 2.0, "no_progress"))
+        .build();
+
+    let result = GeneralizedWfstBuilder::new(&dict)
+        .query("test")
+        .max_distance(0)
+        .with_operations(operations)
+        .build();
+    let error = match result {
+        Ok(_) => panic!("invalid over-budget operation must not disappear during filtering"),
+        Err(error) => error,
+    };
+
+    assert!(
+        error.contains("consumes neither input"),
+        "unexpected error: {error}"
+    );
 }
 
 #[test]

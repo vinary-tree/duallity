@@ -45,31 +45,33 @@ Within Type 3, duallity is expressive and useful.
   [02](02-edit-distance-and-levenshtein-automata.md)–[03](03-levenshtein-as-transducer.md)).
 - **Generalized edit metrics** — obtained by enlarging the operation set: transpositions
   (Damerau–Levenshtein), merges/splits (OCR), and restricted phonetic digraph rewrites. duallity
-  catalogues these as `OperationType` values, each a 4-tuple
-  $`\langle \textit{consume\_x},\ \textit{consume\_y},\ \textit{weight},\ \textit{restriction} \rangle`$
+  catalogues these as `OperationType` values, each a 5-tuple
+  $`\langle \textit{consume\_x},\ \textit{consume\_y},\ \textit{weight},\ \textit{applicability},\ \textit{name} \rangle`$
   where $`\textit{consume\_x}`$ is the number of characters consumed from the **dictionary term**
   (output side), $`\textit{consume\_y}`$ the number from the **query** (input side),
-  $`\textit{weight}`$ the operation cost, and $`\textit{restriction}`$ an optional
-  character-pair set that fences the operation to named pairs (module `generalized_ops`,
+  $`\textit{weight}`$ the operation cost, and $`\textit{applicability}`$ the semantic predicate
+  `Any`, `Equal`, `AdjacentTranspose`, or `Listed`. The final $`\textit{name}`$ is diagnostic:
+  renaming an operation cannot change the relation it accepts. A `Listed` predicate carries a
+  directed set of complete source/target string pairs (module `generalized_ops`,
   `liblevenshtein::transducer::OperationType`):
 
-  <img src="../diagrams/operationtype-taxonomy.svg" alt="OperationType taxonomy: match, substitute, insert, delete, transpose, merge, split, and restricted phonetic-digraph operations, each shown as a consume_x / consume_y / weight / restriction 4-tuple" width="880"/>
+  <img src="../diagrams/operationtype-taxonomy.svg" alt="OperationType taxonomy: match, substitute, insert, delete, transpose, merge, split, and listed phonetic-digraph operations, each shown with its source width, target width, weight, and applicability predicate" width="880"/>
 
-  | Operation | $`\textit{consume\_x}`$ (dict) | $`\textit{consume\_y}`$ (query) | $`\textit{weight}`$ | $`\textit{restriction}`$ | Predicate (source) |
+  | Operation | $`\textit{consume\_x}`$ (dict) | $`\textit{consume\_y}`$ (query) | $`\textit{weight}`$ | Applicability | Predicate |
   |---|:---:|:---:|:---:|---|---|
-  | match | 1 | 1 | $`0`$ | none | `is_match` (equal chars) |
-  | substitute | 1 | 1 | $`> 0`$ | none | `is_substitution` |
-  | insert | 0 | 1 | $`1`$ | none | `is_insertion` (query only) |
-  | delete | 1 | 0 | $`1`$ | none | `is_deletion` (dict only) |
-  | transpose | 2 | 2 | $`1`$ | none | adjacent swap |
-  | merge | 2 | 1 | $`1`$ | none | two dict → one query |
-  | split | 1 | 2 | $`1`$ | none | one dict → two query |
-  | phonetic (e.g. $`\texttt{ph} \leftrightarrow \texttt{f}`$) | 2 | 1 | e.g. $`0.15`$ | $`\{\texttt{ph} \leftrightarrow \texttt{f}\}`$ | `is_restricted` |
+  | match | 1 | 1 | $`0`$ | `Equal` | complete slices equal |
+  | substitute | 1 | 1 | $`> 0`$ | `Any` | every pair, including equal slices |
+  | insert | 0 | 1 | $`1`$ | `Any` | query only |
+  | delete | 1 | 0 | $`1`$ | `Any` | dictionary only |
+  | transpose | 2 | 2 | $`1`$ | `AdjacentTranspose` | complete two-scalar reversal |
+  | merge | 2 | 1 | $`1`$ | `Any` | two dictionary scalars → one query scalar |
+  | split | 1 | 2 | $`1`$ | `Any` | one dictionary scalar → two query scalars |
+  | phonetic (e.g. $`\texttt{ph} \to \texttt{f}`$) | 2 | 1 | e.g. $`0.15`$ | `Listed` | exact directed pair membership |
 
-  A restricted operation applies only when the consumed characters lie in its named pair set
-  (`operation_applies` dispatches on the precomputed `OperationApplicability`); duallity additionally
-  drops any operation whose weight exceeds the bound or whose WFST semantics duplicate another
-  (`bounded_operation_set`). This is the runtime-configurable machinery of
+  `operation_applies` dispatches directly on this native applicability tag while prepared metadata
+  caches only indexes, scalar widths, and weights. Construction validates the original set before
+  duallity drops any operation whose weight exceeds the bound or whose full WFST semantics duplicate
+  another (`bounded_operation_set`). This is the runtime-configurable machinery of
   [design/generalized-wfst](../design/generalized-wfst.md).
 - **Phonetic rewrites** — a *finite* rule set of string rewrites
   ($`\texttt{ph} \to \texttt{f}`$, $`\texttt{ck} \to \texttt{k}`$) is a rational relation,

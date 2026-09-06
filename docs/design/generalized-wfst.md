@@ -234,12 +234,14 @@ The wrapper implements `Wfst`, `LazyWfst`, and `StateSource<char, TropicalWeight
 with the same dual composition surface as the other variants: `StateSource::compute_state` is the pure
 `&self` path; `LazyWfst::expand` / `transitions_lazy` add the mutable transition cache.
 
-> **Bounding at construction.** `new` normalizes the operation set through `bounded_operation_set`
-> before building: it **drops any operation whose weight exceeds $`k`$** (it can never fire within
-> budget) and **deduplicates operations with identical WFST semantics** (same $`x`$, $`y`$,
-> $`\omega`$, $`\varrho`$). A consequence worth internalizing: at $`k = 0`$ only the
-> weight-$`0`$ `match` survives, so a substitute (weight $`1`$) is silently removed. The
-> builder's only failure mode is `Err("Query not set")`.
+> **Validation and bounding at construction.** `try_new` validates the original `OperationSet`
+> before `bounded_operation_set` can remove anything. It then **drops any operation whose weight
+> exceeds $`k`$** (it can never fire within budget) and **deduplicates operations with identical
+> WFST semantics**: the same $`x`$, $`y`$, exact $`\omega`$, and complete applicability tag and
+> payload. The diagnostic name is deliberately absent from semantic identity. At $`k = 0`$, for
+> example, a weight-$`1`$ substitute is removed, while distinct zero-cost `Equal`, `Any`, and
+> `Listed` predicates remain distinct. `new` is the convenience form that panics on an invalid
+> grammar; the builder returns an error for either a missing query or an invalid operation set.
 
 ### The operation set
 
@@ -249,15 +251,15 @@ with the same dual composition surface as the other variants: `StateSource::comp
 | Preset | Operation | $`\langle x_{\text{dict}},\, y_{\text{query}},\, \omega\rangle`$ | Applicability | Tape arc(s) — $`\text{query} : \text{dict} / \omega`$ |
 |--------|-----------|:---:|-----------|-----------|
 | `standard()` | match | $`\langle 1,1,0\rangle`$ | $`\mathbf{d}=\mathbf{u}`$ | $`u_0 : d_0 / 0`$ ($`u_0 = d_0`$) |
-| `standard()` | substitute | $`\langle 1,1,1\rangle`$ | bytes differ | $`u_0 : d_0 / 1`$ |
+| `standard()` | substitute | $`\langle 1,1,1\rangle`$ | `Any`, including equality | $`u_0 : d_0 / 1`$ |
 | `standard()` | insert | $`\langle 0,1,1\rangle`$ | any | $`u_0 : \varepsilon / 1`$ |
 | `standard()` | delete | $`\langle 1,0,1\rangle`$ | any | $`\varepsilon : d_0 / 1`$ |
 | `with_transposition()` | transpose | $`\langle 2,2,1\rangle`$ | $`d_0{=}u_1 \wedge d_1{=}u_0`$ | $`u_0 : d_0 / 1 \,\cdot\, u_1 : d_1 / 0`$ |
 | `with_merge_split()` | merge | $`\langle 2,1,1\rangle`$ | any | $`u_0 : d_0 / 1 \,\cdot\, \varepsilon : d_1 / 0`$ |
 | `with_merge_split()` | split | $`\langle 1,2,1\rangle`$ | any | $`u_0 : d_0 / 1 \,\cdot\, u_1 : \varepsilon / 0`$ |
-| digraphs ($`2 \to 1`$) | $`\texttt{ch} \to \texttt{k}`$, $`\texttt{sh} \to \texttt{s}`$, $`\texttt{ph} \to \texttt{f}`$, $`\texttt{th} \to \texttt{t}`$ | $`\langle 2,1,0.15\rangle`$ | restricted | $`u_0 : d_0 / 0.15 \,\cdot\, \varepsilon : d_1 / 0`$ |
-| digraphs ($`1 \to 2`$) | $`\texttt{k} \to \texttt{ch}`$, $`\texttt{s} \to \texttt{sh}`$, $`\texttt{f} \to \texttt{ph}`$, $`\texttt{t} \to \texttt{th}`$ | $`\langle 1,2,0.15\rangle`$ | restricted | $`u_0 : d_0 / 0.15 \,\cdot\, u_1 : \varepsilon / 0`$ |
-| digraphs ($`2 \to 2`$) | $`\texttt{qu} \leftrightarrow \texttt{kw}`$ | $`\langle 2,2,0.15\rangle`$ | restricted | $`u_0 : d_0 / 0.15 \,\cdot\, u_1 : d_1 / 0`$ |
+| digraphs ($`2 \to 1`$) | $`\texttt{ch} \to \texttt{k}`$, $`\texttt{sh} \to \texttt{s}`$, $`\texttt{ph} \to \texttt{f}`$, $`\texttt{th} \to \texttt{t}`$ | $`\langle 2,1,0.15\rangle`$ | `Listed` | $`u_0 : d_0 / 0.15 \,\cdot\, \varepsilon : d_1 / 0`$ |
+| digraphs ($`1 \to 2`$) | $`\texttt{k} \to \texttt{ch}`$, $`\texttt{s} \to \texttt{sh}`$, $`\texttt{f} \to \texttt{ph}`$, $`\texttt{t} \to \texttt{th}`$ | $`\langle 1,2,0.15\rangle`$ | `Listed` | $`u_0 : d_0 / 0.15 \,\cdot\, u_1 : \varepsilon / 0`$ |
+| digraphs ($`2 \to 2`$) | $`\texttt{qu} \leftrightarrow \texttt{kw}`$ | $`\langle 2,2,0.15\rangle`$ | `Listed` | $`u_0 : d_0 / 0.15 \,\cdot\, u_1 : d_1 / 0`$ |
 
 > **Merge vs. split arity.** Following duallity's `generalized_ops.rs`
 > (`OperationType::new(2, 1, …, "merge")`, whose first argument is the **dictionary** arity), `merge`

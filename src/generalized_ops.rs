@@ -1,16 +1,7 @@
-use liblevenshtein::transducer::{OperationSet, OperationType};
+use liblevenshtein::transducer::{OperationApplicability, OperationSet, OperationType};
 use smallvec::SmallVec;
 
 type LabelBuffer = SmallVec<[char; 4]>;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum OperationApplicability {
-    Match,
-    UnrestrictedSubstitution,
-    UnrestrictedTranspose,
-    Restricted,
-    Any,
-}
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PreparedOperation {
@@ -18,7 +9,6 @@ pub(crate) struct PreparedOperation {
     pub(crate) consume_x: usize,
     pub(crate) consume_y: usize,
     pub(crate) weight: f64,
-    pub(crate) applicability: OperationApplicability,
 }
 
 pub(crate) fn bounded_operation_set(max_distance: u8, operations: OperationSet) -> OperationSet {
@@ -54,7 +44,7 @@ fn operations_have_same_wfst_semantics(left: &OperationType, right: &OperationTy
     left.consume_x() == right.consume_x()
         && left.consume_y() == right.consume_y()
         && left.weight() == right.weight()
-        && left.restriction() == right.restriction()
+        && left.applicability() == right.applicability()
 }
 
 pub(crate) fn prepare_operations(operations: &OperationSet) -> Vec<PreparedOperation> {
@@ -66,29 +56,10 @@ pub(crate) fn prepare_operations(operations: &OperationSet) -> Vec<PreparedOpera
             consume_x: operation.consume_x(),
             consume_y: operation.consume_y(),
             weight: operation.weight(),
-            applicability: classify_operation(operation),
         });
     }
 
     prepared
-}
-
-fn classify_operation(operation: &OperationType) -> OperationApplicability {
-    if operation.name() == "transpose"
-        && !operation.is_restricted()
-        && operation.consume_x() == 2
-        && operation.consume_y() == 2
-    {
-        OperationApplicability::UnrestrictedTranspose
-    } else if operation.is_substitution() && !operation.is_restricted() {
-        OperationApplicability::UnrestrictedSubstitution
-    } else if operation.is_match() {
-        OperationApplicability::Match
-    } else if operation.is_restricted() {
-        OperationApplicability::Restricted
-    } else {
-        OperationApplicability::Any
-    }
 }
 
 pub(crate) fn compute_query_only_costs(
@@ -152,27 +123,25 @@ pub(crate) fn str_segment_by_char_width(
 }
 
 pub(crate) fn operation_applies(
-    prepared: &PreparedOperation,
+    _prepared: &PreparedOperation,
     op: &OperationType,
     dict_chars: &[char],
     dict_bytes: &[u8],
     query_chars: &[char],
     query_bytes: &[u8],
 ) -> bool {
-    match prepared.applicability {
-        OperationApplicability::UnrestrictedTranspose => {
+    match op.applicability() {
+        OperationApplicability::AdjacentTranspose => {
             dict_chars.len() == 2
                 && query_chars.len() == 2
                 && dict_chars[0] == query_chars[1]
                 && dict_chars[1] == query_chars[0]
-                && dict_chars != query_chars
         }
-        OperationApplicability::UnrestrictedSubstitution => dict_bytes != query_bytes,
-        OperationApplicability::Match => dict_chars == query_chars,
-        OperationApplicability::Restricted => op
-            .restriction()
-            .is_some_and(|restriction| restriction.contains_str(dict_bytes, query_bytes)),
         OperationApplicability::Any => true,
+        OperationApplicability::Equal => dict_chars == query_chars,
+        OperationApplicability::Listed(restriction) => {
+            restriction.contains_str(dict_bytes, query_bytes)
+        }
     }
 }
 
@@ -188,7 +157,26 @@ pub(crate) fn canonical_cost(cost: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use liblevenshtein::transducer::{OperationSetBuilder, OperationType};
+    use liblevenshtein::transducer::{
+        OperationApplicability as NativeOperationApplicability, OperationSetBuilder, OperationType,
+        SubstitutionSet,
+    };
+
+    fn applies(operation: OperationType, dictionary: &str, query: &str) -> bool {
+        let operations = OperationSetBuilder::new().with_operation(operation).build();
+        let prepared = prepare_operations(&operations);
+        let dictionary_chars = dictionary.chars().collect::<LabelBuffer>();
+        let query_chars = query.chars().collect::<LabelBuffer>();
+
+        operation_applies(
+            &prepared[0],
+            &operations.operations()[0],
+            &dictionary_chars,
+            dictionary.as_bytes(),
+            &query_chars,
+            query.as_bytes(),
+        )
+    }
 
     #[test]
     fn filters_operations_that_cannot_contribute_within_bound() {
@@ -247,7 +235,124 @@ mod tests {
     }
 
     #[test]
-    fn prepares_operation_applicability_once() {
+    fn any_applicability_includes_equal_and_unequal_slices() {
+        assert!(applies(OperationType::new(1, 1, 1.0, "any"), "a", "a"));
+        assert!(applies(OperationType::new(1, 1, 1.0, "any"), "a", "b"));
+        assert!(applies(
+            OperationType::with_applicability(
+                1,
+                1,
+                0.0,
+                NativeOperationApplicability::Any,
+                "zero_cost_any",
+            ),
+            "a",
+            "b",
+        ));
+    }
+
+    #[test]
+    fn equal_applicability_is_independent_of_weight_and_supports_unicode_widths() {
+        let equal = || {
+            OperationType::with_applicability(
+                2,
+                2,
+                0.25,
+                NativeOperationApplicability::Equal,
+                "positive_equal",
+            )
+        };
+
+        assert!(applies(equal(), "éa", "éa"));
+        assert!(!applies(equal(), "éa", "éb"));
+    }
+
+    #[test]
+    fn adjacent_transpose_is_tagged_not_named_and_allows_repeated_scalars() {
+        let transpose = || OperationType::adjacent_transposition(1.0, "renamed");
+        assert!(applies(transpose(), "ab", "ba"));
+        assert!(applies(transpose(), "aa", "aa"));
+        assert!(!applies(transpose(), "ab", "cd"));
+
+        let misleading_name = OperationType::new(2, 2, 1.0, "transpose");
+        assert!(applies(misleading_name, "ab", "cd"));
+    }
+
+    #[test]
+    fn listed_applicability_is_directional_and_empty_lists_apply_nowhere() {
+        let mut directed = SubstitutionSet::new();
+        directed.allow_str("ph", "f");
+        let listed = || OperationType::with_restriction(2, 1, 0.25, directed.clone(), "directed");
+
+        assert!(applies(listed(), "ph", "f"));
+        assert!(!applies(listed(), "f", "ph"));
+
+        let empty = OperationType::with_restriction(1, 1, 0.25, SubstitutionSet::new(), "empty");
+        assert!(!applies(empty, "a", "b"));
+
+        let mut zero_cost_pairs = SubstitutionSet::new();
+        zero_cost_pairs.allow('a', 'b');
+        let zero_cost_listed =
+            OperationType::with_restriction(1, 1, 0.0, zero_cost_pairs, "zero_cost_listed");
+        assert!(applies(zero_cost_listed, "a", "b"));
+    }
+
+    #[test]
+    fn semantic_deduplication_preserves_distinct_applicability_in_either_order() {
+        let equal = || {
+            OperationType::with_applicability(
+                1,
+                1,
+                1.0,
+                NativeOperationApplicability::Equal,
+                "equal",
+            )
+        };
+        let any = || OperationType::new(1, 1, 1.0, "any");
+
+        for operations in [
+            OperationSetBuilder::new()
+                .with_operation(equal())
+                .with_operation(any())
+                .build(),
+            OperationSetBuilder::new()
+                .with_operation(any())
+                .with_operation(equal())
+                .build(),
+        ] {
+            let bounded = bounded_operation_set(1, operations);
+            assert_eq!(bounded.len(), 2);
+        }
+    }
+
+    #[test]
+    fn semantic_deduplication_ignores_names_and_list_insertion_order() {
+        let mut forward = SubstitutionSet::new();
+        forward.allow('a', 'b');
+        forward.allow('c', 'd');
+        let mut reverse = SubstitutionSet::new();
+        reverse.allow('c', 'd');
+        reverse.allow('a', 'b');
+        let operations = OperationSetBuilder::new()
+            .with_operation(OperationType::with_restriction(
+                1, 1, 0.25, forward, "first",
+            ))
+            .with_operation(OperationType::with_restriction(
+                1, 1, 0.25, reverse, "renamed",
+            ))
+            .with_operation(OperationType::adjacent_transposition(1.0, "transpose_one"))
+            .with_operation(OperationType::adjacent_transposition(1.0, "transpose_two"))
+            .build();
+
+        let bounded = bounded_operation_set(1, operations);
+
+        assert_eq!(bounded.len(), 2);
+        assert_eq!(bounded.operations()[0].name(), "first");
+        assert_eq!(bounded.operations()[1].name(), "transpose_one");
+    }
+
+    #[test]
+    fn prepares_operation_dimensions_and_weights_once() {
         let operations = OperationSetBuilder::new()
             .with_operation(OperationType::new(1, 1, 0.0, "match"))
             .with_operation(OperationType::new(1, 1, 1.0, "substitute"))
@@ -261,16 +366,11 @@ mod tests {
         assert_eq!(prepared[0].consume_x, 1);
         assert_eq!(prepared[0].consume_y, 1);
         assert_eq!(prepared[0].weight, 0.0);
-        assert_eq!(prepared[0].applicability, OperationApplicability::Match);
-        assert_eq!(
-            prepared[1].applicability,
-            OperationApplicability::UnrestrictedSubstitution
-        );
-        assert_eq!(
-            prepared[2].applicability,
-            OperationApplicability::UnrestrictedTranspose
-        );
-        assert_eq!(prepared[3].applicability, OperationApplicability::Any);
+        assert_eq!(prepared[1].weight, 1.0);
+        assert_eq!(prepared[2].consume_x, 2);
+        assert_eq!(prepared[2].consume_y, 2);
+        assert_eq!(prepared[3].consume_x, 2);
+        assert_eq!(prepared[3].consume_y, 1);
     }
 
     #[test]

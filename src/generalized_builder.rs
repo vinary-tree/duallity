@@ -84,11 +84,7 @@ where
     /// Build the WFST.
     pub fn build(self) -> Result<GeneralizedWfst<D>, String> {
         let query = self.query.ok_or_else(|| "Query not set".to_string())?;
-        Ok(GeneralizedWfst::new(
-            self.dictionary,
-            &query,
-            self.max_distance,
-            self.operations,
-        ))
+        GeneralizedWfst::try_new(self.dictionary, &query, self.max_distance, self.operations)
+            .map_err(|error| error.to_string())
     }
 }

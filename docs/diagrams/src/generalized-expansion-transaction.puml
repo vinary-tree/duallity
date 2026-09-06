@@ -1,0 +1,29 @@
+@startuml generalized-expansion-transaction
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam activityBorderColor #34495E
+skinparam ArrowColor #34495E
+title Generalized expansion: complete publication or explicit failure
+start
+:Open computation fault scope\nand check cancellation; <<#D6EAF8>>
+:Resolve immutable dictionary node\nand determine exact finality; <<#D1F2EB>>
+:Build metered width caches;\niterative DFS and staged operation arcs\n(no shared write locks); <<#D6EAF8>>
+if (Traversal, source and work checks pass?) then (yes)
+  :Reconcile dictionary identities under node lock;\nretire duplicate owners outside the lock;\nretry with checks and a bounded work budget; <<#EAECEE>>
+  :Keep the stable node lock, then lock states;\nreserve complete products and label chains; <<#D6EAF8>>
+  if (Retained limits, reservation,\ncancellation and own fault scope pass?) then (yes)
+    :Publish all prepared identities; <<#D5F5E3>>
+    :Release both locks; <<#EAECEE>>
+    :Release staging reference counts;\nreturn and cache complete expansion; <<#E8DAEF>>
+    stop
+  else (no)
+    :Release both locks; <<#EAECEE>>
+    :Drop local staging;\nreturn failure or cancellation;\npublish no identities or arcs; <<#FADBD8>>
+    stop
+  endif
+else (no)
+  :Drop local staging;\nreturn failure or cancellation;\npublish no identities or arcs; <<#FADBD8>>
+  stop
+endif
+@enduml

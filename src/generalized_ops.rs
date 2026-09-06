@@ -1,33 +1,43 @@
+use liblevenshtein::cost::{CostScale, ScaleError};
 use liblevenshtein::transducer::{OperationApplicability, OperationSet, OperationType};
-use smallvec::SmallVec;
-
-type LabelBuffer = SmallVec<[char; 4]>;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PreparedOperation {
     pub(crate) index: usize,
     pub(crate) consume_x: usize,
     pub(crate) consume_y: usize,
+    /// Compact constructor-assigned indexes, independent of raw widths.
+    pub(crate) source_width_slot: usize,
+    pub(crate) query_width_slot: usize,
+    /// Exact cost in the WFST's shared fixed-point domain.
+    pub(crate) scaled_weight: usize,
+    /// Presentation weight retained only for emitted tropical-f64 arcs.
     pub(crate) weight: f64,
 }
 
-pub(crate) fn bounded_operation_set(max_distance: u8, operations: OperationSet) -> OperationSet {
+pub(crate) fn bounded_operation_set(
+    scale: CostScale,
+    max_cost: usize,
+    operations: OperationSet,
+) -> Result<OperationSet, ScaleError> {
+    // Scale every original rule before filtering. An unrepresentable rule is a
+    // configuration error even when its nominal f64 value exceeds the budget.
+    let scaled_weights = operations
+        .operations()
+        .iter()
+        .map(|operation| scale.to_scaled(operation.weight()))
+        .collect::<Result<Vec<_>, _>>()?;
     let mut bounded = OperationSet::with_capacity(operations.len());
 
-    for operation in operations.operations() {
-        if operation_can_contribute_within_bound(operation, max_distance)
+    for (operation, scaled_weight) in operations.operations().iter().zip(scaled_weights) {
+        if scaled_weight <= max_cost
             && !contains_operation_with_same_wfst_semantics(&bounded, operation)
         {
             bounded.add(operation.clone());
         }
     }
 
-    bounded
-}
-
-#[inline]
-fn operation_can_contribute_within_bound(operation: &OperationType, max_distance: u8) -> bool {
-    operation.weight().is_finite() && operation.weight() <= f64::from(max_distance) + f64::EPSILON
+    Ok(bounded)
 }
 
 fn contains_operation_with_same_wfst_semantics(
@@ -47,59 +57,59 @@ fn operations_have_same_wfst_semantics(left: &OperationType, right: &OperationTy
         && left.applicability() == right.applicability()
 }
 
-pub(crate) fn prepare_operations(operations: &OperationSet) -> Vec<PreparedOperation> {
+pub(crate) fn prepare_operations(
+    operations: &OperationSet,
+    scale: CostScale,
+) -> Result<Vec<PreparedOperation>, ScaleError> {
     let mut prepared = Vec::with_capacity(operations.len());
+    // The caller validates the native aggregate-consumption ceiling before
+    // preparation, so each temporary table has at most 4097 scalar entries.
+    let mut source_slots = vec![
+        usize::MAX;
+        operations
+            .operations()
+            .iter()
+            .map(OperationType::consume_x)
+            .max()
+            .unwrap_or(0)
+            + 1
+    ];
+    let mut query_slots = vec![
+        usize::MAX;
+        operations
+            .operations()
+            .iter()
+            .map(OperationType::consume_y)
+            .max()
+            .unwrap_or(0)
+            + 1
+    ];
+    let mut source_count = 0;
+    let mut query_count = 0;
 
     for (index, operation) in operations.operations().iter().enumerate() {
+        let source_slot = &mut source_slots[operation.consume_x()];
+        if *source_slot == usize::MAX {
+            *source_slot = source_count;
+            source_count += 1;
+        }
+        let query_slot = &mut query_slots[operation.consume_y()];
+        if *query_slot == usize::MAX {
+            *query_slot = query_count;
+            query_count += 1;
+        }
         prepared.push(PreparedOperation {
             index,
             consume_x: operation.consume_x(),
             consume_y: operation.consume_y(),
+            source_width_slot: *source_slot,
+            query_width_slot: *query_slot,
+            scaled_weight: scale.to_scaled(operation.weight())?,
             weight: operation.weight(),
         });
     }
 
-    prepared
-}
-
-pub(crate) fn compute_query_only_costs(
-    query: &str,
-    operations: &[OperationType],
-    prepared_operations: &[PreparedOperation],
-) -> Vec<Option<f64>> {
-    let mut costs = vec![None; query.len() + 1];
-    costs[query.len()] = Some(0.0);
-
-    for (start, _) in query.char_indices().rev() {
-        let mut best: Option<f64> = None;
-
-        for prepared in prepared_operations {
-            let Some(op) = operations.get(prepared.index) else {
-                continue;
-            };
-            let query_width = prepared.consume_y;
-            if prepared.consume_x != 0 || query_width == 0 {
-                continue;
-            }
-
-            let Some((segment, next)) = str_segment_by_char_width(query, start, query_width) else {
-                continue;
-            };
-            let query_chars: LabelBuffer = segment.chars().collect();
-            if !operation_applies(prepared, op, &[], &[], &query_chars, segment.as_bytes()) {
-                continue;
-            }
-
-            if let Some(rest) = costs.get(next).copied().flatten() {
-                let candidate = prepared.weight + rest;
-                best = Some(best.map_or(candidate, |current| current.min(candidate)));
-            }
-        }
-
-        costs[start] = best.map(canonical_cost);
-    }
-
-    costs
+    Ok(prepared)
 }
 
 pub(crate) fn str_segment_by_char_width(
@@ -145,18 +155,11 @@ pub(crate) fn operation_applies(
     }
 }
 
-#[inline]
-pub(crate) fn canonical_cost(cost: f64) -> f64 {
-    if cost == 0.0 {
-        0.0
-    } else {
-        cost
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use smallvec::SmallVec;
+    type LabelBuffer = SmallVec<[char; 4]>;
     use liblevenshtein::transducer::{
         OperationApplicability as NativeOperationApplicability, OperationSetBuilder, OperationType,
         SubstitutionSet,
@@ -164,7 +167,8 @@ mod tests {
 
     fn applies(operation: OperationType, dictionary: &str, query: &str) -> bool {
         let operations = OperationSetBuilder::new().with_operation(operation).build();
-        let prepared = prepare_operations(&operations);
+        let scale = CostScale::for_operations(&operations).expect("test costs are exact decimals");
+        let prepared = prepare_operations(&operations, scale).expect("test costs scale exactly");
         let dictionary_chars = dictionary.chars().collect::<LabelBuffer>();
         let query_chars = query.chars().collect::<LabelBuffer>();
 
@@ -183,10 +187,10 @@ mod tests {
         let operations = OperationSetBuilder::new()
             .with_operation(OperationType::new(1, 1, 0.0, "match"))
             .with_operation(OperationType::new(1, 1, 1.0, "over_budget"))
-            .with_operation(OperationType::new(1, 1, f64::INFINITY, "infinite"))
             .build();
 
-        let bounded = bounded_operation_set(0, operations);
+        let scale = CostScale::for_operations(&operations).expect("test costs are exact decimals");
+        let bounded = bounded_operation_set(scale, 0, operations).expect("weights scale exactly");
 
         assert_eq!(bounded.len(), 1);
         assert_eq!(bounded.operations()[0].name(), "match");
@@ -222,7 +226,9 @@ mod tests {
             ))
             .build();
 
-        let bounded = bounded_operation_set(1, operations);
+        let scale = CostScale::for_operations(&operations).expect("test costs are exact decimals");
+        let bounded = bounded_operation_set(scale, scale.scale_budget(1).unwrap(), operations)
+            .expect("weights scale exactly");
 
         assert_eq!(
             bounded
@@ -320,7 +326,10 @@ mod tests {
                 .with_operation(equal())
                 .build(),
         ] {
-            let bounded = bounded_operation_set(1, operations);
+            let scale =
+                CostScale::for_operations(&operations).expect("test costs are exact decimals");
+            let bounded = bounded_operation_set(scale, scale.scale_budget(1).unwrap(), operations)
+                .expect("weights scale exactly");
             assert_eq!(bounded.len(), 2);
         }
     }
@@ -344,7 +353,9 @@ mod tests {
             .with_operation(OperationType::adjacent_transposition(1.0, "transpose_two"))
             .build();
 
-        let bounded = bounded_operation_set(1, operations);
+        let scale = CostScale::for_operations(&operations).expect("test costs are exact decimals");
+        let bounded = bounded_operation_set(scale, scale.scale_budget(1).unwrap(), operations)
+            .expect("weights scale exactly");
 
         assert_eq!(bounded.len(), 2);
         assert_eq!(bounded.operations()[0].name(), "first");
@@ -360,41 +371,59 @@ mod tests {
             .with_operation(OperationType::new(2, 1, 1.0, "merge"))
             .build();
 
-        let prepared = prepare_operations(&operations);
+        let scale = CostScale::for_operations(&operations).expect("test costs are exact decimals");
+        let prepared = prepare_operations(&operations, scale).expect("weights scale exactly");
 
         assert_eq!(prepared.len(), 4);
         assert_eq!(prepared[0].consume_x, 1);
         assert_eq!(prepared[0].consume_y, 1);
+        assert_eq!(prepared[0].scaled_weight, 0);
         assert_eq!(prepared[0].weight, 0.0);
+        assert_eq!(prepared[1].scaled_weight, 1);
         assert_eq!(prepared[1].weight, 1.0);
         assert_eq!(prepared[2].consume_x, 2);
         assert_eq!(prepared[2].consume_y, 2);
         assert_eq!(prepared[3].consume_x, 2);
         assert_eq!(prepared[3].consume_y, 1);
+        assert_eq!(
+            prepared
+                .iter()
+                .map(|op| op.source_width_slot)
+                .collect::<Vec<_>>(),
+            [0, 0, 1, 1]
+        );
+        assert_eq!(
+            prepared
+                .iter()
+                .map(|op| op.query_width_slot)
+                .collect::<Vec<_>>(),
+            [0, 0, 1, 0]
+        );
     }
 
     #[test]
-    fn query_only_costs_skip_unrepresentable_operation_widths() {
+    fn maximum_width_uses_one_compact_slot_per_side() {
+        for (source, query) in [(4096, 0), (0, 4096)] {
+            let operations = OperationSetBuilder::new()
+                .with_operation(OperationType::new(source, query, 1.0, "wide"))
+                .build();
+            operations.validate().expect("native width ceiling");
+            let scale = CostScale::for_operations(&operations).expect("integer cost");
+            let prepared = prepare_operations(&operations, scale).expect("prepare");
+            assert_eq!(prepared[0].source_width_slot, 0);
+            assert_eq!(prepared[0].query_width_slot, 0);
+        }
+    }
+
+    #[test]
+    fn filtering_reports_an_unrepresentable_over_budget_rule() {
         let operations = OperationSetBuilder::new()
-            .with_operation(OperationType::new(0, usize::MAX, 1.0, "too_wide"))
-            .with_operation(OperationType::new(0, 1, 1.0, "insert"))
+            .with_operation(OperationType::new(1, 1, 1.0e-100, "unrepresentable"))
             .build();
-        let prepared = prepare_operations(&operations);
 
-        let costs = compute_query_only_costs("a", operations.operations(), &prepared);
-
-        assert_eq!(costs[0], Some(1.0));
-        assert_eq!(costs[1], Some(0.0));
-    }
-
-    #[test]
-    fn query_only_costs_count_unicode_chars() {
-        let operations = OperationSet::standard();
-        let prepared = prepare_operations(&operations);
-        let costs = compute_query_only_costs("é", operations.operations(), &prepared);
-
-        assert_eq!(costs[0], Some(1.0));
-        assert_eq!(costs[1], None);
-        assert_eq!(costs[2], Some(0.0));
+        assert_eq!(
+            CostScale::for_operations(&operations),
+            Err(ScaleError::DenominatorOverflow)
+        );
     }
 }

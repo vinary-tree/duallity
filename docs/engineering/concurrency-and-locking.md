@@ -34,9 +34,18 @@ before they can be packed into a `StateId`
 
 ## 2. The read/write lock dance
 
+Generalized expansion has a stronger, batch-transactional protocol than the
+single-registry example below: it stages outside write locks, reconciles
+concurrent IDs, and commits node then state registries only after all limits
+and source-fault checks pass. Its node handles use `Arc` ownership so no
+user-defined node `Clone` or `Drop` runs under these locks. See the
+[generalized transaction contract](../security/generalized-expansion-bounds.md#4-atomic-logical-publication)
+and its executable lifecycle/reconciliation tests; do not infer that guarantee
+for every variant from this general overview.
+
 During expansion, a state source resolves the current node/state by id (a **read**), then interns any
 newly discovered children (a **write**). The protocol below is the shape of
-`compute_transitions` in `state_source.rs`; every variant follows the same read-then-write rhythm.
+`compute_transitions` in `state_source.rs`; variant-specific staging and publication differ.
 
 Presented as literate pseudocode (Knuth): the prose fixes the interface, the chunk gives the steps.
 

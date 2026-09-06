@@ -16,7 +16,7 @@
 *)
 
 (** The interop status alphabet (vinary-tree-interop::VtStatus, discriminants
-    0..8), carried by [Provider] failures. *)
+    0..9), carried by [Provider] failures. *)
 Inductive VtStatus : Type :=
   | VOk
   | VEnd
@@ -26,7 +26,8 @@ Inductive VtStatus : Type :=
   | VIoError
   | VClosed
   | VLimitExceeded
-  | VProviderError.
+  | VProviderError
+  | VBatchInUse.
 
 (** The duallity status alphabet (DuallityStatus, discriminants 0..7). *)
 Inductive DuallityStatus : Type :=
@@ -39,12 +40,30 @@ Inductive DuallityStatus : Type :=
   | DProviderError
   | DLimitExceeded.
 
+(** Generalized constructor failures. Diagnostic payloads are erased because
+    classification inspects only the constructors, never strings or numbers. *)
+Inductive ScaleError : Type :=
+  | SZeroDenominator | SNonFiniteWeight | SNegativeWeight
+  | SDenominatorOverflow | SInexactWeight | SCostOverflow.
+
+Inductive GeneralizedError : Type :=
+  | GMissingQuery | GInvalidOperations | GCostScale (c : ScaleError)
+  | GLimitExceeded | GArithmeticOverflow | GAllocationFailed.
+
+Definition generalized_status (g : GeneralizedError) : DuallityStatus :=
+  match g with
+  | GLimitExceeded | GArithmeticOverflow | GAllocationFailed
+  | GCostScale SDenominatorOverflow | GCostScale SCostOverflow => DLimitExceeded
+  | _ => DInvalidArgument
+  end.
+
 (** The binding-layer error type (src/bindings.rs::BindingError). *)
 Inductive BindingError : Type :=
   | NullResource
   | Provider (s : VtStatus)
   | InvalidProviderOutput
   | InvalidArgument
+  | Generalized (g : GeneralizedError)
   | IncompatibleResourceAbi
   | MissingDictionaryInterface
   | IncompatibleDictionaryInterface
@@ -54,9 +73,11 @@ Inductive BindingError : Type :=
 Definition map_error (e : BindingError) : DuallityStatus :=
   match e with
   | NullResource => DNullPointer
+  | Provider VLimitExceeded => DLimitExceeded
   | Provider _ => DProviderError
   | InvalidProviderOutput => DProviderError
   | InvalidArgument => DInvalidArgument
+  | Generalized g => generalized_status g
   | IncompatibleResourceAbi => DIncompatibleResource
   | MissingDictionaryInterface => DIncompatibleResource
   | IncompatibleDictionaryInterface => DIncompatibleResource
@@ -66,7 +87,9 @@ Definition map_error (e : BindingError) : DuallityStatus :=
 (** ** DUAL-STAT-1: no error is silently swallowed into success *)
 
 Theorem map_error_never_ok : forall e, map_error e <> DOk.
-Proof. destruct e; discriminate. Qed.
+Proof.
+  destruct e; try destruct s; try destruct g; try destruct c; discriminate.
+Qed.
 
 (** ** DUAL-STAT-2: the classification is exactly as documented *)
 
@@ -74,9 +97,30 @@ Theorem null_is_null_pointer : map_error NullResource = DNullPointer.
 Proof. reflexivity. Qed.
 
 Theorem provider_faults_are_provider_error :
-  forall s, map_error (Provider s) = DProviderError
+  forall s, s <> VLimitExceeded -> map_error (Provider s) = DProviderError
             /\ map_error InvalidProviderOutput = DProviderError.
-Proof. intro s; split; reflexivity. Qed.
+Proof. intros s H; destruct s; try (split; reflexivity); contradiction. Qed.
+
+Theorem provider_limit_is_limit :
+  map_error (Provider VLimitExceeded) = DLimitExceeded.
+Proof. reflexivity. Qed.
+
+Theorem generalized_limits_are_limits :
+  map_error (Generalized GLimitExceeded) = DLimitExceeded
+  /\ map_error (Generalized GArithmeticOverflow) = DLimitExceeded
+  /\ map_error (Generalized GAllocationFailed) = DLimitExceeded
+  /\ map_error (Generalized (GCostScale SDenominatorOverflow)) = DLimitExceeded
+  /\ map_error (Generalized (GCostScale SCostOverflow)) = DLimitExceeded.
+Proof. repeat split; reflexivity. Qed.
+
+Theorem generalized_invalid_configuration_is_invalid_argument :
+  map_error (Generalized GMissingQuery) = DInvalidArgument
+  /\ map_error (Generalized GInvalidOperations) = DInvalidArgument
+  /\ map_error (Generalized (GCostScale SZeroDenominator)) = DInvalidArgument
+  /\ map_error (Generalized (GCostScale SNonFiniteWeight)) = DInvalidArgument
+  /\ map_error (Generalized (GCostScale SNegativeWeight)) = DInvalidArgument
+  /\ map_error (Generalized (GCostScale SInexactWeight)) = DInvalidArgument.
+Proof. repeat split; reflexivity. Qed.
 
 Theorem invalid_argument_is_invalid_argument :
   map_error InvalidArgument = DInvalidArgument.
@@ -89,20 +133,17 @@ Theorem incompatibilities_are_incompatible_resource :
   /\ map_error UnitDomainMismatch = DIncompatibleResource.
 Proof. repeat split; reflexivity. Qed.
 
-(** The classification is exhaustive: every error maps into one of exactly four
+(** The classification is exhaustive: every error maps into one of exactly five
     non-Ok status classes. *)
 Theorem map_error_is_classified :
   forall e,
     map_error e = DNullPointer
     \/ map_error e = DProviderError
     \/ map_error e = DInvalidArgument
-    \/ map_error e = DIncompatibleResource.
+    \/ map_error e = DIncompatibleResource
+    \/ map_error e = DLimitExceeded.
 Proof.
-  destruct e; simpl;
-    ((left; reflexivity)
-     || (right; left; reflexivity)
-     || (right; right; left; reflexivity)
-     || (right; right; right; reflexivity)).
+  destruct e; try destruct s; try destruct g; try destruct c; simpl; intuition.
 Qed.
 
 (** ** DUAL-STAT-3: the boundary wrapper *)

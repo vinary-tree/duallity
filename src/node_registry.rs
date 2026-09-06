@@ -10,12 +10,12 @@ use crate::node_key::DictionaryNodeKey;
 /// lazy WFSTs intern nodes by the exact path step that discovers them. The
 /// registry stores the forward key-to-id map and the reverse id-to-node vector
 /// used during later lazy expansion.
-pub(crate) struct DictionaryNodeRegistry<N: DictionaryNode> {
+pub(crate) struct DictionaryNodeRegistry<N> {
     node_to_id: FxHashMap<DictionaryNodeKey, u32>,
     id_to_node: Vec<N>,
 }
 
-impl<N: DictionaryNode> DictionaryNodeRegistry<N> {
+impl<N> DictionaryNodeRegistry<N> {
     pub(crate) fn new(root: N) -> Self {
         let mut registry = Self {
             node_to_id: fx_hash_map_with_capacity(1),
@@ -51,6 +51,24 @@ impl<N: DictionaryNode> DictionaryNodeRegistry<N> {
 
     pub(crate) fn len(&self) -> usize {
         self.id_to_node.len()
+    }
+
+    pub(crate) fn try_reserve_additional(
+        &mut self,
+        count: usize,
+    ) -> Result<(), std::collections::TryReserveError> {
+        self.node_to_id.try_reserve(count)?;
+        self.id_to_node.try_reserve(count)
+    }
+
+    /// Append only after the caller has preflighted IDs and reserved capacity.
+    pub(crate) fn commit_prepared(&mut self, nodes: Vec<(DictionaryNodeKey, N)>) {
+        for (key, node) in nodes {
+            let id =
+                next_registry_id(self.len()).expect("transaction preflight validated the node ID");
+            self.node_to_id.insert(key, id);
+            self.id_to_node.push(node);
+        }
     }
 
     #[cfg(test)]

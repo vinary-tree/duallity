@@ -1,6 +1,8 @@
 //! Stable project-owned C ABI for duallity dictionary/WFST adapters.
 
 use crate::bindings::{BindingError, WfstKind};
+use crate::GeneralizedWfstError;
+use liblevenshtein::cost::ScaleError;
 use liblevenshtein::transducer::Algorithm;
 use lling_llang::bindings::OwnedWfstResource;
 use std::cell::RefCell;
@@ -8,7 +10,7 @@ use std::ffi::{c_char, CString};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::slice;
 use std::str;
-use vinary_tree_interop::VtResource;
+use vinary_tree_interop::{VtResource, VtStatus};
 
 /// Stable duallity C ABI version.
 pub const DUALLITY_ABI_VERSION: u32 = 1;
@@ -33,7 +35,7 @@ pub enum DuallityStatus {
     IncompatibleResource = 5,
     /// A foreign provider callback failed.
     ProviderError = 6,
-    /// A numeric representation bound was exceeded.
+    /// A configured resource or numeric representation bound was exceeded.
     LimitExceeded = 7,
 }
 
@@ -58,10 +60,27 @@ fn map_error(error: BindingError) -> DuallityStatus {
     set_error(error.to_string());
     match error {
         BindingError::NullResource => DuallityStatus::NullPointer,
+        BindingError::Provider(VtStatus::LimitExceeded) => DuallityStatus::LimitExceeded,
         BindingError::Provider(_) | BindingError::InvalidProviderOutput(_) => {
             DuallityStatus::ProviderError
         }
         BindingError::InvalidArgument(_) => DuallityStatus::InvalidArgument,
+        BindingError::Generalized(error) => match error {
+            GeneralizedWfstError::LimitExceeded { .. }
+            | GeneralizedWfstError::ArithmeticOverflow(_)
+            | GeneralizedWfstError::AllocationFailed(_)
+            | GeneralizedWfstError::CostScale(
+                ScaleError::DenominatorOverflow | ScaleError::CostOverflow,
+            ) => DuallityStatus::LimitExceeded,
+            GeneralizedWfstError::MissingQuery
+            | GeneralizedWfstError::InvalidOperations(_)
+            | GeneralizedWfstError::CostScale(
+                ScaleError::ZeroDenominator
+                | ScaleError::NonFiniteWeight
+                | ScaleError::NegativeWeight
+                | ScaleError::InexactWeight { .. },
+            ) => DuallityStatus::InvalidArgument,
+        },
         BindingError::IncompatibleResourceAbi
         | BindingError::MissingDictionaryInterface
         | BindingError::IncompatibleDictionaryInterface
@@ -279,6 +298,59 @@ mod tests {
     use super::*;
     use libdictenstein::bindings::{BindingUnitDomain, DynamicDawgBinding};
     use std::ptr;
+
+    #[test]
+    fn generalized_and_provider_error_classification_is_exact() {
+        for status in 0..=9 {
+            let provider = VtStatus::from_raw(status).expect("known status");
+            assert_eq!(
+                map_error(BindingError::Provider(provider)),
+                if provider == VtStatus::LimitExceeded {
+                    DuallityStatus::LimitExceeded
+                } else {
+                    DuallityStatus::ProviderError
+                }
+            );
+        }
+        for error in [
+            GeneralizedWfstError::LimitExceeded {
+                resource: crate::GeneralizedWfstResource::QueryBytes,
+                limit: 1,
+                required: 2,
+            },
+            GeneralizedWfstError::ArithmeticOverflow("state ID"),
+            GeneralizedWfstError::AllocationFailed("query storage"),
+            GeneralizedWfstError::CostScale(ScaleError::DenominatorOverflow),
+            GeneralizedWfstError::CostScale(ScaleError::CostOverflow),
+        ] {
+            assert_eq!(
+                map_error(BindingError::Generalized(error)),
+                DuallityStatus::LimitExceeded
+            );
+        }
+        for error in [
+            GeneralizedWfstError::MissingQuery,
+            GeneralizedWfstError::InvalidOperations(
+                liblevenshtein::transducer::OperationSetValidationError::InvalidName {
+                    index: 0,
+                    observed: 0,
+                    limit: 4096,
+                },
+            ),
+            GeneralizedWfstError::CostScale(ScaleError::ZeroDenominator),
+            GeneralizedWfstError::CostScale(ScaleError::NonFiniteWeight),
+            GeneralizedWfstError::CostScale(ScaleError::NegativeWeight),
+            GeneralizedWfstError::CostScale(ScaleError::InexactWeight {
+                scale_denominator: 1,
+                required_denominator: 2,
+            }),
+        ] {
+            assert_eq!(
+                map_error(BindingError::Generalized(error)),
+                DuallityStatus::InvalidArgument
+            );
+        }
+    }
 
     #[test]
     fn c_constructor_retains_query_start_dictionary_revision() {

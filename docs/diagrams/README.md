@@ -69,6 +69,7 @@ Tools: **P** = PlantUML, **D2** = Terrastruct D2, **G** = Graphviz. Diagrams mar
 | D12 ★ | [`composed-pipeline-typestate`](composed-pipeline-typestate.svg) | P | theory/04, design/phonetic-pipeline-builder |
 | D13 | [`operationtype-taxonomy`](operationtype-taxonomy.svg) | G | theory/07, design/generalized-wfst |
 | D14 | [`generalized-builder-flow`](generalized-builder-flow.svg) | D2 | design/generalized-wfst |
+| Generalized transaction | [`generalized-expansion-transaction`](generalized-expansion-transaction.svg) | P | security/generalized-expansion-bounds |
 | D15 | [`noderegistry-interning`](noderegistry-interning.svg) | D2 | architecture/05, security/hashing-and-collisions |
 | D16 | [`crate-dependency-graph`](crate-dependency-graph.svg) | G | architecture/01, README |
 | D17 ★ | [`tropical-semiring-algebra`](tropical-semiring-algebra.svg) | P | theory/01, README |

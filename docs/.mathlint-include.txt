@@ -49,8 +49,10 @@ docs/references/glossary.md
 docs/releasing.md
 docs/scientific-ledger/bindings-findings-ledger.md
 docs/scientific-ledger/fzf-prefix-bound-2026-08-02.md
+docs/scientific-ledger/generalized-expansion-2026-09-06.md
 docs/security/README.md
 docs/security/fzf-resource-bounds.md
+docs/security/generalized-expansion-bounds.md
 docs/security/hashing-and-collisions.md
 docs/security/threat-model.md
 docs/theory/01-semirings-and-wfsts.md

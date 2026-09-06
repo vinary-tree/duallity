@@ -7,6 +7,8 @@
 //! dictionary snapshot remain shared, so independent calls are reentrant.
 
 use crate::{FzfWfst, GeneralizedWfstBuilder, LevenshteinWfst, UniversalLevenshteinWfst};
+mod fault_scope;
+use fault_scope::FaultScope;
 use libdictenstein::{Dictionary, DictionaryNode, SnapshotTraversalCursor, SyncStrategy};
 use liblevenshtein::transducer::universal::{MergeAndSplit, Standard, Transposition};
 use liblevenshtein::transducer::Algorithm;
@@ -64,6 +66,8 @@ pub enum BindingError {
     InvalidProviderOutput(&'static str),
     /// Requested construction parameters are unsupported or out of range.
     InvalidArgument(String),
+    /// Typed generalized construction failure, including configured limits.
+    Generalized(crate::GeneralizedWfstError),
 }
 
 impl fmt::Display for BindingError {
@@ -87,11 +91,19 @@ impl fmt::Display for BindingError {
                 "dictionary provider returned invalid output: {message}"
             ),
             Self::InvalidArgument(message) => formatter.write_str(message),
+            Self::Generalized(error) => error.fmt(formatter),
         }
     }
 }
 
-impl std::error::Error for BindingError {}
+impl std::error::Error for BindingError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Generalized(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 
 fn status(raw: u32) -> Result<(), BindingError> {
     // The wire carries a raw u32 (interop status rule): decode before any
@@ -133,7 +145,6 @@ struct DictionaryProvider {
     gate: Gate,
     root: u64,
     len: Option<usize>,
-    fault: Mutex<Option<VtStatus>>,
 }
 
 unsafe impl Send for DictionaryProvider {}
@@ -197,7 +208,6 @@ impl DictionaryProvider {
             gate,
             root,
             len,
-            fault: Mutex::new(None),
         }))
     }
 
@@ -212,14 +222,11 @@ impl DictionaryProvider {
     }
 
     fn record(&self, status: VtStatus) {
-        let mut fault = self.fault.lock().unwrap_or_else(|p| p.into_inner());
-        if fault.is_none() {
-            *fault = Some(status);
-        }
+        fault_scope::record(self as *const Self as usize, status);
     }
 
-    fn take_fault(&self) -> Option<VtStatus> {
-        self.fault.lock().unwrap_or_else(|p| p.into_inner()).take()
+    fn fault_scope(&self) -> Result<FaultScope, VtStatus> {
+        FaultScope::enter(self as *const Self as usize)
     }
 
     fn table(&self) -> &VtDictionaryVTable {
@@ -290,8 +297,64 @@ impl ResourceDictionary {
         })
     }
 
-    fn take_fault(&self) -> Option<VtStatus> {
-        self.provider.take_fault()
+    /// Run synchronous dictionary work with isolated provider diagnostics.
+    ///
+    /// Nested calls and concurrent threads have independent fault scopes.
+    /// The closure must finish on this thread. Generalized state expansion
+    /// checks the same scope before committing any newly discovered identity.
+    ///
+    /// Direct infallible DictionaryNode calls outside a checked scope or a
+    /// generalized computation panic when a provider fails. A generalized
+    /// expansion owns its own fault scope even through native node decorators.
+    /// Nested scopes isolate handled failures; a directly failed computation
+    /// still latches this enclosing provider scope's first error.
+    pub fn with_checked<T>(
+        &self,
+        operation: impl FnOnce() -> Result<T, VtStatus>,
+    ) -> Result<T, VtStatus> {
+        let scope = self.provider.fault_scope()?;
+        let result = operation();
+        scope.check()?;
+        result
+    }
+}
+
+/// Owns the exact fault sink for one synchronous generalized expansion,
+/// including callbacks reached through arbitrary native node decorators.
+pub(crate) struct DictionaryComputationScope(fault_scope::FaultScope);
+
+impl DictionaryComputationScope {
+    pub(crate) fn enter() -> Result<Self, lling_llang::prelude::ExpansionError> {
+        fault_scope::FaultScope::computation()
+            .map(Self)
+            .map_err(dictionary_fault_error)
+    }
+
+    pub(crate) fn check(&self) -> Result<(), lling_llang::prelude::ExpansionError> {
+        self.0.check().map_err(dictionary_fault_error)
+    }
+}
+
+fn dictionary_fault_error(status: VtStatus) -> lling_llang::prelude::ExpansionError {
+    lling_llang::prelude::ExpansionError::Failure(lling_llang::prelude::ExpansionFailure::new(
+        if status == VtStatus::LimitExceeded {
+            lling_llang::prelude::ExpansionFailureKind::ResourceExhausted
+        } else {
+            lling_llang::prelude::ExpansionFailureKind::Source
+        },
+        lling_llang::prelude::RetryPolicy::Never,
+        format!("dictionary provider returned {status:?}"),
+    ))
+}
+
+fn expansion_status(error: lling_llang::prelude::ExpansionError) -> VtStatus {
+    match error {
+        lling_llang::prelude::ExpansionError::Failure(failure)
+            if failure.kind() == lling_llang::prelude::ExpansionFailureKind::ResourceExhausted =>
+        {
+            VtStatus::LimitExceeded
+        }
+        _ => VtStatus::ProviderError,
     }
 }
 
@@ -307,68 +370,104 @@ impl ResourceNode {
         fallback
     }
 
-    fn expanded_edges(&self) -> Vec<(char, Self)> {
-        let callback = self.provider.table().node_edges.unwrap();
-        let mut result = Vec::with_capacity(VT_RECOMMENDED_EDGE_BATCH);
-        let mut offset = 0;
-        loop {
-            let mut page = vec![VtDictionaryEdge::default(); VT_RECOMMENDED_EDGE_BATCH];
+    fn expanded_edges(&self) -> ResourceEdges {
+        ResourceEdges {
+            node: self.clone(),
+            offset: 0,
+            total: None,
+            page: [VtDictionaryEdge::default(); VT_RECOMMENDED_EDGE_BATCH],
+            index: 0,
+            written: 0,
+            done: false,
+        }
+    }
+}
+
+struct ResourceEdges {
+    node: ResourceNode,
+    offset: usize,
+    total: Option<usize>,
+    page: [VtDictionaryEdge; VT_RECOMMENDED_EDGE_BATCH],
+    index: usize,
+    written: usize,
+    done: bool,
+}
+
+impl Iterator for ResourceEdges {
+    type Item = (char, ResourceNode);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done {
+            return None;
+        }
+        if self.index == self.written {
+            if self.total == Some(self.offset) {
+                self.done = true;
+                return None;
+            }
+            let callback = self
+                .node
+                .provider
+                .table()
+                .node_edges
+                .expect("validated callback");
             let mut written = 0;
             let mut total = 0;
-            let callback_status = self.provider.call(|| unsafe {
+            let raw = self.node.provider.call(|| unsafe {
                 callback(
-                    self.provider.resource.0.context,
-                    self.id,
-                    offset,
-                    page.as_mut_ptr(),
-                    page.len(),
+                    self.node.provider.resource.0.context,
+                    self.node.id,
+                    self.offset,
+                    self.page.as_mut_ptr(),
+                    self.page.len(),
                     &mut written,
                     &mut total,
                 )
             });
-            let callback_status =
-                VtStatus::from_raw(callback_status).unwrap_or(VtStatus::ProviderError);
-            if !callback_status.is_ok() {
-                return self.fail(callback_status, Vec::new());
+            let status = VtStatus::from_raw(raw).unwrap_or(VtStatus::ProviderError);
+            if !status.is_ok() {
+                self.done = true;
+                return self.node.fail(status, None);
             }
-            // Paging acceptance harmonized to the single proven predicate
-            // `ConsumerAcceptance.accepts_dec` (family finding F3 / LLEV-B8):
-            // reject a reply unless every conjunct holds — `written <= capacity`
-            // (over-fill), `offset <= total` and `offset + written <= total`
-            // (past the end), and progress (an empty page is legal only when the
-            // node is exhausted). The `offset > total` conjunct is stated
-            // explicitly so this predicate is textually identical to the sibling
-            // consumers (llev/lling `src/bindings.rs`) and each proven rejection
-            // lemma maps to one conjunct; it is subsumed by the saturating
-            // `offset + written > total` check but kept for that correspondence.
-            // The claimed-total sanity bound (`total <= max_total`) is realized
-            // STRUCTURALLY: neither `result` nor `page` is ever sized from the
-            // provider-reported `total`, so an inflated total cannot drive an
-            // allocation abort.
-            if written > page.len()
-                || offset > total
-                || offset.saturating_add(written) > total
-                || (written == 0 && offset < total)
+            // An immutable deterministic char dictionary has at most one edge
+            // for each Unicode scalar: 0x110000 code points minus 0x800 surrogates.
+            // This semantic ceiling also bounds providers returning tiny pages.
+            const MAX_UNICODE_SCALAR_EDGES: usize = 0x110000 - 0x800;
+            if total > MAX_UNICODE_SCALAR_EDGES {
+                self.done = true;
+                return self.node.fail(VtStatus::LimitExceeded, None);
+            }
+            if written > self.page.len()
+                || self.offset > total
+                || self.offset.saturating_add(written) > total
+                || (written == 0 && self.offset < total)
+                || self.total.is_some_and(|previous| previous != total)
             {
-                return self.fail(VtStatus::ProviderError, Vec::new());
+                self.done = true;
+                return self.node.fail(VtStatus::ProviderError, None);
             }
-            for edge in page.into_iter().take(written) {
-                let Some(label) = u32::try_from(edge.label).ok().and_then(char::from_u32) else {
-                    return self.fail(VtStatus::ProviderError, Vec::new());
-                };
-                result.push((
-                    label,
-                    Self {
-                        provider: Arc::clone(&self.provider),
-                        id: edge.node,
-                    },
-                ));
-            }
-            offset += written;
-            if offset == total {
-                return result;
+            self.total = Some(total);
+            self.offset += written;
+            self.written = written;
+            self.index = 0;
+            if written == 0 {
+                self.done = true;
+                return None;
             }
         }
+        let edge = self.page[self.index];
+        self.index += 1;
+        let Some(label) = u32::try_from(edge.label).ok().and_then(char::from_u32) else {
+            self.done = true;
+            return self.node.fail(VtStatus::ProviderError, None);
+        };
+        Some((
+            label,
+            ResourceNode {
+                provider: Arc::clone(&self.node.provider),
+                id: edge.node,
+            },
+        ))
     }
 }
 
@@ -429,7 +528,7 @@ impl DictionaryNode for ResourceNode {
     }
 
     fn edges(&self) -> Box<dyn Iterator<Item = (char, Self)> + '_> {
-        Box::new(self.expanded_edges().into_iter())
+        Box::new(self.expanded_edges())
     }
 }
 
@@ -463,100 +562,72 @@ struct AdapterProvider {
     dictionary: ResourceDictionary,
 }
 
-fn tropical_state<W>(
+fn scalar_state<W, S>(
     mut wfst: W,
+    dictionary: &ResourceDictionary,
+    state: u64,
+    weight_value: impl Fn(S) -> f64,
+) -> Result<ScalarWfstState, VtStatus>
+where
+    W: LazyWfst<char, S>,
+    S: lling_llang::prelude::Semiring,
+{
+    dictionary.with_checked(|| {
+        let invalid = || ScalarWfstState {
+            valid: false,
+            is_final: false,
+            final_weight: weight_value(S::zero()),
+            arcs: vec![],
+        };
+        let Ok(state) = StateId::try_from(state) else {
+            return Ok(invalid());
+        };
+        if !wfst.is_valid_state(state) {
+            return Ok(invalid());
+        }
+        wfst.expand(state).map_err(expansion_status)?;
+        let arcs = wfst
+            .transitions(state)
+            .iter()
+            .map(|arc| VtWfstArc {
+                input_label: arc.input.map_or(0, |label| u64::from(u32::from(label))),
+                output_label: arc.output.map_or(0, |label| u64::from(u32::from(label))),
+                target_state: u64::from(arc.to),
+                weight: weight_value(arc.weight),
+                has_input: u8::from(arc.input.is_some()),
+                has_output: u8::from(arc.output.is_some()),
+                reserved: [0; 6],
+            })
+            .collect();
+        Ok(ScalarWfstState {
+            valid: true,
+            is_final: wfst.is_final(state),
+            final_weight: weight_value(wfst.final_weight(state)),
+            arcs,
+        })
+    })
+}
+
+fn tropical_state<W>(
+    wfst: W,
     dictionary: &ResourceDictionary,
     state: u64,
 ) -> Result<ScalarWfstState, VtStatus>
 where
     W: LazyWfst<char, TropicalWeight>,
 {
-    let Ok(state) = StateId::try_from(state) else {
-        return Ok(ScalarWfstState {
-            valid: false,
-            is_final: false,
-            final_weight: f64::INFINITY,
-            arcs: vec![],
-        });
-    };
-    if !wfst.is_valid_state(state) {
-        return Ok(ScalarWfstState {
-            valid: false,
-            is_final: false,
-            final_weight: f64::INFINITY,
-            arcs: vec![],
-        });
-    }
-    let arcs = wfst
-        .transitions_lazy(state)
-        .iter()
-        .map(|arc| VtWfstArc {
-            input_label: arc.input.map_or(0, |label| u64::from(u32::from(label))),
-            output_label: arc.output.map_or(0, |label| u64::from(u32::from(label))),
-            target_state: u64::from(arc.to),
-            weight: arc.weight.value(),
-            has_input: u8::from(arc.input.is_some()),
-            has_output: u8::from(arc.output.is_some()),
-            reserved: [0; 6],
-        })
-        .collect();
-    if let Some(status) = dictionary.take_fault() {
-        return Err(status);
-    }
-    Ok(ScalarWfstState {
-        valid: true,
-        is_final: wfst.is_final(state),
-        final_weight: wfst.final_weight(state).value(),
-        arcs,
-    })
+    scalar_state(wfst, dictionary, state, |weight| weight.value())
 }
 
 fn arctic_state<W>(
-    mut wfst: W,
+    wfst: W,
     dictionary: &ResourceDictionary,
     state: u64,
 ) -> Result<ScalarWfstState, VtStatus>
 where
     W: LazyWfst<char, ArcticWeight>,
 {
-    let Ok(state) = StateId::try_from(state) else {
-        return Ok(ScalarWfstState {
-            valid: false,
-            is_final: false,
-            final_weight: f64::NEG_INFINITY,
-            arcs: vec![],
-        });
-    };
-    if !wfst.is_valid_state(state) {
-        return Ok(ScalarWfstState {
-            valid: false,
-            is_final: false,
-            final_weight: f64::NEG_INFINITY,
-            arcs: vec![],
-        });
-    }
-    let arcs = wfst
-        .transitions_lazy(state)
-        .iter()
-        .map(|arc| VtWfstArc {
-            input_label: arc.input.map_or(0, |label| u64::from(u32::from(label))),
-            output_label: arc.output.map_or(0, |label| u64::from(u32::from(label))),
-            target_state: u64::from(arc.to),
-            weight: arc.weight.value(),
-            has_input: u8::from(arc.input.is_some()),
-            has_output: u8::from(arc.output.is_some()),
-            reserved: [0; 6],
-        })
-        .collect();
-    if let Some(status) = dictionary.take_fault() {
-        return Err(status);
-    }
-    Ok(ScalarWfstState {
-        valid: true,
-        is_final: wfst.is_final(state),
-        final_weight: wfst.final_weight(state).value(),
-        arcs,
-    })
+    scalar_state(wfst, dictionary, state, |weight| weight.value())
 }
 
 impl ScalarWfstProvider for AdapterProvider {
@@ -619,6 +690,10 @@ pub unsafe fn create_wfst(
     kind: WfstKind,
 ) -> Result<OwnedWfstResource, BindingError> {
     let dictionary = ResourceDictionary::capture(dictionary)?;
+    let scope = dictionary
+        .provider
+        .fault_scope()
+        .map_err(BindingError::Provider)?;
     let adapter = match kind {
         WfstKind::Levenshtein => Adapter::Levenshtein(LevenshteinWfst::with_algorithm(
             &dictionary,
@@ -652,9 +727,7 @@ pub unsafe fn create_wfst(
             let distance = u8::try_from(maximum_distance).map_err(|_| {
                 BindingError::InvalidArgument("generalized maximum distance must fit u8".into())
             })?;
-            let builder = GeneralizedWfstBuilder::new(&dictionary)
-                .query(query)
-                .max_distance(distance);
+            let builder = GeneralizedWfstBuilder::new(&dictionary).max_distance(distance);
             let builder = match kind {
                 WfstKind::GeneralizedStandard => builder.with_standard_ops(),
                 WfstKind::GeneralizedTransposition => builder.with_transposition(),
@@ -662,16 +735,18 @@ pub unsafe fn create_wfst(
                 WfstKind::GeneralizedPhonetic => builder.with_phonetic_digraphs(),
                 _ => unreachable!(),
             };
-            Adapter::Generalized(builder.build().map_err(BindingError::InvalidArgument)?)
+            Adapter::Generalized(
+                builder
+                    .try_build_for_query(query)
+                    .map_err(BindingError::Generalized)?,
+            )
         }
         WfstKind::Fzf => Adapter::Fzf(
             FzfWfst::new(&dictionary, query)
                 .map_err(|error| BindingError::InvalidArgument(error.to_string()))?,
         ),
     };
-    if let Some(status) = dictionary.take_fault() {
-        return Err(BindingError::Provider(status));
-    }
+    scope.check().map_err(BindingError::Provider)?;
     Ok(OwnedWfstResource::from_provider(Arc::new(
         AdapterProvider {
             adapter,

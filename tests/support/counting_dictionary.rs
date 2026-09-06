@@ -50,6 +50,18 @@ pub enum Misbehavior {
     StalledProgress,
     /// Report an enormous `out_total` (the preallocation-abort vector).
     InflatedTotal,
+    /// Return an explicit error after one complete successful page.
+    LatePageFailure,
+    /// Change the supposedly immutable total on the second page.
+    ChangingTotal,
+}
+
+/// Constructor callback at which to return an explicit provider failure.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CaptureCallback {
+    Snapshot,
+    Root,
+    Len,
 }
 
 /// One immutable dictionary node: finality plus ascending `(label, child)`.
@@ -77,6 +89,7 @@ struct Model {
     len: usize,
     /// `(node, mode)`: inject `mode` into `node`'s `node_edges` reply only.
     misbehavior: Option<(u64, Misbehavior)>,
+    capture_failure: Option<(CaptureCallback, VtStatus)>,
     metrics: Metrics,
 }
 
@@ -146,6 +159,9 @@ unsafe extern "C" fn snapshot(raw: *mut c_void, out: *mut VtResource) -> u32 {
         .metrics
         .snapshot
         .fetch_add(1, Ordering::Relaxed);
+    if let Some((CaptureCallback::Snapshot, status)) = source.model.capture_failure {
+        return status.to_raw();
+    }
     // The model is already immutable, so a snapshot is a fresh retain of the
     // same revision (shared metrics included).
     out.write(make_resource(Arc::clone(&source.model)));
@@ -161,6 +177,9 @@ unsafe extern "C" fn root(raw: *mut c_void, out_node: *mut u64) -> u32 {
         .metrics
         .root
         .fetch_add(1, Ordering::Relaxed);
+    if let Some((CaptureCallback::Root, status)) = context(raw).model.capture_failure {
+        return status.to_raw();
+    }
     out_node.write(0);
     VtStatus::Ok.to_raw()
 }
@@ -171,6 +190,9 @@ unsafe extern "C" fn len(raw: *mut c_void, out_len: *mut usize, out_known: *mut 
     }
     let model = &context(raw).model;
     model.metrics.len.fetch_add(1, Ordering::Relaxed);
+    if let Some((CaptureCallback::Len, status)) = model.capture_failure {
+        return status.to_raw();
+    }
     out_len.write(model.len);
     out_known.write(1);
     VtStatus::Ok.to_raw()
@@ -215,12 +237,17 @@ unsafe extern "C" fn node_edges(
 
     if let Some((target, misbehavior)) = model.misbehavior {
         if target as usize == node_index {
+            if misbehavior == Misbehavior::LatePageFailure && start > 0 {
+                return VtStatus::IoError.to_raw();
+            }
             let honest = total.saturating_sub(start).min(capacity);
             let (written, reported_total) = match misbehavior {
                 Misbehavior::Overfill => (capacity + 1, total),
                 Misbehavior::PastEnd => (total.saturating_sub(start) + 1, total),
                 Misbehavior::StalledProgress => (0, total.max(1)),
                 Misbehavior::InflatedTotal => (honest, usize::MAX),
+                Misbehavior::LatePageFailure => (honest, total),
+                Misbehavior::ChangingTotal => (honest, total + usize::from(start > 0)),
             };
             // Fill only addressable slots but REPORT the adversarial counts: the
             // consumer must reject on the reported counts, not the buffer.
@@ -330,6 +357,7 @@ impl CountingDictionary {
             nodes,
             len,
             misbehavior: None,
+            capture_failure: None,
             metrics: Metrics::default(),
         })
     }
@@ -351,6 +379,7 @@ impl CountingDictionary {
             nodes,
             len: degree,
             misbehavior: misbehavior.map(|mode| (0, mode)),
+            capture_failure: None,
             metrics: Metrics::default(),
         }
     }
@@ -366,6 +395,14 @@ impl CountingDictionary {
     /// A single root of `degree` edges whose `node_edges` injects `misbehavior`.
     pub fn misbehaving(degree: usize, misbehavior: Misbehavior) -> Self {
         Self::from_model(Self::single_node_model(degree, Some(misbehavior)))
+    }
+
+    /// Fail one constructor callback without transferring a resource on failure.
+    pub fn failing_capture(callback: CaptureCallback, status: VtStatus) -> Self {
+        assert_ne!(status, VtStatus::Ok);
+        let mut model = Self::single_node_model(1, None);
+        model.capture_failure = Some((callback, status));
+        Self::from_model(model)
     }
 
     /// Hand out a fresh owned resource retain. The caller must release it.

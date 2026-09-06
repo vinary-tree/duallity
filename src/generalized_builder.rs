@@ -2,6 +2,7 @@ use libdictenstein::{Dictionary, DictionaryNode};
 use liblevenshtein::transducer::{OperationSet, OperationSetBuilder};
 
 use crate::generalized_wfst::GeneralizedWfst;
+use crate::{GeneralizedWfstError, GeneralizedWfstLimits};
 
 /// Builder for Generalized WFST.
 pub struct GeneralizedWfstBuilder<'a, D>
@@ -13,6 +14,7 @@ where
     query: Option<String>,
     max_distance: u8,
     operations: OperationSet,
+    limits: GeneralizedWfstLimits,
 }
 
 impl<'a, D> GeneralizedWfstBuilder<'a, D>
@@ -27,6 +29,7 @@ where
             query: None,
             max_distance: 2,
             operations: OperationSet::standard(),
+            limits: GeneralizedWfstLimits::default(),
         }
     }
 
@@ -66,6 +69,12 @@ where
         self
     }
 
+    /// Set immutable, inclusive construction and expansion resource ceilings.
+    pub fn limits(mut self, limits: GeneralizedWfstLimits) -> Self {
+        self.limits = limits;
+        self
+    }
+
     /// Add phonetic digraph operations.
     pub fn with_phonetic_digraphs(mut self) -> Self {
         use liblevenshtein::transducer::phonetic::consonant_digraphs;
@@ -83,8 +92,30 @@ where
 
     /// Build the WFST.
     pub fn build(self) -> Result<GeneralizedWfst<D>, String> {
-        let query = self.query.ok_or_else(|| "Query not set".to_string())?;
-        GeneralizedWfst::try_new(self.dictionary, &query, self.max_distance, self.operations)
-            .map_err(|error| error.to_string())
+        self.try_build().map_err(|error| error.to_string())
+    }
+
+    /// Build with typed construction errors.
+    pub fn try_build(mut self) -> Result<GeneralizedWfst<D>, GeneralizedWfstError> {
+        let query = self
+            .query
+            .take()
+            .ok_or(GeneralizedWfstError::MissingQuery)?;
+        self.try_build_for_query(&query)
+    }
+
+    /// Validate a borrowed foreign query before allocating its owned copy.
+    /// Reuses the same presets and limit configuration as the fluent builder.
+    pub(crate) fn try_build_for_query(
+        self,
+        query: &str,
+    ) -> Result<GeneralizedWfst<D>, GeneralizedWfstError> {
+        GeneralizedWfst::try_new_with_limits(
+            self.dictionary,
+            query,
+            self.max_distance,
+            self.operations,
+            self.limits,
+        )
     }
 }

@@ -1,51 +1,36 @@
 use std::sync::Arc;
 
-use lling_llang::prelude::{StateId, TropicalWeight, WeightedTransition};
+use lling_llang::prelude::StateId;
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 
 use crate::fx_hash_map_with_capacity;
-use crate::generalized_ops::canonical_cost;
 
 pub(crate) type LabelBuffer = SmallVec<[char; 4]>;
 pub(crate) type ByteBuffer = SmallVec<[u8; 8]>;
 
-/// Product component of a generalized WFST state.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct ProductState {
-    /// Registered dictionary node.
-    pub(crate) dict_node_id: u32,
-    /// Byte offset in the query string.
-    pub(crate) query_byte_pos: usize,
-    /// Accumulated operation cost used for bounded pruning.
-    pub(crate) cost: f64,
-}
-
+/// Exact product identity: dictionary path, query offset, and scaled cost.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct ProductStateKey {
-    dict_node_id: u32,
-    query_byte_pos: usize,
-    cost_bits: u64,
+pub(crate) struct ProductState {
+    pub(crate) dict_node_id: u32,
+    pub(crate) query_byte_pos: usize,
+    pub(crate) cost: usize,
 }
 
-impl From<ProductState> for ProductStateKey {
-    fn from(state: ProductState) -> Self {
-        Self {
-            dict_node_id: state.dict_node_id,
-            query_byte_pos: state.query_byte_pos,
-            cost_bits: cost_bits(state.cost),
-        }
-    }
-}
-
-/// Continuation state for emitting a multi-symbol operation through a char WFST.
+/// One canonical multi-label operation. Interned once per chain, never once per
+/// continuation position, so hashing remains linear in the label count.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct EmitState {
+pub(crate) struct EmissionChain {
     pub(crate) input: Arc<[char]>,
     pub(crate) output: Arc<[char]>,
-    pub(crate) input_pos: usize,
-    pub(crate) output_pos: usize,
     pub(crate) target: StateId,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct EmitState {
+    pub(crate) chain: Arc<EmissionChain>,
+    pub(crate) position: usize,
+    pub(crate) next: StateId,
 }
 
 pub(crate) struct QuerySegment<'a> {
@@ -64,21 +49,30 @@ impl<'a> QuerySegment<'a> {
     }
 }
 
-pub(crate) type QuerySegmentCache<'a> = SmallVec<[(usize, QuerySegment<'a>); 6]>;
+/// Cache absence too: a query can be too short, or a dictionary path set empty.
+#[derive(Default)]
+pub(crate) enum WidthCacheEntry<T> {
+    #[default]
+    Uncomputed,
+    Missing,
+    Ready(T),
+}
+
+pub(crate) type QuerySegmentCache<'a> = SmallVec<[WidthCacheEntry<QuerySegment<'a>>; 6]>;
 pub(crate) type DictPaths = SmallVec<[DictPath; 4]>;
-pub(crate) type DictPathCache = SmallVec<[(usize, DictPaths); 6]>;
+pub(crate) type DictPathCache = SmallVec<[WidthCacheEntry<DictPaths>; 6]>;
 
 #[derive(Clone, Debug)]
 pub(crate) enum RegisteredState {
     Product(ProductState),
-    Emit(Arc<EmitState>),
+    Emit(EmitState),
 }
 
-/// Registry for product and continuation states.
+/// Stable, shared identities. Evicting cached transitions does not evict IDs.
 pub(crate) struct StateRegistry {
-    pub(crate) product_to_id: FxHashMap<ProductStateKey, StateId>,
-    pub(crate) emit_to_id: FxHashMap<Arc<EmitState>, StateId>,
-    pub(crate) id_to_state: Vec<RegisteredState>,
+    product_to_id: FxHashMap<ProductState, StateId>,
+    chain_to_id: FxHashMap<Arc<EmissionChain>, StateId>,
+    id_to_state: Vec<RegisteredState>,
 }
 
 impl StateRegistry {
@@ -86,16 +80,14 @@ impl StateRegistry {
         let start = ProductState {
             dict_node_id: 0,
             query_byte_pos: 0,
-            cost: 0.0,
+            cost: 0,
         };
         let mut product_to_id = fx_hash_map_with_capacity(1);
-        product_to_id.insert(ProductStateKey::from(start), 0);
-        let id_to_state = vec![RegisteredState::Product(start)];
-
+        product_to_id.insert(start, 0);
         Self {
             product_to_id,
-            emit_to_id: FxHashMap::default(),
-            id_to_state,
+            chain_to_id: FxHashMap::default(),
+            id_to_state: vec![RegisteredState::Product(start)],
         }
     }
 
@@ -107,83 +99,62 @@ impl StateRegistry {
         self.id_to_state.len()
     }
 
-    pub(crate) fn register_product(&mut self, state: ProductState) -> Option<StateId> {
-        let key = ProductStateKey::from(state);
-        if let Some(&id) = self.product_to_id.get(&key) {
-            return Some(id);
-        }
-
-        let id = next_state_id(self.id_to_state.len())?;
-        self.id_to_state.push(RegisteredState::Product(state));
-        self.product_to_id.insert(key, id);
-        Some(id)
+    pub(crate) fn product_id(&self, state: ProductState) -> Option<StateId> {
+        self.product_to_id.get(&state).copied()
     }
 
-    pub(crate) fn register_emit(&mut self, state: EmitState) -> Option<StateId> {
-        if let Some(&id) = self.emit_to_id.get(&state) {
-            return Some(id);
-        }
-
-        let id = next_state_id(self.id_to_state.len())?;
-        let state = Arc::new(state);
-        self.id_to_state
-            .push(RegisteredState::Emit(Arc::clone(&state)));
-        self.emit_to_id.insert(state, id);
-        Some(id)
+    pub(crate) fn chain_id(&self, chain: &EmissionChain) -> Option<StateId> {
+        self.chain_to_id.get(chain).copied()
     }
+
+    pub(crate) fn try_reserve_additional(
+        &mut self,
+        product_count: usize,
+        chain_count: usize,
+        state_count: usize,
+    ) -> Result<(), std::collections::TryReserveError> {
+        self.product_to_id.try_reserve(product_count)?;
+        self.chain_to_id.try_reserve(chain_count)?;
+        self.id_to_state.try_reserve(state_count)
+    }
+
+    /// Caller holds the shared write lock and has reserved all capacity.
+    pub(crate) fn commit_prepared(&mut self, states: Vec<RegisteredState>) {
+        for state in states {
+            let id = next_state_id(self.len()).expect("preflight validated every state ID");
+            match &state {
+                RegisteredState::Product(product) => {
+                    self.product_to_id.insert(*product, id);
+                }
+                RegisteredState::Emit(emit) if emit.position == 1 => {
+                    self.chain_to_id.insert(Arc::clone(&emit.chain), id);
+                }
+                RegisteredState::Emit(_) => {}
+            }
+            self.id_to_state.push(state);
+        }
+    }
+}
+
+/// A node referenced by its committed ID or by a local staging offset.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum PendingDictionaryNode {
+    Registered(u32),
+    Staged(usize),
 }
 
 #[derive(Clone)]
 pub(crate) struct DictPath {
-    pub(crate) target_node_id: u32,
+    pub(crate) target_node: PendingDictionaryNode,
     pub(crate) output: LabelBuffer,
     pub(crate) bytes: ByteBuffer,
 }
 
-pub(crate) fn reserve_operation_path_capacity(
-    transitions: &mut SmallVec<[WeightedTransition<char, TropicalWeight>; 4]>,
-    path_count: usize,
-) {
-    if path_count > 1 {
-        transitions.reserve(path_count);
-    }
-}
-
-pub(crate) fn next_label_pair(
-    input: &[char],
-    output: &[char],
-    input_pos: usize,
-    output_pos: usize,
-) -> Option<(Option<char>, Option<char>, usize, usize)> {
-    let input_label = input.get(input_pos).copied();
-    let output_label = output.get(output_pos).copied();
-
-    if input_label.is_none() && output_label.is_none() {
-        return None;
-    }
-
-    let next_input_pos = if input_label.is_some() {
-        input_pos.checked_add(1)?
-    } else {
-        input_pos
-    };
-    let next_output_pos = if output_label.is_some() {
-        output_pos.checked_add(1)?
-    } else {
-        output_pos
-    };
-
-    Some((input_label, output_label, next_input_pos, next_output_pos))
-}
-
-#[inline]
-fn cost_bits(cost: f64) -> u64 {
-    canonical_cost(cost).to_bits()
-}
-
 #[inline]
 pub(crate) fn next_state_id(len: usize) -> Option<StateId> {
-    len.try_into().ok()
+    StateId::try_from(len)
+        .ok()
+        .filter(|id| *id != lling_llang::wfst::NO_STATE)
 }
 
 #[inline]

@@ -5,7 +5,7 @@
 //!
 //! # Overview
 //!
-//! The [`GeneralizedAutomaton`] supports:
+//! The native [`GeneralizedAutomaton`](liblevenshtein::transducer::generalized::GeneralizedAutomaton) supports:
 //! - Standard operations (match, substitute, insert, delete)
 //! - Transposition operations
 //! - Merge and split operations
@@ -32,54 +32,53 @@
 //! ```
 
 use lling_llang::prelude::{
-    ExpansionError, ExpansionFailure, ExpansionRequest, ExpansionStatus, LazyWfst, Semiring,
-    StateExpansion, StateId, StateSource, TropicalWeight, WeightedTransition, Wfst,
+    CancellationToken, ExpansionError, ExpansionFailure, ExpansionRequest, ExpansionStatus,
+    LazyWfst, Semiring, StateExpansion, StateId, StateSource, TropicalWeight, WeightedTransition,
+    Wfst,
 };
+use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 use std::sync::{Arc, RwLock};
 
+use crate::generalized_expansion::{
+    expansion_failure, require_at_most, resolved_node, ExpansionBudget, ExpansionStaging,
+    PendingOperationArc, StateBatch,
+};
+use crate::generalized_limits::{
+    GeneralizedWfstError, GeneralizedWfstLimits, GeneralizedWfstResource,
+};
 use libdictenstein::{Dictionary, DictionaryNode};
-use liblevenshtein::transducer::generalized::GeneralizedAutomaton;
+use liblevenshtein::cost::CostScale;
+use liblevenshtein::transducer::OperationSet;
+#[cfg(test)]
+use liblevenshtein::transducer::OperationSetValidationError;
 #[cfg(test)]
 use liblevenshtein::transducer::OperationType;
-use liblevenshtein::transducer::{OperationSet, OperationSetValidationError};
 
 use crate::generalized_ops::{
-    bounded_operation_set, canonical_cost, compute_query_only_costs, operation_applies,
-    prepare_operations, str_segment_by_char_width, PreparedOperation,
+    bounded_operation_set, operation_applies, prepare_operations, str_segment_by_char_width,
+    PreparedOperation,
 };
-use crate::generalized_state_support::next_label_pair;
 #[cfg(test)]
 use crate::generalized_state_support::next_state_id;
 use crate::generalized_state_support::{
-    reserve_operation_path_capacity, ByteBuffer, DictPath, DictPathCache, DictPaths, EmitState,
-    LabelBuffer, ProductState, QuerySegment, QuerySegmentCache, RegisteredState, StateRegistry,
+    ByteBuffer, DictPath, DictPathCache, DictPaths, EmissionChain, LabelBuffer,
+    PendingDictionaryNode, ProductState, QuerySegment, QuerySegmentCache, RegisteredState,
+    StateRegistry, WidthCacheEntry,
 };
 use crate::lazy_cache::{
-    cache_char_state_expansion, cached_char_state_status, empty_char_transitions, CachedCharState,
-    LazyStateCache,
+    cache_char_state_expansion, cached_char_state_status, empty_char_transitions,
+    invalid_state_error, CachedCharState, LazyStateCache,
 };
 use crate::node_key::DictionaryNodeKey;
-use crate::node_registry::DictionaryNodeRegistry;
-use crate::{fulfill_expansion_request, DirectStateSource};
+use crate::node_registry::{next_registry_id, DictionaryNodeRegistry};
+use crate::DirectStateSource;
+
+#[path = "generalized_computation.rs"]
+mod computation;
 
 /// Default maximum cache size used when LRU policy delegates to the wrapper default.
 const DEFAULT_MAX_CACHE_SIZE: usize = 100_000;
-
-struct OperationPathLabels<'a> {
-    from: StateId,
-    target: StateId,
-    input: &'a [char],
-    output: &'a [char],
-    weight: f64,
-}
-
-struct DictionaryPathCollection<'a, N: DictionaryNode> {
-    registry: &'a mut DictionaryNodeRegistry<N>,
-    output: &'a mut LabelBuffer,
-    bytes: &'a mut ByteBuffer,
-    paths: &'a mut DictPaths,
-}
 
 /// Generalized Automaton WFST wrapper.
 ///
@@ -97,20 +96,28 @@ where
     /// The query string.
     query: String,
 
-    /// The generalized automaton.
-    automaton: GeneralizedAutomaton,
+    /// Public unit budget; all internal pruning uses its exact scaled form.
+    max_distance: u8,
 
     /// Runtime-configurable operation set used for lazy product transitions.
     operations: OperationSet,
 
     /// Cached operation indexes, widths, and weights.
     prepared_operations: Vec<PreparedOperation>,
+    source_width_slot_count: usize,
+    query_width_slot_count: usize,
 
-    /// Minimum cost to consume each query suffix without producing dictionary output.
-    query_only_costs: Vec<Option<f64>>,
+    /// Exact fixed-point domain shared by every configured operation.
+    cost_scale: CostScale,
+
+    /// Maximum accepted cost represented in [`Self::cost_scale`] units.
+    max_cost: usize,
+
+    /// Immutable resource ceilings shared by all clones.
+    limits: GeneralizedWfstLimits,
 
     /// Registry for dictionary nodes discovered during lazy expansion.
-    node_registry: Arc<RwLock<DictionaryNodeRegistry<D::Node>>>,
+    node_registry: Arc<RwLock<DictionaryNodeRegistry<Arc<D::Node>>>>,
 
     /// Registry for product and continuation states.
     state_registry: Arc<RwLock<StateRegistry>>,
@@ -145,27 +152,113 @@ where
         query: &str,
         max_distance: u8,
         operations: OperationSet,
-    ) -> Result<Self, OperationSetValidationError> {
+    ) -> Result<Self, GeneralizedWfstError> {
+        Self::try_new_with_limits(
+            dictionary,
+            query,
+            max_distance,
+            operations,
+            GeneralizedWfstLimits::default(),
+        )
+    }
+
+    /// Create a generalized WFST with explicit inclusive resource ceilings.
+    pub fn try_new_with_limits(
+        dictionary: &D,
+        query: &str,
+        max_distance: u8,
+        operations: OperationSet,
+        limits: GeneralizedWfstLimits,
+    ) -> Result<Self, GeneralizedWfstError> {
         operations.validate()?;
-        let operations = bounded_operation_set(max_distance, operations);
-        let automaton = GeneralizedAutomaton::with_operations(max_distance, operations.clone());
-        let prepared_operations = prepare_operations(&operations);
-        let query_only_costs =
-            compute_query_only_costs(query, operations.operations(), &prepared_operations);
-        let node_registry = Arc::new(RwLock::new(DictionaryNodeRegistry::new(dictionary.root())));
+        Self::validate_construction_limits(query, &operations, limits)?;
+        let cost_scale = CostScale::for_operations(&operations)?;
+        let max_cost = cost_scale.scale_budget(max_distance)?;
+        let operations = bounded_operation_set(cost_scale, max_cost, operations)?;
+        let prepared_operations = prepare_operations(&operations, cost_scale)?;
+        let source_width_slot_count = prepared_operations
+            .iter()
+            .map(|op| op.source_width_slot + 1)
+            .max()
+            .unwrap_or(0);
+        let query_width_slot_count = prepared_operations
+            .iter()
+            .map(|op| op.query_width_slot + 1)
+            .max()
+            .unwrap_or(0);
+        let node_registry = Arc::new(RwLock::new(DictionaryNodeRegistry::new(Arc::new(
+            dictionary.root(),
+        ))));
         let state_registry = Arc::new(RwLock::new(StateRegistry::new()));
 
         Ok(Self {
             dictionary: dictionary.clone(),
             query: query.to_string(),
-            automaton,
+            max_distance,
             operations,
             prepared_operations,
-            query_only_costs,
+            source_width_slot_count,
+            query_width_slot_count,
+            cost_scale,
+            max_cost,
+            limits,
             node_registry,
             state_registry,
             cache: LazyStateCache::new(DEFAULT_MAX_CACHE_SIZE),
         })
+    }
+
+    fn validate_construction_limits(
+        query: &str,
+        operations: &OperationSet,
+        limits: GeneralizedWfstLimits,
+    ) -> Result<(), GeneralizedWfstError> {
+        Self::require_at_most(
+            GeneralizedWfstResource::QueryBytes,
+            query.len(),
+            limits.max_query_bytes,
+        )?;
+        Self::require_at_most(
+            GeneralizedWfstResource::QueryScalars,
+            query.chars().count(),
+            limits.max_query_scalars,
+        )?;
+        Self::require_at_most(
+            GeneralizedWfstResource::RetainedDictionaryNodes,
+            1,
+            limits.max_retained_dictionary_nodes,
+        )?;
+        Self::require_at_most(
+            GeneralizedWfstResource::RetainedWfstStates,
+            1,
+            limits.max_retained_wfst_states,
+        )?;
+        for operation in operations.operations() {
+            Self::require_at_most(
+                GeneralizedWfstResource::OperationSourceScalars,
+                operation.consume_x(),
+                limits.max_operation_source_scalars,
+            )?;
+            Self::require_at_most(
+                GeneralizedWfstResource::OperationQueryScalars,
+                operation.consume_y(),
+                limits.max_operation_query_scalars,
+            )?;
+        }
+        Ok(())
+    }
+
+    #[inline]
+    fn require_at_most(
+        resource: GeneralizedWfstResource,
+        required: usize,
+        limit: usize,
+    ) -> Result<(), GeneralizedWfstError> {
+        if required <= limit {
+            Ok(())
+        } else {
+            Err(GeneralizedWfstError::limit(resource, limit, required))
+        }
     }
 
     /// Get the query string.
@@ -177,7 +270,34 @@ where
     /// Get the maximum distance.
     #[inline]
     pub fn max_distance(&self) -> u8 {
-        self.automaton.max_distance()
+        self.max_distance
+    }
+
+    /// Dictionary snapshot used by this product.
+    pub fn dictionary(&self) -> &D {
+        &self.dictionary
+    }
+
+    /// Exact scale used for internal costs, pruning, and state identity.
+    pub fn cost_scale(&self) -> CostScale {
+        self.cost_scale
+    }
+
+    /// Immutable resource ceilings used by this WFST and its clones.
+    pub fn limits(&self) -> GeneralizedWfstLimits {
+        self.limits
+    }
+
+    /// Expand a state and return its complete arcs, propagating any failure.
+    ///
+    /// A limit failure commits no new dictionary/state identities or cached
+    /// arcs from this expansion. Earlier successful expansions remain valid.
+    pub fn try_transitions(
+        &mut self,
+        state: StateId,
+    ) -> Result<&[WeightedTransition<char, TropicalWeight>], ExpansionError> {
+        self.ensure_state(state)?;
+        Ok(self.transitions(state))
     }
 
     /// Set the maximum cache size used by `CachePolicy::Lru { max_states: 0 }`.
@@ -199,322 +319,9 @@ where
         cache_char_state_expansion(&mut self.cache, state_id, expansion)
     }
 
-    fn compute_registered_state(&self, state_id: StateId) -> StateExpansion<char, TropicalWeight> {
-        let Some(state) = self.registered_state(state_id) else {
-            return StateExpansion::failed(ExpansionFailure::invalid_state(state_id));
-        };
-
-        let (is_final, final_weight, transitions) = match state {
-            RegisteredState::Product(product) => self.compute_product_state(state_id, product),
-            RegisteredState::Emit(emit) => self.compute_emit_state(state_id, &emit),
-        };
-
-        if is_final {
-            StateExpansion::final_state(final_weight, transitions)
-        } else {
-            StateExpansion::non_final(transitions)
-        }
-    }
-
-    fn registered_state(&self, state_id: StateId) -> Option<RegisteredState> {
-        let registry = crate::read_lock(&self.state_registry);
-        registry.get(state_id).cloned()
-    }
-
-    fn final_weight_for_state(&self, state_id: StateId) -> Option<TropicalWeight> {
-        match self.registered_state(state_id)? {
-            RegisteredState::Product(product) => {
-                let dict_node = self.dictionary_node(product.dict_node_id)?;
-                self.product_final_weight(product, &dict_node)
-            }
-            RegisteredState::Emit(_) => None,
-        }
-    }
-
-    fn compute_product_state(
-        &self,
-        state_id: StateId,
-        product: ProductState,
-    ) -> (
-        bool,
-        TropicalWeight,
-        SmallVec<[WeightedTransition<char, TropicalWeight>; 4]>,
-    ) {
-        let Some(dict_node) = self.dictionary_node(product.dict_node_id) else {
-            return (false, TropicalWeight::zero(), SmallVec::new());
-        };
-
-        if product.query_byte_pos > self.query.len() || !self.cost_within_bound(product.cost) {
-            return (false, TropicalWeight::zero(), SmallVec::new());
-        }
-
-        let accepted_final_weight = self.product_final_weight(product, &dict_node);
-        let is_final = accepted_final_weight.is_some();
-        let final_weight = accepted_final_weight.unwrap_or_else(TropicalWeight::zero);
-
-        let operations = self.operations.operations();
-        let mut transitions = SmallVec::with_capacity(self.prepared_operations.len());
-        let mut paths_by_width = DictPathCache::new();
-        let mut query_segments_by_width = QuerySegmentCache::new();
-
-        for prepared in &self.prepared_operations {
-            let Some(op) = operations.get(prepared.index) else {
-                continue;
-            };
-            let dict_width = prepared.consume_x;
-            let query_width = prepared.consume_y;
-
-            if dict_width == 0 && query_width == 0 {
-                continue;
-            }
-
-            let next_cost = product.cost + prepared.weight;
-            if !self.cost_within_bound(next_cost) {
-                continue;
-            }
-
-            let Some(query_segment_index) = self.query_segment_cache_index(
-                &mut query_segments_by_width,
-                product.query_byte_pos,
-                query_width,
-            ) else {
-                continue;
-            };
-            let query_segment = &query_segments_by_width[query_segment_index].1;
-
-            let paths_index =
-                self.dict_path_cache_index(&mut paths_by_width, product.dict_node_id, dict_width);
-            let paths = &paths_by_width[paths_index].1;
-
-            let mut applicable_paths = SmallVec::<[&DictPath; 4]>::new();
-            for path in paths.iter() {
-                if operation_applies(
-                    prepared,
-                    op,
-                    &path.output,
-                    &path.bytes,
-                    &query_segment.chars,
-                    query_segment.bytes,
-                ) {
-                    applicable_paths.push(path);
-                }
-            }
-
-            if applicable_paths.is_empty() {
-                continue;
-            }
-
-            reserve_operation_path_capacity(&mut transitions, applicable_paths.len());
-            let mut state_registry = crate::write_lock(&self.state_registry);
-            for path in applicable_paths {
-                let Some(target) = state_registry.register_product(ProductState {
-                    dict_node_id: path.target_node_id,
-                    query_byte_pos: query_segment.end_byte_pos,
-                    cost: canonical_cost(next_cost),
-                }) else {
-                    continue;
-                };
-
-                self.push_operation_path(
-                    &mut state_registry,
-                    &mut transitions,
-                    OperationPathLabels {
-                        from: state_id,
-                        target,
-                        input: &query_segment.chars,
-                        output: &path.output,
-                        weight: prepared.weight,
-                    },
-                );
-            }
-        }
-
-        (is_final, final_weight, transitions)
-    }
-
-    fn compute_emit_state(
-        &self,
-        state_id: StateId,
-        emit: &EmitState,
-    ) -> (
-        bool,
-        TropicalWeight,
-        SmallVec<[WeightedTransition<char, TropicalWeight>; 4]>,
-    ) {
-        let mut transitions = SmallVec::with_capacity(1);
-        if let Some((input, output, next_input, next_output)) =
-            next_label_pair(&emit.input, &emit.output, emit.input_pos, emit.output_pos)
-        {
-            let target = if next_input == emit.input.len() && next_output == emit.output.len() {
-                Some(emit.target)
-            } else {
-                let mut state_registry = crate::write_lock(&self.state_registry);
-                state_registry.register_emit(EmitState {
-                    input: Arc::clone(&emit.input),
-                    output: Arc::clone(&emit.output),
-                    input_pos: next_input,
-                    output_pos: next_output,
-                    target: emit.target,
-                })
-            };
-
-            if let Some(target) = target {
-                transitions.push(WeightedTransition::new(
-                    state_id,
-                    input,
-                    output,
-                    target,
-                    TropicalWeight::new(0.0),
-                ));
-            }
-        }
-
-        (false, TropicalWeight::zero(), transitions)
-    }
-
-    fn push_operation_path(
-        &self,
-        state_registry: &mut StateRegistry,
-        transitions: &mut SmallVec<[WeightedTransition<char, TropicalWeight>; 4]>,
-        labels: OperationPathLabels<'_>,
-    ) {
-        let Some((input_label, output_label, next_input, next_output)) =
-            next_label_pair(labels.input, labels.output, 0, 0)
-        else {
-            return;
-        };
-
-        let to = if next_input == labels.input.len() && next_output == labels.output.len() {
-            Some(labels.target)
-        } else {
-            state_registry.register_emit(EmitState {
-                input: Arc::from(labels.input),
-                output: Arc::from(labels.output),
-                input_pos: next_input,
-                output_pos: next_output,
-                target: labels.target,
-            })
-        };
-
-        if let Some(to) = to {
-            transitions.push(WeightedTransition::new(
-                labels.from,
-                input_label,
-                output_label,
-                to,
-                TropicalWeight::new(labels.weight),
-            ));
-        }
-    }
-
-    fn dictionary_paths_exact_chars(&self, start_node_id: u32, char_len: usize) -> DictPaths {
-        let Some(start_node) = self.dictionary_node(start_node_id) else {
-            return DictPaths::new();
-        };
-
-        if char_len == 0 {
-            let mut paths = DictPaths::new();
-            paths.push(DictPath {
-                target_node_id: start_node_id,
-                output: LabelBuffer::new(),
-                bytes: ByteBuffer::new(),
-            });
-            return paths;
-        }
-
-        let mut paths = DictPaths::with_capacity(start_node.edge_count().unwrap_or(0));
-        let mut output = LabelBuffer::new();
-        let mut bytes = ByteBuffer::with_capacity(char_len.saturating_mul(4));
-        let mut registry = crate::write_lock(&self.node_registry);
-        let mut collection = DictionaryPathCollection {
-            registry: &mut registry,
-            output: &mut output,
-            bytes: &mut bytes,
-            paths: &mut paths,
-        };
-        self.collect_dictionary_paths(&mut collection, start_node_id, start_node, char_len);
-        paths
-    }
-
-    fn collect_dictionary_paths(
-        &self,
-        collection: &mut DictionaryPathCollection<'_, D::Node>,
-        parent_id: u32,
-        node: D::Node,
-        remaining_chars: usize,
-    ) {
-        for (dict_char, child_node) in node.edges() {
-            if remaining_chars == 0 {
-                continue;
-            }
-
-            let next_node = (remaining_chars > 1).then(|| child_node.clone());
-            let Some(child_node_id) = collection
-                .registry
-                .register_node(child_node, DictionaryNodeKey::child(parent_id, dict_char))
-            else {
-                continue;
-            };
-            collection.output.push(dict_char);
-            let mut encoded = [0u8; 4];
-            let encoded = dict_char.encode_utf8(&mut encoded).as_bytes();
-            collection.bytes.extend_from_slice(encoded);
-
-            if remaining_chars == 1 {
-                collection.paths.push(DictPath {
-                    target_node_id: child_node_id,
-                    output: collection.output.clone(),
-                    bytes: collection.bytes.clone(),
-                });
-            } else if let Some(next_node) = next_node {
-                self.collect_dictionary_paths(
-                    collection,
-                    child_node_id,
-                    next_node,
-                    remaining_chars - 1,
-                );
-            }
-
-            collection
-                .bytes
-                .truncate(collection.bytes.len() - encoded.len());
-            collection.output.pop();
-        }
-    }
-
-    fn query_segment_cache_index<'a>(
-        &'a self,
-        cache: &mut QuerySegmentCache<'a>,
-        start: usize,
-        char_len: usize,
-    ) -> Option<usize> {
-        if let Some(index) = cache.iter().position(|(width, _)| *width == char_len) {
-            return Some(index);
-        }
-
-        let (segment, end_byte_pos) = self.query_segment(start, char_len)?;
-        cache.push((char_len, QuerySegment::new(segment, end_byte_pos)));
-        Some(cache.len() - 1)
-    }
-
-    fn dict_path_cache_index(
-        &self,
-        cache: &mut DictPathCache,
-        start_node_id: u32,
-        char_len: usize,
-    ) -> usize {
-        if let Some(index) = cache.iter().position(|(width, _)| *width == char_len) {
-            return index;
-        }
-
-        let paths = self.dictionary_paths_exact_chars(start_node_id, char_len);
-        cache.push((char_len, paths));
-        cache.len() - 1
-    }
-
-    fn dictionary_node(&self, node_id: u32) -> Option<D::Node> {
+    fn dictionary_node(&self, node_id: u32) -> Option<Arc<D::Node>> {
         let registry = crate::read_lock(&self.node_registry);
-        registry.get_node(node_id).cloned()
+        registry.get_node(node_id).map(Arc::clone)
     }
 
     fn product_final_weight(
@@ -522,19 +329,13 @@ where
         product: ProductState,
         dict_node: &D::Node,
     ) -> Option<TropicalWeight> {
-        if product.query_byte_pos > self.query.len()
+        if product.query_byte_pos != self.query.len()
             || !self.cost_within_bound(product.cost)
             || !dict_node.is_final()
         {
             return None;
         }
-
-        self.query_only_costs
-            .get(product.query_byte_pos)
-            .copied()
-            .flatten()
-            .filter(|extra| self.cost_within_bound(product.cost + extra))
-            .map(TropicalWeight::new)
+        Some(TropicalWeight::new(0.0))
     }
 
     fn query_segment(&self, start: usize, char_len: usize) -> Option<(&str, usize)> {
@@ -542,8 +343,8 @@ where
     }
 
     #[inline]
-    fn cost_within_bound(&self, cost: f64) -> bool {
-        cost <= f64::from(self.automaton.max_distance()) + f64::EPSILON
+    fn cost_within_bound(&self, cost: usize) -> bool {
+        cost <= self.max_cost
     }
 
     #[inline]
@@ -618,8 +419,9 @@ where
     }
 
     fn transitions_lazy(&mut self, state: StateId) -> &[WeightedTransition<char, TropicalWeight>] {
-        let _ = self.ensure_state(state);
-        self.transitions(state)
+        self.try_transitions(state).expect(
+            "generalized expansion failed; use try_transitions or LazyWfst::expand to handle failures",
+        )
     }
 
     fn cache_policy(&self) -> lling_llang::wfst::CachePolicy {
@@ -655,7 +457,11 @@ where
     D::Node: DictionaryNode<Unit = char>,
 {
     fn compute_state(&self, request: ExpansionRequest<'_>) -> StateExpansion<char, TropicalWeight> {
-        fulfill_expansion_request(self, request)
+        self.compute_registered_state_with_check(
+            request.state(),
+            Some(request.cancellation()),
+            &|| Ok(()),
+        )
     }
 
     fn start(&self) -> StateId {
@@ -663,20 +469,7 @@ where
     }
 
     fn num_states_hint(&self) -> Option<usize> {
-        let query_positions = self.query.len().saturating_add(1);
-        let max_dist = usize::from(self.automaton.max_distance());
-        let cost_levels = self
-            .prepared_operations
-            .len()
-            .saturating_mul(max_dist + 1)
-            .max(1);
-        let registered_states = crate::read_lock(&self.state_registry).len();
-
-        crate::dictionary_product_states_hint(
-            self.dictionary.len(),
-            query_positions.saturating_mul(cost_levels),
-        )
-        .map(|product_hint| product_hint.max(registered_states))
+        None
     }
 }
 
@@ -686,309 +479,368 @@ mod tests {
     use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
     use liblevenshtein::transducer::OperationSetBuilder;
 
-    #[test]
-    fn test_generalized_registry_capacity_helper_rejects_overflow() {
-        let Ok(max_state_id) = usize::try_from(StateId::MAX) else {
-            return;
-        };
-        assert_eq!(next_state_id(max_state_id), Some(StateId::MAX));
-
-        if let Some(overflowing_len) = max_state_id.checked_add(1) {
-            assert_eq!(next_state_id(overflowing_len), None);
-        }
+    fn counts(wfst: &GeneralizedWfst<DynamicDawgChar<()>>) -> (usize, usize, usize) {
+        (
+            crate::read_lock(&wfst.node_registry).len(),
+            wfst.num_states(),
+            wfst.computed_states(),
+        )
     }
 
     #[test]
-    fn test_generalized_registries_preallocate_start_state() {
-        let dict = DynamicDawgChar::<()>::from_terms(vec!["a"]);
-        let node_registry = DictionaryNodeRegistry::new(dict.root());
-        let state_registry = StateRegistry::new();
-
-        assert!(node_registry.node_capacity() >= 1);
-        assert!(node_registry.key_capacity() >= 1);
-        assert!(state_registry.id_to_state.capacity() >= 1);
-        assert!(state_registry.product_to_id.capacity() >= 1);
-        match state_registry.get(0) {
-            Some(RegisteredState::Product(product)) => {
-                assert_eq!(product.dict_node_id, 0);
-                assert_eq!(product.query_byte_pos, 0);
-                assert_eq!(product.cost, 0.0);
-            }
-            _ => std::panic::panic_any("expected start product state".to_owned()),
-        }
-    }
-
-    #[test]
-    fn test_generalized_state_hint_never_underreports_registered_states() {
-        let dict = DynamicDawgChar::<()>::from_terms(vec!["a"]);
-        let operations = OperationSetBuilder::new().build();
-        let wfst = GeneralizedWfst::new(&dict, "", 0, operations);
-
-        assert_eq!(
-            StateSource::<char, TropicalWeight>::num_states_hint(&wfst),
-            Some(1)
-        );
-
-        {
-            let mut registry = crate::write_lock(&wfst.state_registry);
-            let emit = EmitState {
-                input: Arc::from(&['f'][..]),
-                output: Arc::from(&['p'][..]),
-                input_pos: 0,
-                output_pos: 0,
-                target: 0,
-            };
-            assert!(registry.register_emit(emit).is_some());
-        }
-
-        assert_eq!(Wfst::num_states(&wfst), 2);
-        assert_eq!(
-            StateSource::<char, TropicalWeight>::num_states_hint(&wfst),
-            Some(2)
-        );
-    }
-
-    #[test]
-    fn test_generalized_reserves_operation_path_fanout_capacity() {
-        let mut transitions =
-            SmallVec::<[WeightedTransition<char, TropicalWeight>; 4]>::with_capacity(1);
-        let initial_capacity = transitions.capacity();
-
-        reserve_operation_path_capacity(&mut transitions, 1);
-        assert_eq!(transitions.len(), 0);
-        assert_eq!(transitions.capacity(), initial_capacity);
-
-        reserve_operation_path_capacity(&mut transitions, 8);
-        assert_eq!(transitions.len(), 0);
-        assert!(transitions.capacity() >= 8);
-    }
-
-    #[test]
-    fn test_generalized_constructor_stores_only_bounded_operations() {
-        let dict = DynamicDawgChar::<()>::from_terms(vec!["a"]);
-        let operations = OperationSetBuilder::new()
-            .with_operation(OperationType::new(1, 1, 0.0, "match"))
-            .with_operation(OperationType::new(1, 1, 1.0, "over_budget"))
-            .build();
-
-        let wfst = GeneralizedWfst::new(&dict, "a", 0, operations);
-
-        assert_eq!(wfst.operations.len(), 1);
-        assert_eq!(wfst.prepared_operations.len(), 1);
-        assert_eq!(wfst.operations.operations()[0].name(), "match");
-        assert_eq!(wfst.prepared_operations[0].index, 0);
-        assert_eq!(wfst.prepared_operations[0].consume_x, 1);
-        assert_eq!(wfst.prepared_operations[0].consume_y, 1);
-        assert_eq!(wfst.prepared_operations[0].weight, 0.0);
-    }
-
-    #[test]
-    fn test_generalized_try_new_validates_before_budget_filtering() {
-        let dict = DynamicDawgChar::<()>::from_terms(vec!["a"]);
-        let invalid_over_budget = OperationSetBuilder::new()
-            .with_operation(OperationType::new(0, 0, 2.0, "no_progress"))
-            .build();
-
+    fn constructor_checks_original_grammar_and_scale_before_filtering() {
+        let dict = DynamicDawgChar::<()>::from_terms(["a"]);
         assert!(matches!(
-            GeneralizedWfst::try_new(&dict, "a", 0, invalid_over_budget),
-            Err(OperationSetValidationError::NoProgress { .. })
-        ));
-
-        let invalid_equal_over_budget = OperationSetBuilder::new()
-            .with_operation(OperationType::with_applicability(
-                2,
-                1,
-                2.0,
-                liblevenshtein::transducer::OperationApplicability::Equal,
-                "wrong_equal_arity",
+            GeneralizedWfst::try_new(
+                &dict,
+                "a",
+                0,
+                OperationSetBuilder::new()
+                    .with_operation(OperationType::new(0, 0, 2.0, "no_progress"))
+                    .build()
+            ),
+            Err(GeneralizedWfstError::InvalidOperations(
+                OperationSetValidationError::NoProgress { .. }
             ))
-            .build();
-        assert!(matches!(
-            GeneralizedWfst::try_new(&dict, "a", 0, invalid_equal_over_budget),
-            Err(OperationSetValidationError::ApplicabilityArity { .. })
         ));
+        for weight in [1e-100, 1e20] {
+            let operations = OperationSetBuilder::new()
+                .with_operation(OperationType::new(1, 1, weight, "unrepresentable"))
+                .build();
+            assert!(matches!(
+                GeneralizedWfst::try_new(&dict, "a", 0, operations),
+                Err(GeneralizedWfstError::CostScale(_))
+            ));
+        }
     }
 
     #[test]
-    fn test_generalized_try_new_accepts_empty_operation_set() {
-        let dict = DynamicDawgChar::<()>::from_terms(vec!["a"]);
-
-        let wfst = GeneralizedWfst::try_new(&dict, "a", 0, OperationSetBuilder::new().build())
-            .expect("an empty operation set is a valid alignment grammar");
-
-        assert!(wfst.operations.is_empty());
-        assert!(wfst.prepared_operations.is_empty());
-    }
-
-    #[test]
-    fn test_generalized_emit_registry_shares_map_and_state_storage() {
-        let mut registry = StateRegistry::new();
-        let emit = EmitState {
-            input: Arc::from(&['p', 'h'][..]),
-            output: Arc::from(&['f'][..]),
-            input_pos: 1,
-            output_pos: 0,
-            target: 7,
-        };
-
-        let id = registry
-            .register_emit(emit.clone())
-            .expect("emit state should be registered");
-        assert_eq!(registry.register_emit(emit.clone()), Some(id));
-
-        let stored_emit = match registry.get(id) {
-            Some(RegisteredState::Emit(stored_emit)) => stored_emit,
-            _ => std::panic::panic_any("expected registered emit state".to_owned()),
-        };
-        let (map_emit, _) = registry
-            .emit_to_id
-            .get_key_value(&emit)
-            .expect("emit key should exist in map");
-
-        assert!(Arc::ptr_eq(stored_emit, map_emit));
-        assert_eq!(registry.emit_to_id.len(), 1);
-    }
-
-    #[test]
-    fn test_generalized_emit_continuations_share_label_storage() {
-        let mut registry = StateRegistry::new();
-        let emit = EmitState {
-            input: Arc::from(&['p', 'h'][..]),
-            output: Arc::from(&['f'][..]),
-            input_pos: 0,
-            output_pos: 0,
-            target: 7,
-        };
-        let next_emit = EmitState {
-            input: Arc::clone(&emit.input),
-            output: Arc::clone(&emit.output),
-            input_pos: 1,
-            output_pos: 1,
-            target: 7,
-        };
-
-        let id = registry
-            .register_emit(emit.clone())
-            .expect("emit state should be registered");
-        let next_id = registry
-            .register_emit(next_emit)
-            .expect("continuation should be registered");
-
-        let stored_emit = match registry.get(id) {
-            Some(RegisteredState::Emit(stored_emit)) => stored_emit,
-            _ => std::panic::panic_any("expected registered emit state".to_owned()),
-        };
-        let stored_next = match registry.get(next_id) {
-            Some(RegisteredState::Emit(stored_emit)) => stored_emit,
-            _ => std::panic::panic_any("expected registered continuation state".to_owned()),
-        };
-
-        assert!(Arc::ptr_eq(&stored_emit.input, &stored_next.input));
-        assert!(Arc::ptr_eq(&stored_emit.output, &stored_next.output));
-        assert_ne!(id, next_id);
-    }
-
-    #[test]
-    fn test_query_segment_reuses_borrowed_bytes_and_decodes_chars() {
-        let segment = QuerySegment::new("éa", "éa".len());
-
-        assert_eq!(segment.bytes, "éa".as_bytes());
-        assert_eq!(segment.chars.as_slice(), &['é', 'a']);
-        assert_eq!(segment.end_byte_pos, 3);
-        assert!(!segment.chars.spilled());
-    }
-
-    #[test]
-    fn test_generalized_width_caches_reuse_entries() {
-        let dict = DynamicDawgChar::<()>::from_terms(vec!["ab", "ac"]);
-        let wfst = GeneralizedWfst::new(&dict, "ab", 1, OperationSet::standard());
-
-        let mut query_cache = QuerySegmentCache::new();
-        let first_query = wfst
-            .query_segment_cache_index(&mut query_cache, 0, 1)
-            .expect("query character width should be valid");
-        let second_query = wfst
-            .query_segment_cache_index(&mut query_cache, 0, 1)
-            .expect("query character width should remain cached");
-        assert_eq!(first_query, second_query);
-        assert_eq!(query_cache.len(), 1);
-        assert_eq!(query_cache[0].1.chars.as_slice(), &['a']);
-
-        let mut path_cache = DictPathCache::new();
-        let first_paths = wfst.dict_path_cache_index(&mut path_cache, 0, 1);
-        let second_paths = wfst.dict_path_cache_index(&mut path_cache, 0, 1);
-        assert_eq!(first_paths, second_paths);
-        assert_eq!(path_cache.len(), 1);
-        assert_eq!(path_cache[0].1.len(), 1);
-        assert!(!path_cache[0].1.spilled());
-        assert_eq!(path_cache[0].1[0].output.as_slice(), &['a']);
-    }
-
-    #[test]
-    fn test_generalized_width_helpers_count_unicode_chars() {
-        let dict = DynamicDawgChar::<()>::from_terms(vec!["éa"]);
-        let wfst = GeneralizedWfst::new(&dict, "éa", 1, OperationSet::standard());
-
-        let (segment, end_byte_pos) = wfst
-            .query_segment(0, 1)
-            .expect("one Unicode scalar should be a valid segment");
-        assert_eq!(segment, "é");
-        assert_eq!(end_byte_pos, "é".len());
-
-        let paths = wfst.dictionary_paths_exact_chars(0, 1);
-        assert_eq!(paths.len(), 1);
-        assert_eq!(paths[0].output.as_slice(), &['é']);
-        assert_eq!(paths[0].bytes.as_slice(), "é".as_bytes());
-    }
-
-    #[test]
-    fn test_generalized_skips_dictionary_path_expansion_for_over_budget_operations() {
-        let dict = DynamicDawgChar::<()>::from_terms(vec!["b"]);
+    fn constructor_retains_exact_original_scale_after_filtering() {
+        let dict = DynamicDawgChar::<()>::from_terms(["a"]);
         let operations = OperationSetBuilder::new()
-            .with_operation(OperationType::new(1, 1, 1.0, "over_budget"))
+            .with_match()
+            .with_operation(OperationType::new(1, 1, 0.125, "eighth"))
+            .with_operation(OperationType::new(1, 1, 0.15, "twentieth"))
             .build();
         let wfst = GeneralizedWfst::new(&dict, "a", 0, operations);
-
-        assert_eq!(registered_dictionary_node_count(&wfst), 1);
-
-        match DirectStateSource::expand_state(&wfst, Wfst::start(&wfst)) {
-            StateExpansion::Expanded { transitions, .. } => {
-                assert!(transitions.is_empty());
-            }
-            StateExpansion::Failed(failure) => panic!("state expansion failed: {failure}"),
-            StateExpansion::Cancelled(reason) => panic!("state expansion cancelled: {reason:?}"),
-        }
-
-        assert_eq!(registered_dictionary_node_count(&wfst), 1);
-    }
-
-    fn registered_dictionary_node_count(wfst: &GeneralizedWfst<DynamicDawgChar<()>>) -> usize {
-        let registry = crate::read_lock(&wfst.node_registry);
-        let mut count = 0usize;
-        while registry.get_node(count as u32).is_some() {
-            count += 1;
-        }
-        count
+        assert_eq!(wfst.cost_scale().denominator(), 40);
+        assert_eq!(wfst.prepared_operations.len(), 1);
+        assert_eq!(wfst.prepared_operations[0].scaled_weight, 0);
+        assert_eq!(counts(&wfst), (1, 1, 0));
+        assert_eq!(StateSource::num_states_hint(&wfst), None);
     }
 
     #[test]
-    fn test_short_generalized_operation_buffers_stay_inline() {
-        let emit = EmitState {
-            input: Arc::from(&['f'][..]),
-            output: Arc::from(&['p', 'h'][..]),
-            input_pos: 0,
-            output_pos: 0,
-            target: 1,
-        };
-        let path = DictPath {
-            target_node_id: 1,
-            output: ['p', 'h'].into_iter().collect(),
-            bytes: (*b"ph").into_iter().collect(),
-        };
+    fn state_identifier_overflow_is_detected() {
+        assert_eq!(next_state_id(0), Some(0));
+        if let Ok(max) = usize::try_from(StateId::MAX) {
+            assert_eq!(next_state_id(max - 1), Some(StateId::MAX - 1));
+            assert_eq!(next_state_id(max), None);
+            if let Some(over) = max.checked_add(1) {
+                assert_eq!(next_state_id(over), None);
+            }
+        }
+    }
 
-        assert_eq!(emit.input.as_ref(), &['f']);
-        assert_eq!(emit.output.as_ref(), &['p', 'h']);
-        assert!(!path.output.spilled());
-        assert!(!path.bytes.spilled());
+    #[test]
+    fn distinct_width_cache_has_a_linear_charged_initialization_and_lookup_budget() {
+        let dict = DynamicDawgChar::<()>::from_terms(Vec::<&str>::new());
+        let mut builder = OperationSetBuilder::new();
+        for width in 1..=90 {
+            builder = builder.with_operation(OperationType::new(width, 0, 1.0, "wide"));
+        }
+        let operations = builder.build();
+        // Widths sum to 4095: a valid adversarial native grammar. The ledger
+        // is finality (1) + slots (91) + 90*(rule + edges + next + DFS-pop).
+        let exact_work = 1 + 91 + 90 * 4;
+        for limit in [exact_work - 1, exact_work] {
+            let mut wfst = GeneralizedWfst::try_new_with_limits(
+                &dict,
+                "",
+                1,
+                operations.clone(),
+                GeneralizedWfstLimits {
+                    max_work_units_per_expansion: limit,
+                    ..Default::default()
+                },
+            )
+            .expect("valid grammar");
+            assert_eq!(
+                (wfst.source_width_slot_count, wfst.query_width_slot_count),
+                (90, 1)
+            );
+            if limit < exact_work {
+                assert!(wfst.try_transitions(0).is_err());
+                assert_eq!(counts(&wfst), (1, 1, 0));
+            } else {
+                assert!(wfst
+                    .try_transitions(0)
+                    .expect("linear bounded expansion")
+                    .is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn complete_emission_chain_is_atomic_and_reused_after_cache_clear() {
+        let dict = DynamicDawgChar::<()>::from_terms(["abcd"]);
+        let operations = OperationSetBuilder::new()
+            .with_operation(OperationType::new(4, 0, 1.0, "delete_four"))
+            .build();
+        let limits = GeneralizedWfstLimits {
+            max_retained_wfst_states: 5,
+            max_retained_dictionary_nodes: 5,
+            ..Default::default()
+        };
+        let mut wfst =
+            GeneralizedWfst::try_new_with_limits(&dict, "", 1, operations.clone(), limits)
+                .expect("exact fitting limits");
+        let first = wfst.try_transitions(0).expect("full chain").to_vec();
+        assert_eq!(counts(&wfst), (5, 5, 1));
+        let mut state = first[0].to;
+        let mut last_chain = None;
+        while let Some(RegisteredState::Emit(emit)) = wfst.registered_state(state) {
+            if let Some(previous) = &last_chain {
+                assert!(Arc::ptr_eq(previous, &emit.chain));
+            }
+            last_chain = Some(Arc::clone(&emit.chain));
+            let next = emit.next;
+            wfst.try_transitions(state)
+                .expect("precommitted continuation");
+            assert_eq!(wfst.num_states(), 5);
+            state = next;
+        }
+        assert!(wfst.is_final(state));
+        wfst.clear_cache();
+        assert_eq!(wfst.try_transitions(0).expect("reuse")[0].to, first[0].to);
+        assert_eq!(counts(&wfst), (5, 5, 1));
+
+        let mut too_small = GeneralizedWfst::try_new_with_limits(
+            &dict,
+            "",
+            1,
+            operations,
+            GeneralizedWfstLimits {
+                max_retained_wfst_states: 4,
+                ..limits
+            },
+        )
+        .expect("valid constructor");
+        for _ in 0..3 {
+            assert!(too_small.try_transitions(0).is_err());
+            assert_eq!(counts(&too_small), (1, 1, 0));
+        }
+    }
+
+    #[test]
+    fn exact_fit_chains_keep_their_language_under_every_cache_policy() {
+        use lling_llang::wfst::CachePolicy;
+        let dict = DynamicDawgChar::<()>::from_terms(["abcd"]);
+        for policy in [
+            CachePolicy::CacheAll,
+            CachePolicy::NoCache,
+            CachePolicy::Lru { max_states: 1 },
+        ] {
+            let mut wfst = GeneralizedWfst::try_new_with_limits(
+                &dict,
+                "",
+                1,
+                OperationSetBuilder::new()
+                    .with_operation(OperationType::new(4, 0, 1.0, "delete_four"))
+                    .build(),
+                GeneralizedWfstLimits {
+                    max_retained_wfst_states: 5,
+                    max_retained_dictionary_nodes: 5,
+                    ..Default::default()
+                },
+            )
+            .expect("exact fit");
+            wfst.set_cache_policy(policy);
+            let mut previous_ids = None;
+            for _ in 0..3 {
+                let mut state = 0;
+                let mut output = String::new();
+                let mut cost = 0.0;
+                let mut ids = vec![state];
+                for _ in 0..4 {
+                    let arcs = wfst.try_transitions(state).expect("complete chain");
+                    assert_eq!(arcs.len(), 1);
+                    assert_eq!(arcs[0].input, None);
+                    output.push(arcs[0].output.expect("dictionary label"));
+                    cost += arcs[0].weight.value();
+                    state = arcs[0].to;
+                    ids.push(state);
+                }
+                assert_eq!(output, "abcd");
+                assert_eq!(cost, 1.0);
+                assert!(wfst.is_final(state));
+                assert_eq!(wfst.num_states(), 5);
+                if let Some(previous) = &previous_ids {
+                    assert_eq!(&ids, previous);
+                }
+                previous_ids = Some(ids);
+                wfst.clear_cache();
+            }
+        }
+    }
+
+    #[test]
+    fn missing_query_segments_and_empty_path_sets_are_cached_once() {
+        let dict = DynamicDawgChar::<()>::from_terms(Vec::<&str>::new());
+        for query_width in [0, 3] {
+            let mut builder = OperationSetBuilder::new();
+            for cost in 1..=3 {
+                builder = builder.with_operation(OperationType::new(
+                    2,
+                    query_width,
+                    f64::from(cost),
+                    "same_width",
+                ));
+            }
+            // Empty source: finality1 + slots2 + rules3 + iterator/next/pop3.
+            // Missing query: finality1 + slots2 + rules3 + scalar scans6.
+            let exact_work = if query_width == 0 { 9 } else { 12 };
+            for work in [exact_work - 1, exact_work] {
+                let mut wfst = GeneralizedWfst::try_new_with_limits(
+                    &dict,
+                    "",
+                    3,
+                    builder.clone().build(),
+                    GeneralizedWfstLimits {
+                        max_work_units_per_expansion: work,
+                        ..Default::default()
+                    },
+                )
+                .expect("valid grammar");
+                if work == exact_work {
+                    assert!(wfst.try_transitions(0).expect("cached absence").is_empty());
+                } else {
+                    assert!(wfst.try_transitions(0).is_err());
+                    assert_eq!(counts(&wfst), (1, 1, 0));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn expansion_limits_leave_all_logical_registries_unchanged() {
+        let dict = DynamicDawgChar::<()>::from_terms(["a", "b"]);
+        let operations = OperationSetBuilder::new()
+            .with_operation(OperationType::new(1, 1, 1.0, "any"))
+            .build();
+        let cases = [
+            GeneralizedWfstLimits {
+                max_retained_dictionary_nodes: 2,
+                ..Default::default()
+            },
+            GeneralizedWfstLimits {
+                max_retained_wfst_states: 2,
+                ..Default::default()
+            },
+            GeneralizedWfstLimits {
+                max_paths_per_expansion: 1,
+                ..Default::default()
+            },
+            GeneralizedWfstLimits {
+                max_work_units_per_expansion: 1,
+                ..Default::default()
+            },
+        ];
+        for limits in cases {
+            let mut wfst =
+                GeneralizedWfst::try_new_with_limits(&dict, "a", 1, operations.clone(), limits)
+                    .expect("valid constructor");
+            for _ in 0..3 {
+                let error = wfst
+                    .try_transitions(0)
+                    .expect_err("expansion must exceed its bound");
+                assert!(matches!(error, ExpansionError::Failure(ref failure)
+                    if failure.kind() == lling_llang::prelude::ExpansionFailureKind::ResourceExhausted
+                        && !failure.is_retryable()));
+                assert_eq!(counts(&wfst), (1, 1, 0));
+            }
+        }
+    }
+
+    #[test]
+    fn cancellation_and_late_source_failure_never_publish_staging() {
+        let dict = DynamicDawgChar::<()>::from_terms(["abcd"]);
+        let wfst = GeneralizedWfst::new(
+            &dict,
+            "",
+            1,
+            OperationSetBuilder::new()
+                .with_operation(OperationType::new(4, 0, 1.0, "delete"))
+                .build(),
+        );
+        let cancellation = CancellationToken::new();
+        let calls = std::cell::Cell::new(0);
+        let check = || {
+            let count = calls.get() + 1;
+            calls.set(count);
+            if count == 5 {
+                cancellation.cancel(lling_llang::prelude::CancellationReason::Requested);
+            }
+            Ok(())
+        };
+        assert!(matches!(
+            wfst.compute_registered_state_with_check(0, Some(&cancellation), &check),
+            StateExpansion::Cancelled(_)
+        ));
+        assert_eq!(counts(&wfst), (1, 1, 0));
+        let calls = std::cell::Cell::new(0);
+        let check = || {
+            calls.set(calls.get() + 1);
+            if calls.get() >= 5 {
+                Err(ExpansionError::Failure(
+                    ExpansionFailure::resource_exhausted("provider page failed"),
+                ))
+            } else {
+                Ok(())
+            }
+        };
+        assert!(matches!(
+            wfst.compute_registered_state_with_check(0, None, &check),
+            StateExpansion::Failed(_)
+        ));
+        assert_eq!(counts(&wfst), (1, 1, 0));
+    }
+
+    #[test]
+    fn exact_fit_concurrent_clones_reconcile_shared_identities() {
+        let dict = DynamicDawgChar::<()>::from_terms(["abcd"]);
+        let wfst = GeneralizedWfst::try_new_with_limits(
+            &dict,
+            "",
+            1,
+            OperationSetBuilder::new()
+                .with_operation(OperationType::new(4, 0, 1.0, "delete"))
+                .build(),
+            GeneralizedWfstLimits {
+                max_retained_dictionary_nodes: 5,
+                max_retained_wfst_states: 5,
+                ..Default::default()
+            },
+        )
+        .expect("exact limits");
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let mut workers = Vec::new();
+        for _ in 0..2 {
+            let wfst = wfst.clone();
+            let barrier = Arc::clone(&barrier);
+            workers.push(std::thread::spawn(move || {
+                barrier.wait();
+                match wfst.expand_state(0) {
+                    StateExpansion::Expanded { transitions, .. } => transitions[0].to,
+                    result => panic!("unexpected expansion result: {result:?}"),
+                }
+            }));
+        }
+        let ids: Vec<_> = workers
+            .into_iter()
+            .map(|worker| worker.join().expect("worker"))
+            .collect();
+        assert_eq!(ids[0], ids[1]);
+        assert_eq!(counts(&wfst), (5, 5, 0));
     }
 }

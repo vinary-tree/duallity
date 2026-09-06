@@ -11,14 +11,14 @@ $`\mathbb{T}`$ with $`\bar{1} = 0`$ / $`\bar{0} = +\infty`$, the transducer rela
 $`T(x, y)`$, $`\varepsilon`$) are defined once in the
 [master notation table](../theory/README.md#master-notation). Page-local symbols introduced here — the
 product tuple $`\pi = (\nu, b, c)`$, an operation $`o = \langle x, y, \omega, \varrho\rangle`$,
-and the query-only cost $`\kappa`$ — are defined at first use.
+and the common exact-cost scale $`s`$ — are defined at first use.
 
 ## 1. Intuition
 
 Where [`LevenshteinWfst`](levenshtein-wfst.md) hardcodes the four standard edits, `GeneralizedWfst`
 lets you **assemble the operation set at runtime** — add adjacent transpositions, OCR-style
-merge/split, or phonetic digraph rewrites (`ph↔f`, `ch↔k`, `qu↔kw`) — and hands the result to
-liblevenshtein's `GeneralizedAutomaton` while itself walking a lazily-interned product of the
+merge/split, or phonetic digraph rewrites (`ph↔f`, `ch↔k`, `qu↔kw`) — and uses
+the native operation grammar and exact cost scale while walking a lazily-interned product of the
 dictionary against the query.
 
 <img src="../diagrams/generalized-builder-flow.svg" alt="The fluent builder selects an OperationSet and builds a GeneralizedWfst backed by a lazy product graph" width="860"/>
@@ -32,164 +32,142 @@ becomes a short chain of `char : char` arcs whose total weight is the operation'
 
 ## 2. Operational semantics
 
-### 2.1 States $`Q`$ — two kinds
+### 2.1 Exact costs and state identity
 
-`GeneralizedWfst` interns two kinds of state into a dense `StateRegistry` (an `id_to_state: Vec<…>`
-plus dedup maps):
+Let $`s`$ be the common denominator derived by
+`liblevenshtein::cost::CostScale::for_operations` from the **original** catalog.
+Each configured weight $`\omega_o`$ is interpreted as its shortest round-tripping
+decimal, reduced to a rational. Its scaled integer is $`a_o = s\omega_o`$;
+the configured `u8` budget $`k`$ becomes $`K = sk`$. Unrepresentable denominators,
+weights, or budgets are construction errors, never rounded substitutes.
 
-| Kind | Tuple | Meaning |
-|------|-------|---------|
-| **Product** | $`\pi = (\nu, b, c)`$ | a dictionary node id $`\nu`$, the **byte** offset $`b`$ into the query, and the accumulated weighted cost $`c`$ used for bounded pruning. |
-| **Emit** (continuation) | $`(\mathbf{u}, \mathbf{d}, i, j, \tau)`$ | the full input/output `char` slices $`\mathbf{u}`$ (query) and $`\mathbf{d}`$ (dict) of one multi-symbol operation, the two cursors $`i, j`$, and the ultimate target product id $`\tau`$. |
+This is exact decimal semantics, not exact binary-float semantics: separate
+operations costing `0.1` and `0.2` sum internally to the same value as one
+operation costing `0.3`. Passing the already-rounded expression `0.1 + 0.2`
+as a *single configured weight* describes a different decimal and can fail
+scale validation.
 
-Product states are deduplicated on $`(\nu,\, b,\, \operatorname{bits}(c))`$ (the cost is
-canonicalized — $`-0.0 \mapsto 0.0`$ — then bit-cast), so two paths that reach the same node at
-the same query position and cost share one id. Emit states are deduplicated on full structural
-equality with `Arc`-shared label slices, so repeated firings of the same digraph reuse one
-continuation chain.
+Two kinds of state have dense, stable IDs:
 
-### 2.2 Start $`q_0`$
+| Kind | Identity | Meaning |
+|---|---|---|
+| Product | $`(\nu,b,c)`$ | Dictionary path ID $`\nu`$, query UTF-8 byte offset $`b`$, and exact accumulated integer cost $`c`$. |
+| Emit | Canonical label chain and position | Remaining query/input and dictionary/output scalar labels, plus the ultimate product target. |
 
-`start()` is id $`0`$, the product state $`q_0 = (\nu_{\mathrm{root}},\, 0,\, 0)`$ — the
-dictionary root, query byte $`0`$, cost $`0`$. The registry pre-registers exactly this one
-state; every other state is interned on demand during expansion.
+Product equality uses integers, not floating-point bit patterns. A multi-label
+chain stores its two label arrays and target once, with `Arc` sharing between
+continuations. The complete chain is interned once; hashing its labels separately
+for every continuation would introduce quadratic work.
 
-### 2.3 Operations $`o = \langle x, y, \omega, \varrho\rangle`$
+### 2.2 Start state
 
-An operation is a `liblevenshtein::transducer::OperationType`. Its arity is
-$`\langle x, y, \omega, \varrho\rangle`$ where — matching
-`OperationType::new(consume_x, consume_y, weight, name)` — **$`x = \texttt{consume\_x}`$ counts characters consumed from the
-DICTIONARY side, $`y = \texttt{consume\_y}`$ counts characters consumed from the QUERY side**,
-$`\omega`$ is the cost, and $`\varrho`$ an optional named restriction (a UTF-8 byte-string
-pair set). duallity's expansion honours this orientation literally: it draws dictionary paths of $`x`$
-scalars and a query segment of $`y`$ scalars (`generalized_wfst.rs`:
-`dict_width = consume_x; query_width = consume_y`). All counts are **Unicode scalar values**, but the
-restriction is matched against the selected UTF-8 **byte** slices, so a restricted operation with
-$`x = y = 1`$ can pin a single non-ASCII substitution.
+State `0` is $`(\nu_{\mathrm{root}},0,0)`$. Both registries initially contain
+only their root/start entry. A state's ID remains valid across transition-cache
+eviction and across clones that share the registries.
 
-An operation is *applicable* to a candidate dictionary scalar sequence $`\mathbf{d}`$ and query
-scalar sequence $`\mathbf{u}`$ per its class (`generalized_ops::operation_applies`):
+### 2.3 Operation applicability and tape orientation
+
+An operation consumes $`x`$ dictionary scalars and $`y`$ query scalars, as specified
+by `OperationType::new(consume_x, consume_y, weight, name)`. The input tape spells
+the query; the output tape spells the dictionary term. Widths count Unicode
+scalar values, while query positions and listed-pair comparisons use UTF-8 bytes.
+
+For selected dictionary and query scalar sequences $`\mathbf d`$ and $`\mathbf u`$,
+the explicit `OperationApplicability` tag is authoritative:
 
 ```math
-\mathrm{app}_o(\mathbf{d}, \mathbf{u}) =
+\mathrm{app}_o(\mathbf d,\mathbf u)=
 \begin{cases}
-\mathbf{d} = \mathbf{u}, & \textsf{Match}\ \langle 1,1,0\rangle,\\[2pt]
-\operatorname{bytes}(\mathbf{d}) \ne \operatorname{bytes}(\mathbf{u}), & \textsf{Unrestricted\ substitution}\ \langle 1,1,\omega>0\rangle,\\[2pt]
-d_0 = u_1 \wedge d_1 = u_0 \wedge \mathbf{d} \ne \mathbf{u}, & \textsf{Unrestricted\ transpose}\ \langle 2,2,\cdot\rangle,\\[2pt]
-\varrho.\mathrm{contains\_str}\bigl(\operatorname{bytes}(\mathbf{d}), \operatorname{bytes}(\mathbf{u})\bigr), & \textsf{Restricted}\ (\varrho \ne \varnothing),\\[2pt]
-\textsf{true}, & \textsf{Any}\ (\text{insert, delete, merge, split}).
+\mathrm{true}, & \texttt{Any},\\
+\mathbf d=\mathbf u, & \texttt{Equal},\\
+d_0=u_1 \land d_1=u_0, & \texttt{AdjacentTranspose},\\
+(\operatorname{bytes}(\mathbf d),\operatorname{bytes}(\mathbf u))
+  \in R_o, & \texttt{Listed}(R_o).
 \end{cases}
 ```
 
-### 2.4 Weighted transitions $`E`$
+Here $`R_o`$ is the operation's directed substitution-pair set. Native validation
+requires transpose widths to be two on each side. Names do not select behavior;
+`Any` includes equal strings, and adjacent transpose accepts repeated equal
+scalars. An empty listed set matches nothing.
 
-From a product state $`\pi = (\nu, b, c)`$, for each operation $`o`$ with
-$`(x, y) \ne (0, 0)`$ and $`c + \omega \le k`$: read the length-$`y`$ query segment
-$`\mathbf{u} = u_0\cdots u_{y-1}`$ starting at byte $`b`$ (ending at byte $`b'`$), and
-enumerate every length-$`x`$ dictionary path $`\mathbf{d} = d_0\cdots d_{x-1}`$ from
-$`\nu`$ to a node $`\nu'`$. For each such $`\mathbf{d}`$ with
-$`\mathrm{app}_o(\mathbf{d}, \mathbf{u})`$, add an edge bundle from $`\pi`$ to the successor
-product state
+### 2.4 Transitions and complete label chains
+
+From $`(\nu,b,c)`$, first test $`a_o \le K-c`$ using checked integer arithmetic.
+Select the next $`y`$ query scalars, ending at byte $`b'`$, and each dictionary
+path of $`x`$ scalars ending at node $`\nu'`$. If the predicate holds, stage:
 
 ```math
-\pi' = \bigl(\nu',\; b',\; \operatorname{canon}(c + \omega)\bigr).
+(\nu',b',c+a_o).
 ```
 
-The bundle aligns the two scalar sequences **positionally**, pairing $`u_j`$ with $`d_j`$
-and padding the shorter side with $`\varepsilon`$. Writing $`L = \max(x, y)`$ for the number
-of aligned pairs:
+For $`L=\max(x,y)`$, emit $`L`$ aligned input/output pairs, padding the shorter
+side with epsilon. The first arc carries the original presentation weight
+$`\omega_o`$; the other arcs carry zero. For example, dictionary `"ph"` and query
+`"f"` produce `f:p/0.15` followed by `epsilon:h/0`.
 
-- **Single-symbol operation** ($`L \le 1`$ — match, substitute, insert, delete): one arc
-  $`u_0 : d_0 \,/\, \omega`$ directly to $`\pi'`$ (with $`\varepsilon`$ on whichever
-  side is empty).
-- **Multi-symbol operation** ($`L \ge 2`$ — transpose, merge, split, digraphs): the **first**
-  pair $`u_0 : d_0 \,/\, \omega`$ carries the full cost and lands on an **Emit** continuation;
-  each subsequent pair $`u_j : d_j \,/\, \bar{1}`$ is a zero-cost arc; the last reaches
-  $`\pi'`$.
+<img src="../diagrams/product-emit-continuation.svg" alt="The ph-to-f rule emits its full cost on the first arc and finishes its labels through a zero-cost continuation" width="820"/>
 
-<img src="../diagrams/product-emit-continuation.svg" alt="A multi-symbol operation ph to f emits f:p/0.15 to an Emit continuation state, then epsilon:h/0 to the target product state" width="820"/>
+All $`L-1`$ continuation identities are reserved and published with the first
+arc. A state-limit failure therefore cannot leave a visible half-chain.
+Query-only operations also emit their input labels explicitly.
 
-Concretely, the phonetic digraph $`\texttt{ph} \to \texttt{f}`$ ($`o = \langle 2, 1, 0.15\rangle`$, dictionary `"ph"`,
-query `"f"`) fires as the chain
+### 2.5 Acceptance and presentation weights
 
-```math
-\pi \xrightarrow{\;f : p \,/\, 0.15\;} \underbrace{(\,[f],\,[p,h],\,1,\,1,\,\pi'\,)}_{\textsf{Emit}} \xrightarrow{\;\varepsilon : h \,/\, \bar{1}\;} \pi',
-```
-
-so the aggregate label pair is *input* $`f`$ (query) / *output* $`ph`$ (dict) at total cost
-$`0.15`$. This is the same two-arc idiom [`LevenshteinWfst`](levenshtein-wfst.md#26-merge-and-split-ocr-arities)
-uses for transposition and merge/split, generalized to arbitrary arities.
-
-> **Operation-name orientation.** liblevenshtein names operations by *which tape they consume*:
-> `insert` $`\langle 0,1,1\rangle`$ consumes one **query** scalar and none from the dictionary
-> (arc $`u_0 : \varepsilon`$); `delete` $`\langle 1,0,1\rangle`$ consumes one **dictionary**
-> scalar and none from the query (arc $`\varepsilon : d_0`$). This is the mirror image of the
-> query-centric naming in the `LevenshteinWfst` transition table — the *arcs* are identical, only the
-> labels "insert"/"delete" swap perspective.
-
-### 2.5 Final predicate and final weight $`\rho`$
-
-Only product states can be accepting, and a product state is accepting when the dictionary node is a
-terminal **and** whatever query remains can be spent on query-only (insertion) operations. Define the
-**query-only cost** $`\kappa(b)`$ — the minimum cost to consume the query suffix from byte
-$`b`$ using only operations with $`x = 0`$ (`compute_query_only_costs`):
+A product is final exactly when its dictionary node is terminal, its query is
+fully consumed, and its scaled cost is within budget:
 
 ```math
-\kappa(\lvert q\rvert) = 0,
+F(\nu,b,c)\iff
+\operatorname{terminal}(\nu)\land b=|q|_{\mathrm{bytes}}\land c\le K,
 \qquad
-\kappa(b) = \min_{\substack{o : x = 0,\; y > 0\\ \mathrm{app}_o(\langle\rangle,\, \mathbf{u}_{b,y})}} \bigl[\, \omega + \kappa(b') \,\bigr],
+\rho(\nu,b,c)=0\quad\text{when final}.
 ```
 
-where $`\mathbf{u}_{b,y}`$ is the $`y`$-scalar query segment at byte $`b`$ and
-$`b'`$ the byte after it ($`\kappa(b) = {+\infty}`$ if no such chain exists). Then
+Every continuation is non-final. An unmatched query suffix cannot be accepted
+through a final-weight shortcut: that would admit paths whose input tape does
+not spell the complete query. The accumulated cost is already on the arcs,
+so adding it again as a final weight would double-count it.
 
-```math
-F(\pi) \iff \nu \text{ is final } \wedge\; b \le \lvert q\rvert \;\wedge\; c \le k \;\wedge\; \kappa(b) < +\infty \;\wedge\; c + \kappa(b) \le k,
-\qquad
-\rho(\pi) = c + \kappa(b).
-```
+Accepted paths spell the complete pair of strings. Their summed arc weights
+approximate the configured decimal path cost in `TropicalWeight`'s `f64`
+representation; acceptance and product identity do **not** use those rounded
+sums. The operation set can be directional or non-metric, so arbitrary
+configurations are not promised to satisfy symmetry or the triangle inequality.
 
-Emit states are always non-final. Reading a complete accepting path therefore spells one dictionary
-term on the output tape and the query on the input tape, and its total tropical weight —
-$`\bigotimes`$ of the per-arc costs plus $`\rho`$ — equals the generalized edit distance
-under the configured operation set:
+### 2.6 Bounded expansion and publication
 
-```math
-T(q, w) = \min_{\pi : q \rightsquigarrow w}\ \Bigl[\ \textstyle\bigotimes_{e \in \pi} \omega(e)\ \Bigr] \otimes \rho(\pi)
-        = d_{\mathcal{O}}(q, w),
-```
-
-with $`d_{\mathcal{O}}`$ the distance induced by the operation set $`\mathcal{O}`$ (standard
-$`d_{\mathrm{lev}}`$, transposition $`d_{\mathrm{DL}}`$, or a phonetically-weighted metric).
-
-### 2.6 Expansion in literate pseudocode
-
-Complexity per product state: $`O\!\bigl(\lvert\mathcal{O}\rvert \cdot F^{x}\bigr)`$ where
-$`F`$ is the dictionary branching factor and $`x \le 2`$ the largest arity; the query slice
-is $`\mathcal{O}(1)`$ from the stored byte offset.
+The expander first computes transaction-local paths and arcs, then publishes
+dictionary IDs, product IDs, and full continuation chains together.
+The [resource and transaction contract](../security/generalized-expansion-bounds.md)
+defines each limit, error, fault scope, and charged work unit.
 
 ```text
-⟨Generalized: expand a product state π = (ν, b, c)⟩ ≡
-  Input:   a registered product state; the OperationSet 𝒪; the owned dictionary D; the query q
-  Output:  (is_final, ρ, transitions) cached for π
-  Invariant: b is a byte offset on a char boundary, so slicing q from b is O(1); c ≤ k always holds
+Expand a registered product
+  Input: fixed query, validated operations, immutable dictionary revision, limits
+  Output: one complete expansion, cancellation, or explicit failure
+  Invariant: no staged ID is observable before successful publication
 
-  1. if ν not final or b > |q| or c > k:   accepted ← ⊥                 ▷ prune early
-     else: accepted ← (κ(b) < +∞ and c + κ(b) ≤ k);  ρ ← c + κ(b)
-  2. transitions ← ∅
-  3. for each operation o = ⟨x, y, ω, ϱ⟩ in 𝒪:
-       4. if (x,y) = (0,0) or c + ω > k:  continue                       ▷ no-op / over budget
-       5. 𝐮, b' ← the y query scalars at byte b        (skip o if out of range)     ▷ width-cached
-       6. for each dict path 𝐝 = d₀…d_{x-1} : ν ↝ ν' of exactly x scalars:          ▷ width-cached
-            7. if not app_o(𝐝, 𝐮):  continue
-            8. π' ← intern_product(ν', b', canon(c + ω))
-            9. if max(x, y) ≤ 1:  emit  u₀ : d₀ / ω  →  π'               ▷ single arc, ε-padded
-              10. else:            emit  u₀ : d₀ / ω  →  Emit(𝐮, 𝐝, 1, 1, π')  ▷ then ε-cost continuations to π'
-  11. return (accepted, ρ, transitions)
+  1. Open a computation-owned source-fault scope; check cancellation.
+  2. Resolve the product and determine exact finality.
+  3. Allocate metered compact width-cache slots.
+  4. For each affordable operation:
+       lazily fill its query slot; skip a missing query segment;
+       lazily fill its dictionary-path slot with iterative bounded DFS;
+       test applicability and stage matching operation arcs.
+  5. Reconcile nodes; retire redundant owners outside locks and retry if needed.
+  6. Keep the stable node guard and acquire the state write lock.
+  7. Check retained limits and reserve complete product/continuation storage.
+  8. Recheck cancellation and this computation's captured provider fault.
+  9. Publish both registries using only prepared internal data.
+ 10. Release locks, then release staging reference counts.
+ 11. Return the complete expansion; cache it only on success.
 ```
 
-The dictionary paths and query segments are cached by width within a single expansion (`DictPathCache`,
-`QuerySegmentCache`), so operations that share an arity reuse one traversal.
+Constructor-assigned width slots avoid an expansion-time hash map or repeated
+linear searches. Equal widths reuse a slot; missing query segments and empty
+dictionary path sets are cached too. User-defined node cloning, destruction,
+and dictionary callbacks run outside registry locks.
 
 ## 3. Type, bounds, and the 4.0.0-rc.6 API
 
@@ -198,7 +176,7 @@ pub struct GeneralizedWfst<D>
 where
     D: Dictionary + Clone + Send + Sync,
     D::Node: DictionaryNode<Unit = char>,     // NOTE: the unit must BE char (stricter than other variants)
-{ /* owned dictionary, query, GeneralizedAutomaton, OperationSet, prepared ops, query_only_costs, registries, cache */ }
+{ /* owned dictionary, query, exact cost scale, OperationSet, prepared ops, limits, registries, cache */ }
 
 pub struct GeneralizedWfstBuilder<'a, D>
 where D: Dictionary + Clone + Send + Sync, D::Node: DictionaryNode<Unit = char>
@@ -243,6 +221,22 @@ with the same dual composition surface as the other variants: `StateSource::comp
 > `Listed` predicates remain distinct. `new` is the convenience form that panics on an invalid
 > grammar; the builder returns an error for either a missing query or an invalid operation set.
 
+### Typed errors and explicit limits
+
+Use `try_new_with_limits` or `GeneralizedWfstBuilder::limits(...).try_build()`
+for typed `GeneralizedWfstError` construction failures. Accessors `dictionary()`,
+`cost_scale()`, and `limits()` expose the fixed configuration. The older builder
+`build()` retains its `Result<_, String>` return type.
+
+For expansion, `try_transitions` and `LazyWfst::expand` return `ExpansionError`.
+Exceeding a resource ceiling is a non-retryable `ResourceExhausted` failure,
+not a successful empty language. `transitions_lazy` is the infallible convenience
+surface and panics on failure; use the fallible methods at trust boundaries.
+
+All defaults, a complete Rust example, and the distinction between scratch,
+retained identities, and transition-cache memory are specified in
+[generalized expansion bounds](../security/generalized-expansion-bounds.md).
+
 ### The operation set
 
 `OperationSet` is a bag of `OperationType`s. Each preset (verified against
@@ -272,35 +266,31 @@ The taxonomy — standard vs. transposition vs. merge/split vs. restricted digra
 
 <img src="../diagrams/operationtype-taxonomy.svg" alt="The OperationType taxonomy: standard, transposition, merge/split, and phonetic digraphs, keyed by consume_x/consume_y arity" width="880"/>
 
-## 4. Complexity and the state-id scheme
+## 4. Complexity and state IDs
 
-**Reachable product states** are bounded by the product of three finite factors: distinct dictionary
-nodes, query byte offsets, and distinct accumulated costs. `num_states_hint` estimates this as
+Let $`r`$ count prepared operations, $`d_x`$ and $`d_y`$ count distinct source
+and query widths, and $`V`$ count charged traversal, predicate, and label work.
+The compact caches require $`O(d_x+d_y)`$ slots; rule lookup costs $`O(r)`$.
+Expansion's explicit work is $`O(r+d_x+d_y+V)`$, subject to the work ledger.
+Callbacks, allocator internals, and hash-table behavior have their own costs;
+the work limit is not a wall-clock deadline.
 
-```math
-\lvert D\rvert \cdot (n + 1) \cdot \bigl(\lvert\mathcal{O}\rvert \cdot (k + 1)\bigr),
-\qquad n = \lvert q\rvert_{\text{bytes}},
-```
+Dictionary path enumeration can be exponential in operation width and branching.
+Widths are not limited to two: the native aggregate-consumption ceiling is 4096.
+Traversal is iterative, uses a shared prefix buffer, and checks work/path ceilings
+before retaining additional results. Query slicing from a byte offset avoids
+rescanning the prefix, but selecting $`y`$ scalars still costs $`O(y)`$.
 
-capped at $`10^6`$ and floored by the count already registered (`generalized_wfst.rs`:
-`num_states_hint`). The factor $`\lvert\mathcal{O}\rvert \cdot (k+1)`$ is a proxy for the number
-of distinct $`(\text{query position}, \text{cost})`$ combinations; fractional digraph weights
-mean the true count of cost levels is data-dependent, so this is an upper-bound hint, not an exact
-size. Each expansion touches $`\mathcal{O}(\lvert\mathcal{O}\rvert)`$ operations and, per operation, a
-width-$`x`$ dictionary DFS ($`x \le 2`$) and one $`\mathcal{O}(1)`$ query slice; multi-symbol
-firings add $`\mathcal{O}(x + y)`$ zero-cost continuation states.
+`num_states_hint()` returns `None`: the old operation-count estimate was not
+a valid bound for fractional costs or continuation states. `num_states()` reports
+the actual shared registry length. Explicit retained-state and retained-node
+limits bound successful publication; transition-cache limits do not replace them.
 
-**UTF-8 in $`\mathcal{O}(1)`$.** The query position is stored as a **byte** offset precisely so that
-slicing the next $`y \le 2`$ scalars is a constant-time `str::get(b..)` from a known char
-boundary (`str_segment_by_char_width`); operation counts remain per Unicode scalar.
-
-**State-id scheme (the "radix").** Like WallBreaker/Universal/Phonetic, `GeneralizedWfst` assigns
-**dense registry ids** — there is **no** arithmetic radix $`M`$ and no
-$`\mathrm{StateId} = d \cdot M + a`$ decode. Product ids come from interning
-$`(\nu, b, \operatorname{bits}(c))`$ and emit ids from interning the continuation tuple; decoding
-a `StateId` is the table lookup $`\texttt{id\_to\_state}[\mathrm{id}]`$. Both id regimes — the
-arithmetic product for the Levenshtein path and the dense registry here — are documented in
-[architecture/03](../architecture/03-state-encoding-and-product-space.md).
+State IDs are dense registry offsets, not arithmetic encodings.
+Products intern the exact tuple $`(\nu,b,c)`$, and canonical whole chains
+supply their continuation IDs. Cache eviction changes materialized arcs, never
+these identities. See the [transaction contract](../security/generalized-expansion-bounds.md)
+for concurrent reconciliation and rollback.
 
 ## 5. Worked example
 
@@ -316,7 +306,7 @@ let dict = DynamicDawgChar::<()>::from_terms(vec!["hello", "help"]);
 
 let mut g = GeneralizedWfst::new(&dict, "helo", 2, OperationSet::standard());
 assert_eq!(g.query(), "helo");
-g.expand(g.start());   // lazily interns reachable product states as transitions are read
+g.expand(g.start()).expect("bounded start-state expansion");
 ```
 
 Expanding $`q_0 = (\nu_{\mathrm{root}}, 0, 0)`$ yields, among others, the `match` arc
@@ -326,11 +316,11 @@ $`\langle 1,0,1\rangle`$, so $`\varepsilon : l / 1`$), and a final match:
 
 ```text
  q₀ ─h:h/0─▶ (ν_h,1,0) ─e:e/0─▶ (ν_he,2,0) ─l:l/0─▶ (ν_hel,3,0) ─ε:l/1─▶ (ν_hell,3,1) ─o:o/0─▶ (ν_hello,4,1) ✔
-                                                                                          ν_hello final, b=4=|helo|, κ(4)=0 ⇒ ρ = 1
+                                                                                          ν_hello final, b=4=|helo| ⇒ final weight = 0
 ```
 
 The path accumulates $`0 \otimes 0 \otimes 0 \otimes 1 \otimes 0 = 1`$ and closes with
-$`\rho = c + \kappa(4) = 1 + 0 = 1`$, so
+$`\rho = 0`$, so
 $`T(\texttt{helo}, \texttt{hello}) = 1 = d_{\mathrm{lev}}(\texttt{helo}, \texttt{hello})`$ — one
 insertion, exactly the standard edit distance.
 
@@ -348,9 +338,9 @@ assert_eq!(g2.max_distance(), 2);
 
 For $`q = \texttt{"fone"}`$ against `"phone"`, the digraph $`\langle 2,1,0.15\rangle`$
 (dictionary `"ph"`, query `"f"`) fires from $`q_0`$ as the continuation chain
-$`f : p / 0.15 \,\cdot\, \varepsilon : h / 0`$, landing at $`(\nu_{ph}, 1, 0.15)`$; three
+$`f : p / 0.15 \,\cdot\, \varepsilon : h / 0`$, landing at $`(\nu_{ph}, 1, 3)`$ in the denominator-20 scale; three
 matches (`o`, `n`, `e`) then reach the terminal `"phone"` node with the query exhausted, accepting at
-$`\rho = 0.15`$. So `"fone"` is corrected to `"phone"` at cost $`0.15`$ rather than the
+$`\rho = 0`$, with total arc cost $`0.15`$. So `"fone"` is corrected to `"phone"` at cost $`0.15`$ rather than the
 $`2`$ a naive two-substitution alignment would charge.
 
 ## 6. Limitations
@@ -374,8 +364,9 @@ $`2`$ a naive two-substitution alignment would charge.
 
 > ⚠️ **Continuation depth is bounded by arity.** Because the label type is a single `char`, every
 > multi-symbol operation is realized as $`\max(x, y)`$ arcs through interned Emit states. With the
-> shipped presets $`\max(x, y) \le 2`$, so a digraph is always exactly two arcs; a hypothetical
-> custom operation with larger arity would produce a proportionally longer zero-cost tail.
+> shipped presets $`\max(x, y) \le 2`$, so a digraph is always exactly two arcs; a
+> custom operation with larger arity produces a proportionally longer zero-cost tail, reserved
+> atomically with its first arc. The maximum width is covered by a 64 KiB-stack regression test.
 
 ## 7. Diagrams
 

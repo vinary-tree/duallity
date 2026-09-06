@@ -12,6 +12,365 @@ use std::collections::{HashMap, VecDeque};
 
 type TestDict = DynamicDawgChar<()>;
 
+#[derive(Clone)]
+struct UnaryDictionary {
+    length: usize,
+    inspected_edges: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    endless: bool,
+}
+
+#[derive(Clone)]
+struct UnaryNode {
+    remaining: usize,
+    inspected_edges: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    endless: bool,
+}
+
+impl libdictenstein::Dictionary for UnaryDictionary {
+    type Node = UnaryNode;
+    fn root(&self) -> UnaryNode {
+        UnaryNode {
+            remaining: self.length,
+            inspected_edges: self.inspected_edges.clone(),
+            endless: self.endless,
+        }
+    }
+    fn len(&self) -> Option<usize> {
+        Some(1)
+    }
+}
+
+impl libdictenstein::DictionaryNode for UnaryNode {
+    type Unit = char;
+    type SnapshotCursor = ();
+    type SnapshotGraphValueHandle = ();
+    fn is_final(&self) -> bool {
+        self.remaining == 0
+    }
+    fn transition(&self, label: char) -> Option<Self> {
+        (label == 'a' && self.remaining > 0).then(|| Self {
+            remaining: self.remaining - 1,
+            ..self.clone()
+        })
+    }
+    fn edges(&self) -> Box<dyn Iterator<Item = (char, Self)> + '_> {
+        let next = (self.remaining > 0).then(|| Self {
+            remaining: self.remaining - 1,
+            ..self.clone()
+        });
+        let mut returned = false;
+        Box::new(std::iter::from_fn(move || {
+            self.inspected_edges
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if !self.endless && returned {
+                return None;
+            }
+            returned = true;
+            next.clone().map(|node| ('a', node))
+        }))
+    }
+    fn edge_count(&self) -> Option<usize> {
+        Some(usize::MAX)
+    }
+}
+
+#[test]
+fn maximum_width_traversal_and_emission_are_stack_safe() {
+    std::thread::Builder::new()
+        .stack_size(64 * 1024)
+        .spawn(|| {
+            let dictionary = UnaryDictionary {
+                length: 4096,
+                inspected_edges: Default::default(),
+                endless: false,
+            };
+            let operations = OperationSetBuilder::new()
+                .with_operation(OperationType::new(4096, 0, 1.0, "wide_delete"))
+                .build();
+            let mut wfst = GeneralizedWfst::new(&dictionary, "", 1, operations);
+            let mut state = 0;
+            for _ in 0..4096 {
+                let arcs = wfst
+                    .try_transitions(state)
+                    .expect("bounded unary expansion");
+                assert_eq!(arcs.len(), 1);
+                assert_eq!(arcs[0].output, Some('a'));
+                state = arcs[0].to;
+            }
+            assert!(wfst.is_final(state));
+            assert_eq!(wfst.num_states(), 4097);
+        })
+        .expect("small-stack worker")
+        .join()
+        .expect("iterative traversal");
+}
+
+#[test]
+fn work_limits_stop_endless_iterators_and_ignore_hostile_edge_hints() {
+    use duallity::GeneralizedWfstLimits;
+    let dictionary = UnaryDictionary {
+        length: 1,
+        inspected_edges: Default::default(),
+        endless: true,
+    };
+    let operations = OperationSetBuilder::new()
+        .with_operation(OperationType::new(1, 0, 1.0, "delete"))
+        .build();
+    let mut wfst = GeneralizedWfst::try_new_with_limits(
+        &dictionary,
+        "",
+        1,
+        operations,
+        GeneralizedWfstLimits {
+            max_work_units_per_expansion: 100,
+            ..Default::default()
+        },
+    )
+    .expect("bounded constructor");
+    assert!(wfst.try_transitions(0).is_err());
+    assert!(
+        dictionary
+            .inspected_edges
+            .load(std::sync::atomic::Ordering::Relaxed)
+            <= 100
+    );
+    assert_eq!(wfst.num_states(), 1);
+    assert_eq!(wfst.computed_states(), 0);
+}
+
+#[test]
+fn exact_fractional_language_agrees_with_an_independent_integer_grid() {
+    // Independent alignment grid in integer tenths: free equality, substitution
+    // 3, deletion 2, insertion 1, and a two-source/one-query rule costing 4.
+    let operations = OperationSetBuilder::new()
+        .with_match()
+        .with_operation(OperationType::new(1, 1, 0.3, "replace"))
+        .with_operation(OperationType::new(1, 0, 0.2, "delete"))
+        .with_operation(OperationType::new(0, 1, 0.1, "insert"))
+        .with_operation(OperationType::new(2, 1, 0.4, "merge"))
+        .build();
+    let words = binary_words(3);
+    for source in &words {
+        for query in &words {
+            let x: Vec<_> = source.chars().collect();
+            let y: Vec<_> = query.chars().collect();
+            let mut grid = vec![vec![usize::MAX; y.len() + 1]; x.len() + 1];
+            grid[0][0] = 0;
+            for i in 0..=x.len() {
+                for j in 0..=y.len() {
+                    let current = grid[i][j];
+                    if current == usize::MAX {
+                        continue;
+                    }
+                    if i < x.len() {
+                        grid[i + 1][j] = grid[i + 1][j].min(current + 2);
+                    }
+                    if j < y.len() {
+                        grid[i][j + 1] = grid[i][j + 1].min(current + 1);
+                    }
+                    if i < x.len() && j < y.len() {
+                        let cost = if x[i] == y[j] { 0 } else { 3 };
+                        grid[i + 1][j + 1] = grid[i + 1][j + 1].min(current + cost);
+                    }
+                    if i + 2 <= x.len() && j < y.len() {
+                        grid[i + 2][j + 1] = grid[i + 2][j + 1].min(current + 4);
+                    }
+                }
+            }
+            let exact = grid[x.len()][y.len()];
+            for budget in 0..=1 {
+                let result = relation_cost(source, query, budget, operations.clone());
+                if exact <= usize::from(budget) * 10 {
+                    assert!(
+                        result.is_some_and(|value| (value - exact as f64 / 10.0).abs() < 1e-12),
+                        "{source:?} -> {query:?}: expected {exact} tenths, got {result:?}"
+                    );
+                } else {
+                    assert_eq!(result, None, "{source:?} -> {query:?}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn decimal_tenths_accept_thirty_edits_and_reject_thirty_one() {
+    for (source_width, query_width) in [(1, 1), (1, 0), (0, 1)] {
+        let operations = OperationSetBuilder::new()
+            .with_operation(OperationType::new(source_width, query_width, 0.1, "tenth"))
+            .build();
+        for length in [30, 31] {
+            let source = "a".repeat(source_width * length);
+            let query = "b".repeat(query_width * length);
+            let result = relation_cost(&source, &query, 3, operations.clone());
+            if length == 30 {
+                assert!(
+                    result.is_some_and(|value| (value - 3.0).abs() < 1e-12),
+                    "{result:?}"
+                );
+            } else {
+                assert_eq!(result, None);
+            }
+        }
+    }
+}
+
+#[test]
+fn an_unemitted_query_suffix_never_creates_a_final_state() {
+    assert_eq!(
+        relation_cost_for_input("a", "ab", "a", 1, OperationSet::standard()),
+        None
+    );
+    assert_eq!(
+        relation_cost_for_input("a", "ab", "ab", 1, OperationSet::standard()),
+        Some(1.0)
+    );
+    assert_eq!(
+        relation_cost_for_input("", "a", "", 1, OperationSet::standard()),
+        None
+    );
+}
+
+#[test]
+fn equivalent_decimal_decompositions_reuse_one_exact_product_identity() {
+    let dictionary = DynamicDawgChar::<()>::from_terms(["ab"]);
+    let operations = OperationSetBuilder::new()
+        .with_operation(OperationType::new(1, 1, 0.1, "tenth"))
+        .with_operation(OperationType::new(1, 1, 0.2, "two_tenths"))
+        .with_operation(OperationType::new(2, 2, 0.3, "three_tenths"))
+        .build();
+    let mut wfst = GeneralizedWfst::new(&dictionary, "ab", 1, operations);
+    let arcs = wfst.try_transitions(0).expect("root").to_vec();
+    let tenth = arcs
+        .iter()
+        .find(|arc| arc.weight.value() == 0.1)
+        .expect("tenth")
+        .to;
+    let third = arcs
+        .iter()
+        .find(|arc| arc.weight.value() == 0.3)
+        .expect("third")
+        .to;
+    let via_two = wfst
+        .try_transitions(tenth)
+        .expect("second scalar")
+        .iter()
+        .find(|arc| arc.weight.value() == 0.2)
+        .expect("two tenths")
+        .to;
+    let direct = wfst.try_transitions(third).expect("continuation")[0].to;
+    assert_eq!(via_two, direct);
+    assert!(wfst.is_final(direct));
+}
+
+#[test]
+fn construction_limits_count_utf8_bytes_and_scalars_independently() {
+    use duallity::{
+        GeneralizedWfstError, GeneralizedWfstLimits, GeneralizedWfstResource as Resource,
+    };
+    let dictionary = DynamicDawgChar::<()>::from_terms(["éa"]);
+    let exact = GeneralizedWfstLimits {
+        max_query_bytes: 3,
+        max_query_scalars: 2,
+        max_operation_source_scalars: 1,
+        max_operation_query_scalars: 1,
+        max_retained_dictionary_nodes: 1,
+        max_retained_wfst_states: 1,
+        ..Default::default()
+    };
+    assert!(GeneralizedWfst::try_new_with_limits(
+        &dictionary,
+        "éa",
+        1,
+        OperationSet::standard(),
+        exact
+    )
+    .is_ok());
+    for (limits, expected) in [
+        (
+            GeneralizedWfstLimits {
+                max_query_bytes: 2,
+                ..exact
+            },
+            Resource::QueryBytes,
+        ),
+        (
+            GeneralizedWfstLimits {
+                max_query_scalars: 1,
+                ..exact
+            },
+            Resource::QueryScalars,
+        ),
+        (
+            GeneralizedWfstLimits {
+                max_operation_source_scalars: 0,
+                ..exact
+            },
+            Resource::OperationSourceScalars,
+        ),
+        (
+            GeneralizedWfstLimits {
+                max_operation_query_scalars: 0,
+                ..exact
+            },
+            Resource::OperationQueryScalars,
+        ),
+        (
+            GeneralizedWfstLimits {
+                max_retained_dictionary_nodes: 0,
+                ..exact
+            },
+            Resource::RetainedDictionaryNodes,
+        ),
+        (
+            GeneralizedWfstLimits {
+                max_retained_wfst_states: 0,
+                ..exact
+            },
+            Resource::RetainedWfstStates,
+        ),
+    ] {
+        assert!(matches!(GeneralizedWfst::try_new_with_limits(
+            &dictionary, "éa", 1, OperationSet::standard(), limits),
+            Err(GeneralizedWfstError::LimitExceeded { resource, .. }) if resource == expected));
+    }
+}
+
+#[test]
+fn exact_work_boundary_succeeds_and_one_less_fails() {
+    use duallity::GeneralizedWfstLimits;
+    let dictionary = DynamicDawgChar::<()>::from_terms(["a", "b"]);
+    let operations = OperationSetBuilder::new()
+        .with_operation(OperationType::new(1, 1, 1.0, "any"))
+        .build();
+    let mut required = None;
+    for work in 0..200 {
+        let mut wfst = GeneralizedWfst::try_new_with_limits(
+            &dictionary,
+            "a",
+            1,
+            operations.clone(),
+            GeneralizedWfstLimits {
+                max_work_units_per_expansion: work,
+                max_paths_per_expansion: 2,
+                max_retained_dictionary_nodes: 3,
+                max_retained_wfst_states: 3,
+                ..Default::default()
+            },
+        )
+        .expect("construction");
+        match wfst.try_transitions(0) {
+            Ok(arcs) => {
+                assert_eq!(arcs.len(), 2);
+                required = Some(work);
+                break;
+            }
+            Err(_) => assert_eq!(wfst.num_states(), 1),
+        }
+    }
+    assert!(required.is_some_and(|work| work > 1));
+}
+
 fn consume_label(labels: &[char], position: usize, label: Option<char>) -> Option<usize> {
     match label {
         None => Some(position),
@@ -26,10 +385,20 @@ fn relation_cost(
     max_distance: u8,
     operations: OperationSet,
 ) -> Option<f64> {
+    relation_cost_for_input(dictionary_term, query, query, max_distance, operations)
+}
+
+fn relation_cost_for_input(
+    dictionary_term: &str,
+    query: &str,
+    actual_input: &str,
+    max_distance: u8,
+    operations: OperationSet,
+) -> Option<f64> {
     let dictionary = DynamicDawgChar::<()>::from_terms(vec![dictionary_term]);
     let mut wfst = GeneralizedWfst::try_new(&dictionary, query, max_distance, operations)
         .expect("test operation set must validate");
-    let input = query.chars().collect::<Vec<_>>();
+    let input = actual_input.chars().collect::<Vec<_>>();
     let output = dictionary_term.chars().collect::<Vec<_>>();
     let start = Wfst::start(&wfst);
     let mut queue = VecDeque::from([(start, 0usize, 0usize, 0.0f64)]);
@@ -52,7 +421,11 @@ fn relation_cost(
             accepted = Some(accepted.map_or(candidate, |current| current.min(candidate)));
         }
 
-        for transition in wfst.transitions_lazy(state).to_vec() {
+        for transition in wfst
+            .try_transitions(state)
+            .expect("complete expansion")
+            .to_vec()
+        {
             let Some(next_input) = consume_label(&input, input_position, transition.input) else {
                 continue;
             };

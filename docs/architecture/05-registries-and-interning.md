@@ -36,7 +36,7 @@ wrap — it returns `None` once the `u32` space is exhausted and the caller prun
 | `UniversalStateRegistry<V>` | `FxHashMap<UniversalStateKey, u32>` | `Vec<RegisteredUniversalState<V>>` (`Arc<UniversalState<V>>` + `query_pos`) | initial universal state | `UniversalLevenshteinStateSource` | the $`a`$ component |
 | `ProductStateRegistry` | `FxHashMap<ProductStateKey, u32>` | `Vec<Arc<[ProductStateChar]>>` | initial frontier | `PhoneticStateSource` | the $`a`$ component |
 | `NfaStateRegistry` | `FxHashMap<StateSetKey, u32>` | `Vec<RegisteredNfaState>` (`Arc<state set>` + `is_final`) | start-anchor closure | `PhoneticNfaWfst` | the **whole** `StateId` (Regime B) |
-| `StateRegistry` (generalized) | `FxHashMap<ProductStateKey, StateId>` + `FxHashMap<Arc<EmitState>, StateId>` | `Vec<RegisteredState>` (`Product` or `Emit`) | start product state | `GeneralizedWfst` | the **whole** `StateId` (Regime B) |
+| `StateRegistry` (generalized) | `FxHashMap<ProductState, StateId>` + `FxHashMap<Arc<EmissionChain>, StateId>` | `Vec<RegisteredState>` (`Product` or `Emit`) | start product state | `GeneralizedWfst` | the **whole** `StateId` (Regime B); exact integer costs and atomically registered whole chains |
 | `WallBreakerWfst::id_to_state` | (built once, not a hash-interner) | `Vec<WallBreakerStateKey>` | super-start (index $`0`$) | `WallBreakerWfst` | the **whole** `StateId` (Regime B) |
 
 The first four registries supply a *component* of a packed Regime-A `StateId`; the last three supply the

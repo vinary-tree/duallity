@@ -8,20 +8,17 @@
 //! is placement-clean and is the same oracle liblevenshtein cross-validates its
 //! automaton against).
 //!
-//! The parameterized Levenshtein kind (0) and the Generalized kinds (4..=6) are
-//! exact: their transduced language equals the oracle ball for every algorithm.
-//! The Universal kinds (1..=3) are NOT exact — they over-accept / under-report
-//! the edit distance for some query/term shapes (e.g. query `"aa"` accepts the
-//! shorter term `"a"` at distance 0). That divergence is a pre-existing defect
-//! recorded as **DUAL-UNIV-1** (see `universal_kind_over_accepts_is_dual_univ_1`
-//! and this wave's report); it is characterized here rather than asserted as
-//! correct.
+//! The parameterized Levenshtein kind (0), Universal kinds (1..=3), and
+//! Generalized kinds (4..=6) are exact: their transduced language equals the
+//! oracle ball for every corresponding algorithm.
 //!
 //! Correspondence:
 //! - DUAL-WFST-LANG-1: accepted language = { t in dict : lev(query,t) <= d } for parameterized kind 0 and generalized kinds 4..=6.
 //! - DUAL-WFST-LANG-2: the accepting-path weight of t equals lev(query,t).
 //! - DUAL-FZF-1: the Fzf kind exports the Arctic (max-plus) semiring and its accepting language is the subsequence set.
-//! - DUAL-UNIV-1: the Universal kinds diverge from the ball (finding).
+//! - DUAL-UNIV-1: Universal finality consumes the complete fixed query before
+//!   accepting an output term, and the automaton state depends only on the
+//!   dictionary input processed by the universal transition algebra.
 
 #![cfg(feature = "ffi")]
 
@@ -45,6 +42,8 @@ use vinary_tree_interop::{VtResource, VtWeightDomain};
 // Kind / algorithm encodings mirrored from src/ffi.rs and src/bindings.rs.
 const KIND_LEVENSHTEIN: u32 = 0;
 const KIND_UNIVERSAL_STANDARD: u32 = 1;
+const KIND_UNIVERSAL_TRANSPOSITION: u32 = 2;
+const KIND_UNIVERSAL_MERGE_AND_SPLIT: u32 = 3;
 const KIND_GENERALIZED_STANDARD: u32 = 4;
 const KIND_GENERALIZED_TRANSPOSITION: u32 = 5;
 const KIND_GENERALIZED_MERGE_AND_SPLIT: u32 = 6;
@@ -121,6 +120,27 @@ fn edit_ball(
         .collect()
 }
 
+fn assert_universal_language(
+    terms: &BTreeSet<String>,
+    query: &str,
+    distance: usize,
+    algorithm: u32,
+    kind: u32,
+) -> Result<(), TestCaseError> {
+    let handle = dictionary(terms);
+    let observed = wfst_language(
+        handle.resource().as_raw(),
+        query,
+        distance,
+        algorithm,
+        kind,
+        true,
+    );
+    let expected = edit_ball(terms, query, distance, algorithm);
+    prop_assert_eq!(&observed, &expected, "universal kind {}", kind);
+    Ok(())
+}
+
 prop_compose! {
     fn scenario()(
         terms in prop::collection::btree_set("[a-c]{1,4}", 1..6),
@@ -152,8 +172,7 @@ proptest! {
 
     /// DUAL-WFST-LANG-1/2 for the Generalized kinds: each realizes exactly the
     /// oracle ball for its algorithm, independently of the parameterized
-    /// construction. (The Universal kinds are covered by the DUAL-UNIV-1
-    /// characterization test below, not here, because they are not exact.)
+    /// construction.
     #[test]
     fn generalized_language_is_the_edit_ball((terms, query, distance) in scenario()) {
         let handle = dictionary(&terms);
@@ -169,6 +188,42 @@ proptest! {
             let expected = edit_ball(&terms, &query, distance, algorithm);
             prop_assert_eq!(&observed, &expected, "generalized kind {}", generalized);
         }
+    }
+
+    /// DUAL-UNIV-1 for the Standard universal position algebra.
+    #[test]
+    fn universal_standard_language_is_the_edit_ball((terms, query, distance) in scenario()) {
+        assert_universal_language(
+            &terms,
+            &query,
+            distance,
+            ALGORITHM_STANDARD,
+            KIND_UNIVERSAL_STANDARD,
+        )?;
+    }
+
+    /// DUAL-UNIV-1 for the adjacent-transposition universal position algebra.
+    #[test]
+    fn universal_transposition_language_is_the_edit_ball((terms, query, distance) in scenario()) {
+        assert_universal_language(
+            &terms,
+            &query,
+            distance,
+            ALGORITHM_TRANSPOSITION,
+            KIND_UNIVERSAL_TRANSPOSITION,
+        )?;
+    }
+
+    /// DUAL-UNIV-1 for the merge-and-split universal position algebra.
+    #[test]
+    fn universal_merge_and_split_language_is_the_edit_ball((terms, query, distance) in scenario()) {
+        assert_universal_language(
+            &terms,
+            &query,
+            distance,
+            ALGORITHM_MERGE_AND_SPLIT,
+            KIND_UNIVERSAL_MERGE_AND_SPLIT,
+        )?;
     }
 }
 
@@ -195,6 +250,79 @@ fn standard_wfst_matches_known_edits() {
         ("cats".to_owned(), 1.0), // one insertion
     ]);
     assert_eq!(observed, expected);
+}
+
+fn binary_words(maximum_len: usize) -> BTreeSet<String> {
+    let mut words = BTreeSet::from([String::new()]);
+    let mut frontier = vec![String::new()];
+    for _ in 0..maximum_len {
+        let mut next = Vec::with_capacity(frontier.len().saturating_mul(2));
+        for prefix in frontier {
+            for unit in ['a', 'b'] {
+                let mut word = prefix.clone();
+                word.push(unit);
+                words.insert(word.clone());
+                next.push(word);
+            }
+        }
+        frontier = next;
+    }
+    words
+}
+
+#[test]
+fn every_small_universal_abi_language_and_weight_matches_dynamic_programming() {
+    let terms = binary_words(3);
+    let handle = dictionary(&terms);
+    let source = handle.resource();
+    let variants = [
+        (ALGORITHM_STANDARD, KIND_UNIVERSAL_STANDARD),
+        (ALGORITHM_TRANSPOSITION, KIND_UNIVERSAL_TRANSPOSITION),
+        (ALGORITHM_MERGE_AND_SPLIT, KIND_UNIVERSAL_MERGE_AND_SPLIT),
+    ];
+
+    for query in &terms {
+        for distance in 0..=2 {
+            for (algorithm, kind) in variants {
+                let observed =
+                    wfst_language(source.as_raw(), query, distance, algorithm, kind, true);
+                let expected = edit_ball(&terms, query, distance, algorithm);
+                assert_eq!(
+                    observed, expected,
+                    "query={query:?} distance={distance} kind={kind}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn universal_padding_is_disjoint_from_every_unicode_scalar() {
+    let terms: BTreeSet<String> = ["\0", "$", "$a", "a", "é"]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    let handle = dictionary(&terms);
+    let source = handle.resource();
+    let variants = [
+        (ALGORITHM_STANDARD, KIND_UNIVERSAL_STANDARD),
+        (ALGORITHM_TRANSPOSITION, KIND_UNIVERSAL_TRANSPOSITION),
+        (ALGORITHM_MERGE_AND_SPLIT, KIND_UNIVERSAL_MERGE_AND_SPLIT),
+    ];
+
+    for query in ["\0", "$", "a", "é"] {
+        for distance in 0..=2 {
+            for (algorithm, kind) in variants {
+                let observed =
+                    wfst_language(source.as_raw(), query, distance, algorithm, kind, true);
+                let expected = edit_ball(&terms, query, distance, algorithm);
+                assert_eq!(
+                    observed, expected,
+                    "query={query:?} distance={distance} kind={kind}"
+                );
+            }
+        }
+    }
 }
 
 #[test]
@@ -291,18 +419,10 @@ fn fzf_kind_exports_arctic_semiring_and_subsequence_language() {
     assert!(score.is_finite(), "an accepted fzf score is a real weight");
 }
 
-/// DUAL-UNIV-1 (pre-existing defect, characterized here): the Universal
-/// Levenshtein WFST kinds (1..=3) do NOT accept the exact Levenshtein ball. For
-/// query `"aa"` at distance 0 the shorter term `"a"` (standard distance 1) is
-/// accepted, where the exact parameterized kind (0) correctly rejects it. The
-/// same shape mis-weights adjacent-transposition and longer-query cases (see
-/// this wave's report for the full enumeration). This is rooted in the
-/// universal position algebra / `universal_accepting_weight`, not in the ABI
-/// surface, and needs its own investigation; it is characterized rather than
-/// asserted correct so a future fix flips this test (drop it and fold the
-/// Universal kinds back into `generalized_language_is_the_edit_ball`).
+/// DUAL-UNIV-1 regression: a shorter dictionary term cannot become final
+/// while one or more fixed-query labels remain unconsumed.
 #[test]
-fn universal_kind_over_accepts_is_dual_univ_1() {
+fn universal_kind_rejects_shorter_term_outside_zero_ball() {
     let terms: BTreeSet<String> = ["a", "aa"].into_iter().map(str::to_owned).collect();
     let handle = dictionary(&terms);
     let source = handle.resource();
@@ -324,8 +444,6 @@ fn universal_kind_over_accepts_is_dual_univ_1() {
         "parameterized kind 0 accepts exactly the d=0 ball"
     );
 
-    // The Universal Standard kind over-accepts the shorter term. If a future fix
-    // makes this exact, this assertion fails — that is the intended signal.
     let universal = wfst_language(
         source.as_raw(),
         "aa",
@@ -334,10 +452,9 @@ fn universal_kind_over_accepts_is_dual_univ_1() {
         KIND_UNIVERSAL_STANDARD,
         true,
     );
-    assert!(
-        universal.contains_key("a"),
-        "DUAL-UNIV-1: universal kind 1 is expected to over-accept 'a' at d=0 \
-         (got {universal:?}); if it no longer does, the defect is fixed — \
-         update this test"
+    assert_eq!(
+        universal,
+        BTreeMap::from([("aa".to_owned(), 0.0)]),
+        "universal kind 1 must accept exactly the d=0 ball"
     );
 }

@@ -28,7 +28,7 @@ use crate::node_registry::DepthDictionaryNodeRegistry;
 use crate::state_encoding;
 use crate::universal_state_support::{
     precompute_relevant_subwords, universal_accepting_weight, universal_query_state_factor,
-    universal_state_key, UniversalStateRegistry,
+    universal_state_key, UniversalQueryWindow, UniversalStateRegistry,
 };
 use crate::{fulfill_expansion_request, DirectStateSource};
 
@@ -59,7 +59,7 @@ where
     /// Query as characters (for computing bit vectors)
     query_chars: Arc<Vec<char>>,
     /// Precomputed relevant query windows indexed by dictionary depth.
-    relevant_subwords: Arc<Vec<String>>,
+    relevant_subwords: Arc<Vec<UniversalQueryWindow>>,
     /// State registry for deduplication
     state_registry: Arc<std::sync::RwLock<UniversalStateRegistry<V>>>,
     /// Node registry for dictionary nodes
@@ -151,6 +151,7 @@ where
         self.registered_final_weight(
             dict_node,
             registered_state.state.as_ref(),
+            registered_state.query_pos,
             self.query_chars.len(),
             dict_depth,
         )
@@ -172,11 +173,11 @@ where
     }
 
     #[inline]
-    fn relevant_subword_for_depth(&self, dict_depth: usize) -> &str {
+    fn relevant_subword_for_depth(&self, dict_depth: usize) -> (usize, &[char]) {
         self.relevant_subwords
             .get(dict_depth)
-            .map(String::as_str)
-            .unwrap_or("")
+            .map(|window| (window.false_prefix, window.units.as_slice()))
+            .unwrap_or((0, &[]))
     }
 
     /// Compute transitions for a product state.
@@ -232,10 +233,9 @@ where
         // For each dictionary edge, compute the transition. Registry writes
         // are batched across the edge scan to avoid lock churn on high-degree
         // dictionary nodes while preserving the node-before-state lock order.
-        if let Some(subword) = relevant_subword {
+        if let Some((false_prefix, subword)) = relevant_subword {
             let query_label = self.query_chars.get(current_pos).copied();
-            let consumes_query = query_label.is_some();
-            let next_query_pos = current_pos + usize::from(consumes_query);
+            let next_query_pos = current_pos + usize::from(query_label.is_some());
             let mut pending_edges = crate::dictionary_edge_capacity(&dict_node, 1, 0)
                 .map_or_else(Vec::new, Vec::with_capacity);
 
@@ -245,12 +245,13 @@ where
                 // the processed input and the query as the fixed word. Keep
                 // that input index separate from `current_pos`, which is only
                 // the WFST label cursor on the query side.
-                let bit_vector = CharacteristicVector::new(dict_char, subword);
+                let bit_vector =
+                    CharacteristicVector::from_padded_units(dict_char, false_prefix, subword);
 
                 // Compute next automaton state before taking registry write
                 // locks; only ID assignment needs the shared registries.
                 if let Some(next_auto_state) =
-                    automaton_state.transition_with_consumption(&bit_vector, consumes_query, true)
+                    automaton_state.transition(&bit_vector, dict_depth.saturating_add(1))
                 {
                     let child_key = DictionaryNodeKey::child(dict_node_id, dict_char);
                     let next_auto_key = universal_state_key(&next_auto_state, next_query_pos);
@@ -359,6 +360,7 @@ where
         let accepted_final_weight = self.registered_final_weight(
             &dict_node,
             automaton_state.as_ref(),
+            current_pos,
             self.query_chars.len(),
             dict_depth,
         );
@@ -372,10 +374,15 @@ where
         &self,
         dict_node: &D::Node,
         automaton_state: &UniversalState<V>,
+        query_pos: usize,
         fixed_word_len: usize,
         dict_depth: usize,
     ) -> Option<TropicalWeight> {
-        if !dict_node.is_final() {
+        // The fixed query is encoded on the WFST input tape. A dictionary node
+        // may already be accepting for the universal automaton while query
+        // labels remain, but that product state is not final in the transduced
+        // relation until the complete fixed input has been consumed.
+        if query_pos != fixed_word_len || !dict_node.is_final() {
             return None;
         }
 
@@ -453,9 +460,12 @@ mod tests {
     use super::*;
     use crate::universal_state_support::{
         apply_i32_offset, bounded_count_to_f64, next_universal_registry_id, relevant_subword_at,
+        relevant_window_at,
     };
     use libdictenstein::dynamic_dawg::char::DynamicDawgChar;
-    use liblevenshtein::transducer::universal::Standard;
+    use liblevenshtein::transducer::universal::{
+        Standard, Transposition, TranspositionState, UniversalPosition,
+    };
 
     #[test]
     fn test_universal_state_registry_creation() {
@@ -515,6 +525,25 @@ mod tests {
         assert_eq!(registry.register_state_at(both_consumed, 1), Some(1));
         assert_eq!(registry.register_state_at(dict_consumed, 1), Some(2));
         assert_eq!(registry.len(), 3);
+    }
+
+    #[test]
+    fn test_universal_state_key_includes_variant_operation_phase() {
+        let mut usual = UniversalState::<Transposition>::new(1);
+        usual.add_position(
+            UniversalPosition::new_i_with_state(-1, 1, 1, TranspositionState::Usual)
+                .expect("ordinary phase is structurally valid"),
+        );
+        let mut pending = UniversalState::<Transposition>::new(1);
+        pending.add_position(
+            UniversalPosition::new_i_with_state(-1, 1, 1, TranspositionState::Transposing)
+                .expect("pending phase is structurally valid"),
+        );
+
+        assert_ne!(
+            universal_state_key(&usual, 1),
+            universal_state_key(&pending, 1)
+        );
     }
 
     #[test]
@@ -637,12 +666,16 @@ mod tests {
         let source = UniversalLevenshteinStateSource::<Standard, _>::new(&dict, "abcdef", 2);
         let cloned = source.clone();
 
-        assert_eq!(source.relevant_subword_for_depth(0), "$$abcd");
-        assert_eq!(
-            source.relevant_subword_for_depth(3),
-            relevant_subword_at(&source.query_chars, 2, 4)
-        );
-        assert_eq!(source.relevant_subword_for_depth(usize::MAX), "");
+        let (false_prefix, units) = source.relevant_subword_for_depth(0);
+        assert_eq!(false_prefix, 2);
+        assert_eq!(units, &['a', 'b', 'c', 'd']);
+
+        let expected = relevant_window_at(&source.query_chars, 2, 4);
+        let (false_prefix, units) = source.relevant_subword_for_depth(3);
+        assert_eq!(false_prefix, expected.false_prefix);
+        assert_eq!(units, expected.units);
+
+        assert_eq!(source.relevant_subword_for_depth(usize::MAX), (0, &[][..]));
         assert!(Arc::ptr_eq(
             &source.relevant_subwords,
             &cloned.relevant_subwords

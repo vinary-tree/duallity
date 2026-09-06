@@ -1,12 +1,10 @@
 use std::sync::Arc;
 
-use liblevenshtein::transducer::universal::{PositionVariant, UniversalState};
+use liblevenshtein::transducer::universal::{PositionVariant, UniversalPosition, UniversalState};
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 
 use crate::fx_hash_map_with_capacity;
-
-type UniversalStateKeyBytes = SmallVec<[u8; 96]>;
 
 #[inline]
 pub(crate) fn next_universal_registry_id(len: usize) -> Option<u32> {
@@ -24,6 +22,7 @@ pub(crate) fn usize_from_u32(value: u32) -> usize {
 }
 
 #[inline]
+#[cfg(test)]
 pub(crate) fn apply_i32_offset(base: usize, offset: i32) -> Option<usize> {
     if offset >= 0 {
         usize::try_from(offset)
@@ -41,39 +40,55 @@ pub(crate) fn bounded_count_to_f64(value: usize) -> Option<f64> {
     crate::exact_usize_to_f64(value)
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct UniversalQueryWindow {
+    pub(crate) false_prefix: usize,
+    pub(crate) units: Vec<char>,
+}
+
 pub(crate) fn precompute_relevant_subwords(
     query_chars: &[char],
     max_distance: usize,
-) -> Vec<String> {
+) -> Vec<UniversalQueryWindow> {
     let cached_depths = query_chars.len().saturating_add(max_distance);
     (0..cached_depths)
-        .map(|dict_depth| relevant_subword_at(query_chars, max_distance, dict_depth + 1))
+        .map(|dict_depth| relevant_window_at(query_chars, max_distance, dict_depth + 1))
         .collect()
 }
 
-pub(crate) fn relevant_subword_at(word: &[char], max_distance: usize, position: usize) -> String {
-    let sentinel_count = max_distance.saturating_add(1).saturating_sub(position);
+pub(crate) fn relevant_window_at(
+    word: &[char],
+    max_distance: usize,
+    position: usize,
+) -> UniversalQueryWindow {
+    let false_prefix = max_distance.saturating_add(1).saturating_sub(position);
     let first_word_pos = position.saturating_sub(max_distance).max(1);
     let end_pos = position
         .saturating_add(max_distance)
         .saturating_add(1)
         .min(word.len());
+    let units = if first_word_pos <= end_pos {
+        word[first_word_pos - 1..end_pos].to_vec()
+    } else {
+        Vec::new()
+    };
 
-    let char_capacity = sentinel_count.saturating_add(
-        end_pos
-            .checked_sub(first_word_pos)
-            .map_or(0, |span| span.saturating_add(1)),
-    );
+    UniversalQueryWindow {
+        false_prefix,
+        units,
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn relevant_subword_at(word: &[char], max_distance: usize, position: usize) -> String {
+    let window = relevant_window_at(word, max_distance, position);
+    let char_capacity = window.false_prefix.saturating_add(window.units.len());
     let mut result = String::with_capacity(char_capacity);
 
-    for _ in 0..sentinel_count {
+    for _ in 0..window.false_prefix {
         result.push('$');
     }
-
-    if first_word_pos <= end_pos {
-        let start_idx = first_word_pos - 1;
-        result.extend(word[start_idx..end_pos].iter().copied());
-    }
+    result.extend(window.units);
 
     result
 }
@@ -85,17 +100,17 @@ pub(crate) fn relevant_subword_at(word: &[char], max_distance: usize, position: 
 /// efficient WFST state encoding.
 pub struct UniversalStateRegistry<V: PositionVariant> {
     /// Map from state to assigned ID.
-    state_to_id: FxHashMap<UniversalStateKey, u32>,
+    state_to_id: FxHashMap<UniversalStateKey<V>, u32>,
     /// Map from ID back to state.
     id_to_state: Vec<RegisteredUniversalState<V>>,
 }
 
 /// Key for hashing a UniversalState plus the WFST query-label cursor.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct UniversalStateKey {
+pub(crate) struct UniversalStateKey<V: PositionVariant> {
     pub(crate) query_pos: usize,
     pub(crate) length_diff: i8,
-    pub(crate) positions: UniversalStateKeyBytes,
+    pub(crate) positions: SmallVec<[UniversalPosition<V>; 8]>,
 }
 
 #[derive(Clone)]
@@ -107,26 +122,11 @@ pub(crate) struct RegisteredUniversalState<V: PositionVariant> {
 pub(crate) fn universal_state_key<V: PositionVariant>(
     state: &UniversalState<V>,
     query_pos: usize,
-) -> UniversalStateKey {
-    let positions = state.positions();
-    let mut bytes = UniversalStateKeyBytes::with_capacity(
-        crate::capped_size_hint_capacity(positions.size_hint().0).saturating_mul(1 + 4 + 1),
-    );
-
-    for pos in positions {
-        let (pos_type, offset, errors) = if pos.is_i_type() {
-            (0u8, pos.offset(), pos.errors())
-        } else {
-            (1u8, pos.offset(), pos.errors())
-        };
-        bytes.push(pos_type);
-        bytes.extend_from_slice(&offset.to_le_bytes());
-        bytes.push(errors);
-    }
+) -> UniversalStateKey<V> {
     UniversalStateKey {
         query_pos,
         length_diff: state.length_diff(),
-        positions: bytes,
+        positions: state.positions().cloned().collect(),
     }
 }
 
@@ -179,7 +179,7 @@ impl<V: PositionVariant> UniversalStateRegistry<V> {
         self.candidate_state_id_for_key(&key)
     }
 
-    pub(crate) fn candidate_state_id_for_key(&self, key: &UniversalStateKey) -> Option<u32> {
+    pub(crate) fn candidate_state_id_for_key(&self, key: &UniversalStateKey<V>) -> Option<u32> {
         self.state_to_id
             .get(key)
             .copied()
@@ -190,7 +190,7 @@ impl<V: PositionVariant> UniversalStateRegistry<V> {
         &mut self,
         state: UniversalState<V>,
         query_pos: usize,
-        key: UniversalStateKey,
+        key: UniversalStateKey<V>,
     ) -> Option<u32> {
         if let Some(&id) = self.state_to_id.get(&key) {
             return Some(id);
@@ -238,7 +238,7 @@ impl<V: PositionVariant> UniversalStateRegistry<V> {
         &self,
         state: &UniversalState<V>,
         query_pos: usize,
-    ) -> UniversalStateKey {
+    ) -> UniversalStateKey<V> {
         universal_state_key(state, query_pos)
     }
 
@@ -261,24 +261,7 @@ pub(crate) fn universal_accepting_weight<V>(
 where
     V: PositionVariant,
 {
-    let max_distance = state.max_distance();
-
     state
-        .positions()
-        .filter_map(|pos| {
-            if pos.is_m_type() {
-                (pos.offset() <= 0 && pos.errors() <= max_distance).then(|| f64::from(pos.errors()))
-            } else {
-                let current_word_pos = apply_i32_offset(processed_input_len, pos.offset())?;
-                let remaining_chars = fixed_word_len.checked_sub(current_word_pos)?;
-                let remaining_errors = usize::from(max_distance.checked_sub(pos.errors())?);
-
-                if remaining_chars <= remaining_errors {
-                    Some(f64::from(pos.errors()) + bounded_count_to_f64(remaining_chars)?)
-                } else {
-                    None
-                }
-            }
-        })
-        .min_by(|left, right| left.total_cmp(right))
+        .accepting_distance(fixed_word_len, processed_input_len)
+        .and_then(bounded_count_to_f64)
 }

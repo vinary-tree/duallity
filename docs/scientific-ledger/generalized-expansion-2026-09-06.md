@@ -65,10 +65,14 @@ its verified model in `proofs/coq/abi/StatusMapping.v`.
 | Read-only Raku math scanner on changed documents | Passed |
 | Updated transaction diagram | Rendered headlessly and visually inspected |
 
-The default-feature runs preceded the final constructor-boundary correction;
-the 420-test all-feature runs include it. The final correction changes foreign
-classification and shares the existing builder validation entry, not native
-expansion semantics.
+The full four-configuration matrix was repeated from commit `67bdc2e` in a
+clean six-repository source graph using canonical sibling names and only the
+committed revisions above. Default-feature debug/release each passed 280 tests;
+all-feature debug/release each passed 420. The clean graph also passed all 13
+doctests, strict Clippy, strict rustdoc, and the executable example. This excludes
+reliance on uncommitted dependency edits or integration-worktree manifest paths.
+The checkouts occupied 159 MiB and reused the existing on-disk Cargo target;
+no tmpfs build directory or package publication was involved.
 
 The status proof enumerates every interop status, generalized error category,
 and scale-error category. Diagnostic strings and numeric payloads are erased

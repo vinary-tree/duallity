@@ -30,7 +30,7 @@ docs/
 | **Foreign-language bindings** | [bindings/README](bindings/README.md) — C, C++, JavaScript, TypeScript, ClojureScript, Python, Julia, and Raku guides with executable evidence |
 | **Engineering** | [engineering/README](engineering/README.md) |
 | **Security** | [security/README](security/README.md) |
-| **Scientific evidence** | [Python binding construction](scientific-ledger/python-binding-construction-2026-09-04.md) · [binding findings](scientific-ledger/bindings-findings-ledger.md) · [FZF prefix bound](scientific-ledger/fzf-prefix-bound-2026-08-02.md) |
+| **Scientific evidence** | [Exact generalized expansion](scientific-ledger/generalized-expansion-2026-09-06.md) · [Python binding construction](scientific-ledger/python-binding-construction-2026-09-04.md) · [binding findings](scientific-ledger/bindings-findings-ledger.md) · [FZF prefix bound](scientific-ledger/fzf-prefix-bound-2026-08-02.md) |
 | **Release engineering** | [releasing](releasing.md) — immutable release-branch tags, validate-only evidence, single-registry dispatch, npm promotion, and failure recovery |
 | **References** | [bibliography](references/bibliography.md) · [glossary](references/glossary.md) |
 | **Diagrams** | [diagrams/README](diagrams/README.md) — catalog + color legend |

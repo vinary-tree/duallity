@@ -54,6 +54,20 @@ where
     }
 }
 
+impl<D> crate::DirectStateSource<char, ArcticWeight> for FzfWfst<D>
+where
+    D: Dictionary + Clone + Send + Sync,
+    D::Node: Send + Sync,
+    <D::Node as DictionaryNode>::Unit: Into<char> + Copy + Send + Sync,
+{
+    fn expand_state(
+        &self,
+        state: StateId,
+    ) -> lling_llang::prelude::StateExpansion<char, ArcticWeight> {
+        self.inner.source().expand_state(state)
+    }
+}
+
 impl<D> Wfst<char, ArcticWeight> for FzfWfst<D>
 where
     D: Dictionary + Clone + Send + Sync,

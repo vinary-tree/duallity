@@ -3,17 +3,18 @@
 //! A constructor captures `vt.dictionary.v1` exactly once and then builds the
 //! requested duallity adapter over that immutable revision. The resulting
 //! `vt.scalar-wfst.1` resource may outlive the source dictionary handle. State
-//! expansion clones only the lightweight WFST/cache shell; registries and the
-//! dictionary snapshot remain shared, so independent calls are reentrant.
+//! expansion borrows shared direct state sources. One lling-llang resource cache
+//! owns exported residency; native wrapper caches are neither cloned nor used.
 
 use crate::{FzfWfst, GeneralizedWfstBuilder, LevenshteinWfst, UniversalLevenshteinWfst};
 mod fault_scope;
+use crate::DirectStateSource;
 use fault_scope::FaultScope;
 use libdictenstein::{Dictionary, DictionaryNode, SnapshotTraversalCursor, SyncStrategy};
 use liblevenshtein::transducer::universal::{MergeAndSplit, Standard, Transposition};
 use liblevenshtein::transducer::Algorithm;
 use lling_llang::bindings::{OwnedWfstResource, ScalarWfstProvider, ScalarWfstState};
-use lling_llang::prelude::{ArcticWeight, LazyWfst, StateId, TropicalWeight, Wfst};
+use lling_llang::prelude::{ArcticWeight, StateExpansion, StateId, TropicalWeight, Wfst};
 use std::ffi::c_void;
 use std::fmt;
 use std::sync::{Arc, Mutex};
@@ -563,13 +564,13 @@ struct AdapterProvider {
 }
 
 fn scalar_state<W, S>(
-    mut wfst: W,
+    wfst: &W,
     dictionary: &ResourceDictionary,
     state: u64,
     weight_value: impl Fn(S) -> f64,
 ) -> Result<ScalarWfstState, VtStatus>
 where
-    W: LazyWfst<char, S>,
+    W: Wfst<char, S> + DirectStateSource<char, S>,
     S: lling_llang::prelude::Semiring,
 {
     dictionary.with_checked(|| {
@@ -585,10 +586,25 @@ where
         if !wfst.is_valid_state(state) {
             return Ok(invalid());
         }
-        wfst.expand(state).map_err(expansion_status)?;
-        let arcs = wfst
-            .transitions(state)
-            .iter()
+        let (is_final, final_weight, transitions) = match wfst.expand_state(state) {
+            StateExpansion::Expanded {
+                is_final,
+                final_weight,
+                transitions,
+            } => (is_final, final_weight, transitions),
+            StateExpansion::Failed(failure) => {
+                return Err(expansion_status(
+                    lling_llang::prelude::ExpansionError::Failure(failure),
+                ))
+            }
+            StateExpansion::Cancelled(reason) => {
+                return Err(expansion_status(
+                    lling_llang::prelude::ExpansionError::Cancelled(reason),
+                ))
+            }
+        };
+        let arcs = transitions
+            .into_iter()
             .map(|arc| VtWfstArc {
                 input_label: arc.input.map_or(0, |label| u64::from(u32::from(label))),
                 output_label: arc.output.map_or(0, |label| u64::from(u32::from(label))),
@@ -601,31 +617,31 @@ where
             .collect();
         Ok(ScalarWfstState {
             valid: true,
-            is_final: wfst.is_final(state),
-            final_weight: weight_value(wfst.final_weight(state)),
+            is_final,
+            final_weight: weight_value(final_weight),
             arcs,
         })
     })
 }
 
 fn tropical_state<W>(
-    wfst: W,
+    wfst: &W,
     dictionary: &ResourceDictionary,
     state: u64,
 ) -> Result<ScalarWfstState, VtStatus>
 where
-    W: LazyWfst<char, TropicalWeight>,
+    W: Wfst<char, TropicalWeight> + DirectStateSource<char, TropicalWeight>,
 {
     scalar_state(wfst, dictionary, state, |weight| weight.value())
 }
 
 fn arctic_state<W>(
-    wfst: W,
+    wfst: &W,
     dictionary: &ResourceDictionary,
     state: u64,
 ) -> Result<ScalarWfstState, VtStatus>
 where
-    W: LazyWfst<char, ArcticWeight>,
+    W: Wfst<char, ArcticWeight> + DirectStateSource<char, ArcticWeight>,
 {
     scalar_state(wfst, dictionary, state, |weight| weight.value())
 }
@@ -657,18 +673,12 @@ impl ScalarWfstProvider for AdapterProvider {
 
     fn state(&self, state: u64) -> Result<ScalarWfstState, VtStatus> {
         match &self.adapter {
-            Adapter::Levenshtein(wfst) => tropical_state(wfst.clone(), &self.dictionary, state),
-            Adapter::UniversalStandard(wfst) => {
-                tropical_state(wfst.clone(), &self.dictionary, state)
-            }
-            Adapter::UniversalTransposition(wfst) => {
-                tropical_state(wfst.clone(), &self.dictionary, state)
-            }
-            Adapter::UniversalMergeAndSplit(wfst) => {
-                tropical_state(wfst.clone(), &self.dictionary, state)
-            }
-            Adapter::Generalized(wfst) => tropical_state(wfst.clone(), &self.dictionary, state),
-            Adapter::Fzf(wfst) => arctic_state(wfst.clone(), &self.dictionary, state),
+            Adapter::Levenshtein(wfst) => tropical_state(wfst, &self.dictionary, state),
+            Adapter::UniversalStandard(wfst) => tropical_state(wfst, &self.dictionary, state),
+            Adapter::UniversalTransposition(wfst) => tropical_state(wfst, &self.dictionary, state),
+            Adapter::UniversalMergeAndSplit(wfst) => tropical_state(wfst, &self.dictionary, state),
+            Adapter::Generalized(wfst) => tropical_state(wfst, &self.dictionary, state),
+            Adapter::Fzf(wfst) => arctic_state(wfst, &self.dictionary, state),
         }
     }
 }

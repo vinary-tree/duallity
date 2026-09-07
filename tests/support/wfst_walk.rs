@@ -110,6 +110,7 @@ impl WfstView {
 
         let mut arcs = Vec::new();
         let mut offset = 0usize;
+        let mut stable_total = None;
         loop {
             let mut page = vec![VtWfstArc::default(); VT_RECOMMENDED_ARC_BATCH];
             let mut written = 0usize;
@@ -129,13 +130,22 @@ impl WfstView {
                 return Err(status);
             }
             assert!(written <= page.len(), "written exceeds capacity");
+            match stable_total {
+                Some(expected) => assert_eq!(total, expected, "total changes between pages"),
+                None => stable_total = Some(total),
+            }
+            assert_eq!(
+                written,
+                page.len().min(total.saturating_sub(offset)),
+                "page must make complete bounded progress"
+            );
             assert!(
                 offset.saturating_add(written) <= total,
                 "page runs past total"
             );
             arcs.extend(page.into_iter().take(written));
             offset += written;
-            if offset >= total || written == 0 {
+            if offset == total {
                 break;
             }
         }

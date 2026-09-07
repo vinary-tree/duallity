@@ -129,6 +129,22 @@ where
     }
 }
 
+impl<V, D> crate::DirectStateSource<char, TropicalWeight> for UniversalLevenshteinWfst<V, D>
+where
+    V: PositionVariant + Clone + Send + Sync,
+    V::State: Send + Sync,
+    D: Dictionary + Clone + Send + Sync,
+    D::Node: Send + Sync,
+    <D::Node as DictionaryNode>::Unit: Into<char> + TryFrom<char> + Copy + Send + Sync,
+{
+    fn expand_state(
+        &self,
+        state: StateId,
+    ) -> lling_llang::prelude::StateExpansion<char, TropicalWeight> {
+        self.state_source.expand_state(state)
+    }
+}
+
 impl<V, D> Wfst<char, TropicalWeight> for UniversalLevenshteinWfst<V, D>
 where
     V: PositionVariant + Clone + Send + Sync,

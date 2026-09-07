@@ -159,6 +159,20 @@ where
 // We implement Wfst via LazyWfstWrapper + StateSource pattern
 // This provides proper lazy evaluation with caching
 
+impl<D> crate::DirectStateSource<char, TropicalWeight> for LevenshteinWfst<D>
+where
+    D: Dictionary + Clone + Send + Sync,
+    D::Node: Send + Sync,
+    <D::Node as DictionaryNode>::Unit: Into<char> + TryFrom<char> + Copy + Send + Sync,
+{
+    fn expand_state(
+        &self,
+        state: StateId,
+    ) -> lling_llang::prelude::StateExpansion<char, TropicalWeight> {
+        self.state_source.expand_state(state)
+    }
+}
+
 impl<D> Wfst<char, TropicalWeight> for LevenshteinWfst<D>
 where
     D: Dictionary + Clone + Send + Sync,

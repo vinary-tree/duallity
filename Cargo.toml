@@ -76,6 +76,11 @@ name = "ffi_constructor_benchmarks"
 harness = false
 required-features = ["ffi"]
 
+[[bench]]
+name = "ffi_cache_benchmarks"
+harness = false
+required-features = ["ffi"]
+
 [package.metadata.docs.rs]
 all-features = true
 

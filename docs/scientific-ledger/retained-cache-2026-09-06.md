@@ -278,3 +278,36 @@ not imply that the canonical lling-llang primary worktree has received the
 cache commit. Final validation must use a clean sibling layout containing the
 exact committed cache changes, followed by separately authorized primary-branch
 integration; it must not silently compile against another owner's live edits.
+
+## Exact committed graph qualification
+
+The clean sibling-layout gate subsequently passed for duallity commit
+`c422e3b4a4d5fdc9bff81073eeda11b1945eb858` and lling-llang commit
+`aea10b13fdf0f0aa5658e6efdfc4962386605b4a`, using the same four dependency
+commits tabulated above. All six sources came from Git archives without
+source or manifest patches. Offline locked metadata confined every local
+dependency to that graph; source checksums matched before and after.
+
+Duallity passed all 427 all-feature workspace tests in debug and all 427 in
+release, with no skips, followed by strict all-target Clippy. Its companion
+lling-llang root passed 3,132 tests in each configuration and strict Clippy.
+The aggregate command exited zero at `2026-09-07T19:01:01Z`. These are tests
+of the two root workspaces against the dependency graph, not independent
+test-suite runs for every dependency. pgmcp progress 10250 and the companion
+ledger's exact committed-graph section identify the logs and checksums.
+
+To reduce time between paired observations under a busy host, the prospective
+timing protocol now uses four predefined family blocks: classic, universal,
+generalized and FZF, in that order. Each block contains all 12 original cases
+and its own fresh B1–A1–A2–B2 comparison. Exact case-ID validation must prove
+disjoint blocks and the full 48-case union. Incomplete block attempts are
+preserved but never spliced together; only whole-block eligibility retries
+are permitted, independently of measured ratios. Sample settings, fixed-core
+checks and performance acceptance thresholds are unchanged. pgmcp progress
+10253 records this amendment before execution; the companion ledger gives
+the interruption and output-isolation rules.
+
+Report cache-policy costs separately within each family, operation and working
+set. The 64-state hot and 65-state eviction endpoints do not measure a single
+fixed-population mixed-hit threshold. Neither the correctness gate nor this
+protocol amendment supplies a real-adapter timing result or final selection.

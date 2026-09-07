@@ -7,6 +7,7 @@ use duallity::bindings::{create_wfst, WfstKind};
 use libdictenstein::bindings::{BindingUnitDomain, DynamicDawgBinding};
 use liblevenshtein::transducer::Algorithm;
 use lling_llang::wfst::SharedCachePolicy;
+use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::sync::Barrier;
 use support::wfst_walk::WfstView;
@@ -35,6 +36,37 @@ fn family_algorithms() -> impl Iterator<Item = (WfstKind, Algorithm)> {
             .into_iter()
             .map(|algorithm| (WfstKind::Levenshtein, algorithm)),
         )
+}
+
+/// Establish that the mutation is observable for this family's actual language.
+/// `coat` matches `cat` both by edit distance and by FZF's ordered subsequence;
+/// `bat` would not exercise FZF's retained-snapshot boundary.
+fn mutate_with_observable_language_change(
+    dictionary: &DynamicDawgBinding,
+    kind: WfstKind,
+    algorithm: Algorithm,
+    expected: &BTreeMap<String, f64>,
+) {
+    assert!(
+        !expected.contains_key("coat"),
+        "{kind:?}: the original fixture excludes the new term"
+    );
+    dictionary
+        .insert_text(b"coat", None)
+        .expect("observable live-source mutation");
+    let fresh_source = dictionary.resource();
+    // SAFETY: fresh_source owns the live dictionary resource during capture.
+    let fresh = unsafe { create_wfst(fresh_source.as_raw(), "cat", 2, algorithm, kind) }
+        .expect("post-mutation adapter");
+    let actual = WfstView::new(fresh.as_raw()).language(kind != WfstKind::Fzf);
+    assert!(
+        actual.contains_key("coat"),
+        "{kind:?}, {algorithm:?}: a fresh resource accepts the inserted term"
+    );
+    assert_ne!(
+        &actual, expected,
+        "{kind:?}, {algorithm:?}: fresh and retained snapshot oracles must differ"
+    );
 }
 
 #[test]
@@ -66,10 +98,9 @@ fn every_family_preserves_snapshot_language_through_eviction_clear_and_no_cache(
             "{kind:?}: warm reuse"
         );
 
-        // Mutation affects the live dictionary, not the captured resource.
-        dictionary
-            .insert_text(b"bat", None)
-            .expect("live-source mutation");
+        // Mutation changes a fresh resource's language for every family, but
+        // must not change the retained resource, even after cache eviction.
+        mutate_with_observable_language_change(&dictionary, kind, algorithm, &expected);
         drop(source);
         drop(dictionary);
         drop(wfst);
@@ -154,7 +185,9 @@ fn concurrent_family_resources_preserve_language_during_cache_generation_changes
             let control = resource.provider_cache().expect("one shared cache owner");
             control.set_policy(policy);
             let retained: Vec<_> = (0..READERS).map(|_| resource.clone()).collect();
-            dictionary.insert_text(b"bat", None).expect("live mutation");
+            // The fresh control has a separate registry: do not pre-discover
+            // any states in the cold resource shared by the concurrent readers.
+            mutate_with_observable_language_change(&dictionary, kind, algorithm, &expected);
             drop(resource);
             drop(source);
             drop(dictionary);

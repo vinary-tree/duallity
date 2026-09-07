@@ -311,3 +311,43 @@ Report cache-policy costs separately within each family, operation and working
 set. The 64-state hot and 65-state eviction endpoints do not measure a single
 fixed-population mixed-hit threshold. Neither the correctness gate nor this
 protocol amendment supplies a real-adapter timing result or final selection.
+
+## Making snapshot mutation observable in every family
+
+The acceptance review found a test-oracle weakness, not a production-cache
+failure. The sequential and concurrent all-family tests inserted `bat` into
+the live dictionary after capturing a resource for query `cat`. Edit-distance
+families can accept that change, but FZF requires the query's characters in
+order and rejects `bat`. An unchanged FZF result therefore did not distinguish
+an immutable snapshot from an accidentally live source.
+
+Both tests now use the shared helper
+`mutate_with_observable_language_change`. It inserts `coat`, which the configured
+edit-distance and ordered-subsequence families accept, then captures a separate
+fresh resource. The fresh language must contain `coat` and differ from the
+original language. The previously retained resources must still produce the
+original language through eviction, clear, source destruction and concurrent
+generation changes. The fresh control owns a separate state registry, so it
+does not pre-discover states in the concurrent test's cold retained resource.
+
+Validation used fresh archives of the six commits from the preceding section
+with exactly one source-file difference: `tests/ffi_cache_policies.rs` in
+duallity. Its SHA-256 is
+`6a61abdba04eb338034c500141da5baeb0f9b8136b933f6fbb4775bc6e45957c`.
+Production, manifests, benchmarks, proofs and other tests were unchanged.
+All 427 all-feature workspace tests passed in debug and all 427 in release,
+with zero skips, followed by strict all-target Clippy. Before/after source
+verification passed, and the command exited zero at `2026-09-07T19:41:08Z`.
+The run used the prescribed 8 GiB/no-swap memory limits, four-CPU aggregate
+quota, four build jobs and four test threads, after timing had stopped.
+
+[The validation archive](evidence/cache-mutation-observability-2026-09-07.tar.zst)
+contains the prepared manifest, separate terminal result, single-file patch,
+source identities, commands and raw logs; it excludes compiled artifacts.
+Its SHA-256 is
+`6e596deb7426e0ab833b370dd5d4c63103443c3e2ef7e29c3e5a264a2112e174`.
+The aggregate validation-log SHA-256 is
+`efab70b9564f81dcafef2ea7afb7c5f8d764cb0252fc96590fb68a6138c4544f`.
+pgmcp progress 10327 records the result. This correction strengthens evidence
+for snapshot semantics; it neither changes the measured cache implementation
+nor establishes a performance improvement or completes task 7784.

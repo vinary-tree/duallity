@@ -14,15 +14,16 @@
 
 The product state space (dictionary $`\times`$ automaton — [architecture/03](03-state-encoding-and-product-space.md))
 is astronomically large and almost entirely unvisited by any single query. Materializing it would be
-impossible; duallity instead computes a state **only on first touch** and memoizes the result. A query
-that explores a few hundred states pays for a few hundred states, regardless of how many million the
-dictionary could in principle induce. Laziness is not an optimization bolted on afterward — it is the
+impossible; duallity instead computes a state **on demand** and memoizes successful results according
+to the selected policy. With `CacheAll`, a query that explores a few hundred states pays for a few
+hundred expansions, regardless of how many million states the dictionary could in principle induce.
+Eviction or scratch replacement can require recomputation. Laziness is not an optimization bolted on afterward — it is the
 only reason a $`d \cdot M`$-wide product is tractable at all.
 
 ## 2. The expansion pipeline
 
-The first time a state $`s`$ is needed it flows through three layers; the second time it is served
-straight from the cache.
+The first time a valid state $`s`$ is needed it flows through three layers. A later request is served
+from the cache while its completed expansion remains resident or in the native scratch slot.
 
 <img src="../diagrams/lazy-expand-sequence.svg" alt="First touch: wrapper → state source → registry → cache; second touch: cache hit" width="820"/>
 
@@ -82,11 +83,14 @@ heap. The cache keys these by the dense `u32` `StateId` with `rustc_hash::FxHash
 non-cryptographic hashing; the collision posture is analysed in
 [security/hashing-and-collisions](../security/hashing-and-collisions.md)).
 
-> **This is duallity's cache, not `lling_llang`'s.** `LazyWfstWrapper` (from `lling_llang`) is the
-> *composition-time* adapter that exposes an immutable `StateSource` to `compose` (§7); it does **not**
-> own the transition memo. Every duallity wrapper embeds its **own** `LazyStateCache<CachedCharState>`
-> and answers `LazyWfst` directly. The two are complementary: `LazyWfstWrapper` lends `compose` a
-> `&self` view, while `LazyStateCache` is the `&mut self`-guarded memo behind `transitions_lazy`.
+> **Scope: native `LazyStateCache` wrappers.** The wrappers listed in §4 embed
+> `LazyStateCache<CachedCharState>` and answer `LazyWfst` directly. `FzfWfst` instead embeds
+> lling-llang's `LazyWfstWrapper`, which owns its own completed-state and lifecycle storage.
+> Composition adapters and retained foreign-language resources are distinct cache owners.
+> The retained resource exporter calls the direct state source and shares one expansion cache
+> across resource clones; it does not layer this native memo underneath that cache. See the
+> [retained-cache qualification](../scientific-ledger/retained-cache-2026-09-06.md#question-and-scope)
+> for ownership, lifetime and policy boundaries.
 
 ## 3. `LazyStateCache` in full
 
@@ -241,13 +245,16 @@ updates it. Each wrapper seeds `LazyStateCache::new(DEFAULT_MAX_CACHE_SIZE)`:
 `MAX_SPECULATIVE_PREALLOCATION = 16_384` up front so `Lru { max_states: usize::MAX }` does not try to
 reserve four billion slots (test `lru_policy_treats_large_limits_as_speculative_reservations`).
 
-<!-- NEW diagram D-lru (cache-policy-lru-eviction): PLACEHOLDER — the SVG does not exist yet.
-     Integrator: author diagrams/src/cache-policy-lru-eviction.puml (PlantUML) illustrating the
-     BinaryHeap<Reverse<(clock,StateId)>> deterministic eviction tick (insert → next_tick → push →
-     evict_one_lru → pop_lru_victim skipping stale ticks), colored per the shared legend
-     (duallity = blue, weight/tick = gray, evicted victim = red), then render to
-     diagrams/cache-policy-lru-eviction.svg and register it in diagrams/README.md's catalog. -->
-<img src="../diagrams/cache-policy-lru-eviction.svg" alt="Deterministic LRU eviction: insert mints a monotonic tick, pushes (tick, StateId) onto a min-heap, and evicts the smallest live (tick, StateId), skipping stale heap records" width="820"/>
+`FzfWfst` is not in this table: its native `LazyWfstWrapper` treats zero as a
+single transient expansion, reusing an immediate same-state request but recomputing
+when alternating states. Its `computed_states()` counts lifetime computations, not
+residents, and cache clear does not reset that count. In contrast, the retained
+resource's shared LRU policy requires a positive capacity, and its NoCache policy
+does not reuse a native scratch slot. The
+[native zero-policy tests](../../tests/cache_policy.rs) and
+[exporter policy tests](../../tests/ffi_cache_policies.rs) check these separate contracts.
+
+<img src="../diagrams/cache-policy-lru-eviction.svg" alt="Native LazyStateCache: CacheAll retains all expansions; LRU zero selects a positive fallback; a full LRU evicts the least live tick before insertion; NoCache reuses only its last scratch state. FZF and retained ABI caches have distinct contracts." width="820"/>
 
 ## 5. First touch vs. second touch — a trace
 

@@ -1,7 +1,8 @@
 @startuml cache-policy-lru-eviction
 ' D — LazyStateCache: the three CachePolicy modes and the LRU tick-clock eviction.
 ' Depicts: CacheAll (unbounded map), Lru{m} (map + min-heap keyed by <clock,StateId>,
-' evict least-recent when size > m), NoCache/Lru{0} (single scratch slot).
+' evict least-recent before inserting a new state into a full map), NoCache (scratch).
+' Native LazyStateCache only: FzfWfst and retained ABI resources have separate caches.
 skinparam backgroundColor #FFFFFF
 skinparam shadowing false
 skinparam defaultFontName "DejaVu Sans"
@@ -9,29 +10,31 @@ skinparam state {
   BorderColor #34495E
   FontName "DejaVu Sans"
 }
-title LazyStateCache — three CachePolicy modes and the LRU tick-clock eviction
+title Native LazyStateCache — residency, scratch reuse and exact LRU eviction
 
 state "CacheAll (default)\nunbounded FxHashMap —\nkeep every computed state, no eviction" as CA #D6EAF8
 
-state "Lru { max_states = m }" as LRU #D6EAF8 {
+state "Lru { max_states }\npositive value: explicit limit m\nzero: configured fallback m (at least one)" as LRU #D6EAF8 {
   state "resident set\nFxHashMap<StateId, CacheEntry>" as R #D6EAF8
   state "min-heap ordered by\n<latex>\langle \mathrm{clock},\, \mathrm{StateId} \rangle</latex>" as H #EAECEE
   [*] --> R
   R -[#3498DB]-> R : touch(s):  clock += 1;\nentry.last_access = clock;\npush <latex>\langle \mathrm{clock},\, s \rangle</latex>
-  R -[#E67E22]-> H : size > m
-  H -[#E74C3C]-> R : pop min clock =\nleast-recently-used, evict it
+  R -[#E67E22]-> H : new state and resident size >= m\n(before insertion)
+  H -[#E74C3C]-> R : skip stale records; evict least live tick;\nthen insert with a fresh tick
 }
 
-state "NoCache  =  Lru { 0 }\nsingle scratch slot —\nrecompute on every visit" as NC #EAECEE
+state "NoCache\none scratch slot, zero reported residents\nsame-state request reuses scratch;\na different state replaces it" as NC #EAECEE
 
 [*] --> CA
 CA -[hidden]-> LRU
 LRU -[hidden]-> NC
 
 note right of LRU
-  The clock is a monotonic logical counter: every touch increments it and
-  stamps the entry's last_access. The min-heap top is always the least-recently-
-  used state, so when the resident set exceeds m the top is popped and evicted.
-  A stale heap entry (an id touched again after it was pushed) is skipped on pop.
+  Every LRU touch restamps the state's logical access tick.
+  Discard stale heap records before selecting the least-recent live entry.
+  Rebuild an oversized heap; renumber ticks in recency order at rollover.
+  FzfWfst uses lling-llang's LazyWfstWrapper instead:
+  its native Lru { max_states: 0 } retains only a transient state.
+  Retained ABI resources use a separate shared expansion cache.
 end note
 @enduml

@@ -11,13 +11,14 @@ measure them, so you can trade memory against latency deliberately. It builds on
 
 ## 1. The lazy contract — what you actually pay for
 
-Every WFST computes a state **only on first touch** and caches it: `expand(s)` misses the cache, calls
-the state source's allocation-conscious `expand_state(s)` kernel, and stores a compact `CachedState`;
-the second touch is served
-from the cache ([architecture/04 §2](../architecture/04-lazy-evaluation-and-caching.md#2-the-expansion-pipeline),
+With `CacheAll`, the lazy wrappers compute a valid state **on first touch** and cache a successful
+expansion: `expand(s)` misses the cache, calls the state source's `expand_state(s)` kernel, and stores
+the result. A later touch reuses it until clear or policy replacement. Bounded LRU eviction and
+NoCache scratch replacement can require recomputation
+([architecture/04 §2](../architecture/04-lazy-evaluation-and-caching.md#2-the-expansion-pipeline),
 diagram [`lazy-expand-sequence`](../diagrams/lazy-expand-sequence.svg)). The consequences:
 
-- A query that visits $`N`$ states costs $`\mathcal{O}(N)`$ expansions — **independent of dictionary
+- With retained successful expansions, a query that visits $`N`$ states costs $`\mathcal{O}(N)`$ expansions — **independent of dictionary
   size**. You pay for the region the search explores, not the whole dictionary
   ([theory/04 §3](../theory/04-composition.md#3-the-lazy-product)).
 - **Composition is lazy too**: product states are formed only as the shortest-path search reaches them,
@@ -92,9 +93,13 @@ automaton rebuild (§5); and **`WallBreakerWfst` is eager** — building it *is*
 
 ## 3. Cache policy
 
-Every WFST memoizes computed states in a per-WFST `LazyStateCache` guarded by `&mut self` (the *cache*
-is not shared across threads; only the [registries](../architecture/05-registries-and-interning.md) are,
-behind `Arc<RwLock>` — §6). The `CachePolicy` chooses the trade-off:
+The native wrappers listed in §3.1 memoize computed states in a per-WFST
+`LazyStateCache` guarded by `&mut self`. `FzfWfst` uses lling-llang's
+`LazyWfstWrapper` instead. Retained foreign-language resources share an exporter
+expansion cache across resource clones and bypass the native wrapper memo; the
+[retained-cache qualification](../scientific-ledger/retained-cache-2026-09-06.md)
+details those separate ownership and policy contracts. For native `LazyStateCache`,
+`CachePolicy` chooses the following trade-off:
 
 ```rust,ignore
 use lling_llang::prelude::*;   // brings CachePolicy into scope
@@ -102,14 +107,14 @@ use lling_llang::prelude::*;   // brings CachePolicy into scope
 let mut lev = /* a LevenshteinWfst */;
 lev.set_cache_policy(CachePolicy::CacheAll);                    // default: keep everything
 lev.set_cache_policy(CachePolicy::Lru { max_states: 50_000 }); // bound memory
-lev.set_cache_policy(CachePolicy::NoCache);                    // recompute every time
+lev.set_cache_policy(CachePolicy::NoCache);                    // retain only the last scratch state
 ```
 
 | Policy | Memory | CPU | Use when |
 |--------|--------|-----|----------|
 | `CacheAll` | unbounded (grows with states visited) | lowest (never recompute) | one-shot queries, batch jobs |
-| `Lru { max_states }` | bounded to $`\le`$ `max_states` | some recomputation on eviction | long-lived / streaming services |
-| `NoCache` | one-state scratch slot | highest (recompute every touch) | memory-critical, rarely-revisited states |
+| `Lru { max_states }` | bounded to the effective limit (zero selects the fallback) | recompute evicted states | long-lived / streaming services |
+| `NoCache` | one-state scratch slot | reuse the last state; recompute displaced states | memory-critical, rarely-revisited states |
 
 Three details from `src/lazy_cache.rs` worth internalizing:
 
@@ -117,7 +122,8 @@ Three details from `src/lazy_cache.rs` worth internalizing:
   empty, so the default policy has zero LRU bookkeeping overhead.
 - **`NoCache` still keeps the last expanded state in a scratch slot**, so `transitions_lazy` can return a
   borrowed slice; but `computed_states()` stays `0` and `is_expanded` is always `false`. Inserting a
-  second state overwrites the first.
+  second state overwrites the first. An immediate request for the same state reuses this scratch
+  value, so this native policy is not the exported shared cache's strict no-retention policy.
 - **`Lru` preallocates bounded storage** and treats an enormous `max_states` as a *speculative
   reservation*, capped at `MAX_SPECULATIVE_PREALLOCATION` $`= 16{,}384`$ (§7) — so
   `Lru { max_states: usize::MAX }` does not attempt a multi-gigabyte allocation.
@@ -143,6 +149,12 @@ starts with (verified against the seven `src/*.rs` sources):
 | `PhoneticNfaWfst` | `50_000` |
 | `RewriteWfst` | `10_000` |
 
+`FzfWfst` has no configured fallback: native `Lru { max_states: 0 }` retains
+only a transient expansion, like its native `NoCache`. Its `computed_states()`
+counts cumulative computations, including after cache clear, not residents.
+See [architecture/04](../architecture/04-lazy-evaluation-and-caching.md#default-bounds-per-variant)
+for the native/exported distinction and regression tests.
+
 ### 3.2 Deterministic LRU eviction
 
 `Lru { max_states }` is a **deterministic** least-recently-used policy — no randomness, reproducible
@@ -158,14 +170,7 @@ across runs:
 - at clock rollover ($`\text{tick} = 2^{64}{-}1`$) ticks are **renumbered** preserving recency
   order, so correctness survives astronomically long runs.
 
-> ⚠ **NEW diagram (pending central render):** a state/sequence diagram
-> [`cache-policy-lru-eviction`](../diagrams/cache-policy-lru-eviction.svg) — the tick clock, the min-tick
-> heap, an insert-when-full evicting the smallest tick, the touch-restamps-and-skips-stale mechanism, and
-> the compaction/rollover guards — belongs here and in the
-> [diagram catalog](../diagrams/README.md#catalog) (next free id **D19**). Render from
-> `docs/diagrams/src/cache-policy-lru-eviction.*` per the [rendering recipe](../diagrams/README.md#rendering).
-
-<img src="../diagrams/cache-policy-lru-eviction.svg" alt="Deterministic LRU eviction: each cached state carries a monotonic access tick; a min-tick binary heap orders states by recency; inserting into a full cache pops the smallest-tick victim (skipping stale heap entries whose tick no longer matches the state's last_access); a cache hit restamps the state with a fresh tick and pushes a new heap entry; the heap is rebuilt when it exceeds four times the entry count, and ticks are renumbered at clock rollover (diagram pending central render)" width="820"/>
+<img src="../diagrams/cache-policy-lru-eviction.svg" alt="Native LazyStateCache policies: zero LRU capacity selects the configured positive fallback; NoCache retains only the latest scratch expansion. LRU evicts before inserting into a full resident set, skips stale heap ticks, compacts oversized metadata, and renumbers ticks at rollover." width="820"/>
 
 ## 4. `WallBreakerWfst` is eager
 

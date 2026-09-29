@@ -34,6 +34,11 @@ jobs:
         run: python3 scripts/generate-raku-abi.py --check
       - name: Binding-surface drift gate
         run: python3 scripts/check-bindings.py
+      - name: Configurable C record layout gate
+        run: >-
+          cc -std=c11 -Wall -Wextra -Werror -fsyntax-only
+          -Iinclude -I../vinary-tree-interop/include
+          bindings/c/tests/config_record_layout.c
       - name: Binding-documentation gate
         run: python3 scripts/check-binding-docs.py
       - name: cargo build

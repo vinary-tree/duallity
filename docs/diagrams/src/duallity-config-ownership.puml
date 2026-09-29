@@ -1,0 +1,45 @@
+@startuml duallity-config-ownership
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Sans"
+skinparam sequence {
+  ArrowColor #34495E
+  LifeLineBorderColor #34495E
+  ParticipantBorderColor #34495E
+}
+title Configured WFST: borrowed input, owned grammar, one resource cache
+
+participant "Caller buffers\n(options, operations, pairs)" as Caller #FFECB3
+participant "duallity ABI\nvalidation + copy" as ABI #D6EAF8
+participant "Dictionary\nquery-start snapshot" as Dict #D5F5E3
+participant "duallity handle\nowned grammar + inspection" as Handle #D6EAF8
+participant "lling-llang resource\nshared expansion cache" as Resource #FCF3CF
+
+Caller -> ABI: configured constructor; borrowed pointers
+activate ABI
+ABI -> ABI: size/version/reserved checks\ncount, stride, UTF-8, grammar, limits
+alt malformed or unsupported
+  ABI --> Caller: typed failure; output null
+else valid
+  ABI -> ABI: deep-copy names and restrictions
+  ABI -> Dict: capture exactly one revision
+  Dict --> ABI: owned snapshot retain
+  ABI -> Handle: install immutable grammar + snapshot
+  ABI -> Resource: attach provider and sole cache policy
+  Resource --> Handle: owned scalar-WFST resource
+  ABI --> Caller: owned handle; input may be freed
+end
+deactivate ABI
+
+Caller -> Handle: inspect effective options
+Handle --> Caller: borrowed immutable view; valid until handle free
+Caller -> Resource: retained resource clone, expansion, cache clear
+Resource --> Caller: shared generation-safe payloads
+
+legend bottom
+  Amber: caller-owned storage, borrowed only during construction.
+  Blue: duallity-owned validation, grammar, and handle.
+  Green: immutable dictionary snapshot.
+  Yellow: the single exported cache owner; resource clones share it.
+end legend
+@enduml

@@ -39,6 +39,7 @@ only has to preserve the invariant, not re-establish it.
 | 04 | [Lazy evaluation and caching](04-lazy-evaluation-and-caching.md) | `expand → compute_state → cache`, deterministic LRU, and the immutable/mutable split. | Each `StateId` is computed **at most once per cache epoch**; `compute_state` is referentially transparent — a pure function of the id. |
 | 05 | [Registries and interning](05-registries-and-interning.md) | How nodes and abstract states get stable $`u32`$ ids, and the lock-based concurrency model. | Every distinct node / abstract state receives **one stable, dense $`u32`$ id** that never changes for the life of the WFST. |
 | 06 | [The resource ABI and language bindings](06-resource-abi-and-bindings.md) | The vinary-tree resource ABI, the eight-function `duallity_*` C ABI, the nine automaton kinds, the capture-once rule, and the double-adapter bridge. | A dictionary revision is **captured exactly once** at construction; the resulting resource is immutable and may outlive its source, so every later expansion reads the same snapshot. |
+| 07 | [Versioned configurable WFST ABI contract](07-versioned-configurable-wfst-abi.md) | The staged additive configuration record layouts, input ownership, validation budgets, cache authority, and revision negotiation. | No revision-3 option is applied implicitly: unsupported fields and malformed arrays are rejected before dictionary capture, while the revision-2 API remains unchanged. |
 
 ## Source-module map
 

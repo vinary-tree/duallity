@@ -170,6 +170,94 @@
   "packageVersion": "4.0.0-rc.6",
   "abiVersion": 1,
   "apiRevision": 2,
+  "configAbi": {
+    "sinceApiRevision": 3,
+    "recordVersion": 1,
+    "maxRecordBytes": 4096,
+    "maxOperations": 4096,
+    "maxRestrictionPairs": 4096,
+    "maxCustomTextBytes": 1048576,
+    "cachePolicies": {
+      "CACHE_ALL": 0,
+      "NO_CACHE": 1,
+      "LRU": 2
+    },
+    "operationApplicability": {
+      "ANY": 0,
+      "EQUAL": 1,
+      "ADJACENT_TRANSPOSE": 2,
+      "LISTED": 3
+    },
+    "records": {
+      "DuallityRecordHeaderV1": [
+        "uint32_t struct_size",
+        "uint32_t record_version",
+        "uint64_t reserved"
+      ],
+      "DuallityRestrictionV1": [
+        "DuallityRecordHeaderV1 header",
+        "const uint8_t* source_data",
+        "uint64_t source_len",
+        "const uint8_t* target_data",
+        "uint64_t target_len",
+        "uint64_t reserved[2]"
+      ],
+      "DuallityOperationV1": [
+        "DuallityRecordHeaderV1 header",
+        "uint64_t consume_x",
+        "uint64_t consume_y",
+        "double weight",
+        "uint32_t applicability",
+        "uint32_t reserved_zero",
+        "const uint8_t* name_data",
+        "uint64_t name_len",
+        "const DuallityRestrictionV1* restrictions",
+        "uint64_t restriction_count",
+        "uint64_t restriction_stride",
+        "uint64_t reserved[2]"
+      ],
+      "DuallityGeneralizedLimitsV1": [
+        "DuallityRecordHeaderV1 header",
+        "uint64_t max_query_bytes",
+        "uint64_t max_query_scalars",
+        "uint64_t max_operation_source_scalars",
+        "uint64_t max_operation_query_scalars",
+        "uint64_t max_retained_dictionary_nodes",
+        "uint64_t max_retained_wfst_states",
+        "uint64_t max_paths_per_expansion",
+        "uint64_t max_work_units_per_expansion",
+        "uint64_t reserved[2]"
+      ],
+      "DuallityWfstOptionsV1": [
+        "DuallityRecordHeaderV1 header",
+        "uint32_t kind",
+        "uint32_t algorithm",
+        "uint64_t maximum_distance",
+        "uint32_t cache_policy",
+        "uint32_t reserved_zero",
+        "uint64_t cache_capacity",
+        "const DuallityGeneralizedLimitsV1* limits",
+        "const DuallityOperationV1* operations",
+        "uint64_t operation_count",
+        "uint64_t operation_stride",
+        "uint64_t reserved[2]"
+      ],
+      "DuallityCacheStatisticsV1": [
+        "DuallityRecordHeaderV1 header",
+        "uint64_t hits",
+        "uint64_t misses",
+        "uint64_t faults",
+        "uint64_t uncacheable_results",
+        "uint64_t insertions",
+        "uint64_t evictions",
+        "uint64_t raced_publications",
+        "uint64_t clears",
+        "uint64_t resident_states",
+        "uint64_t recency_records",
+        "uint64_t reserved[2]"
+      ]
+    }
+  },
   "cPrefix": "duallity_",
   "cHeader": "duallity.h",
   "cppHeader": "duallity.hpp",

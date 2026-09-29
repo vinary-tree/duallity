@@ -15,6 +15,10 @@ trait contracts. This chapter describes the *second* interface duallity exposes:
 the modular language bindings built on it. It is the connective tissue at the level of *compiled
 artifacts* — the point where a dictionary built by one independently compiled library becomes a WFST
 that a second independently compiled library composes, with no shared Rust types and no serialization.
+It describes the shipped revision-2 surface. The additive, not-yet-shipped
+[revision-3 configuration contract](07-versioned-configurable-wfst-abi.md)
+is documented separately so its record declarations are not mistaken for
+callable functions.
 
 ## 1. Where duallity sits in the resource ABI
 
@@ -104,7 +108,7 @@ behavior. The eight discriminants and their producers:
 | `PANIC` | `4` | a Rust panic was caught at the boundary by `catch_unwind` |
 | `INCOMPATIBLE_RESOURCE` | `5` | the base or dictionary vtable is ABI-incompatible, the resource has no dictionary interface, or the dictionary's `unit_domain` is not `UnicodeScalar` |
 | `PROVIDER_ERROR` | `6` | a foreign dictionary callback returned a non-`Ok` status, or returned output that violated the interface contract |
-| `LIMIT_EXCEEDED` | `7` | **reserved** — defined in the ABI, but *not currently produced* by any `duallity_wfst_new` path (see the note below) |
+| `LIMIT_EXCEEDED` | `7` | a foreign provider reports `VtStatus::LimitExceeded`, or generalized construction exceeds a configured bound, overflows checked arithmetic, fails a bounded allocation, or exceeds exact cost representation |
 
 The mapping from the internal `BindingError` ([`src/bindings.rs`](../../src/bindings.rs)) to the C
 status is total and is the subject of the machine-checked proof in
@@ -115,14 +119,17 @@ status is total and is the subject of the machine-checked proof in
 | `NullResource` | `NULL_POINTER` |
 | `InvalidArgument(_)` | `INVALID_ARGUMENT` |
 | `IncompatibleResourceAbi`, `MissingDictionaryInterface`, `IncompatibleDictionaryInterface`, `UnitDomainMismatch(_)` | `INCOMPATIBLE_RESOURCE` |
-| `Provider(_)`, `InvalidProviderOutput(_)` | `PROVIDER_ERROR` |
+| `Provider(VtStatus::LimitExceeded)` | `LIMIT_EXCEEDED` |
+| Other `Provider(_)`, `InvalidProviderOutput(_)` | `PROVIDER_ERROR` |
+| `Generalized(LimitExceeded | ArithmeticOverflow | AllocationFailed | CostScale(DenominatorOverflow | CostOverflow))` | `LIMIT_EXCEEDED` |
+| Other `Generalized(_)` validation and cost-scale errors | `INVALID_ARGUMENT` |
 
-> **Totality note — `LIMIT_EXCEEDED` is reserved.** No `BindingError` variant maps to `LIMIT_EXCEEDED`,
-> and `src/ffi.rs` never returns it directly, so at ABI version `1` it is unreachable through
-> `duallity_wfst_new`. In particular, a `maximum_distance` that overflows the `u8` bound of the
-> universal and generalized kinds surfaces as `INVALID_ARGUMENT` (via `BindingError::InvalidArgument`),
-> **not** `LIMIT_EXCEEDED`. Bindings should still handle the value — it is part of the published enum
-> and a future revision may begin producing it — but a portable test suite cannot construct it today.
+The `LIMIT_EXCEEDED` mapping is already active at ABI version `1`; it is not a
+future placeholder. In contrast, a legacy `maximum_distance` that does not
+fit the universal/generalized `u8` parameter still returns
+`INVALID_ARGUMENT`. The new revision-3 parser will distinguish malformed
+records from count, byte-budget, and host-size overflows without changing
+those revision-2 results.
 
 ## 4. The nine automaton kinds and their algorithms
 

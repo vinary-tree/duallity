@@ -95,6 +95,7 @@ Tools: **P** = PlantUML, **D2** = Terrastruct D2, **G** = Graphviz. Diagrams mar
 | D37 ★ | [`duallity-resource-abi-dataflow`](duallity-resource-abi-dataflow.svg) | P | architecture/06 |
 | D38 | [`wfst-new-capture-compose-sequence`](wfst-new-capture-compose-sequence.svg) | P | architecture/06 |
 | D39 | [`foreign-provider-trust-boundary`](foreign-provider-trust-boundary.svg) | P | security/threat-model |
+| D40 | [`duallity-config-ownership`](duallity-config-ownership.svg) | P | architecture/07 |
 | — ★ | [`composition-pipeline`](composition-pipeline.svg) | P | README, guides/01, guides/03, theory/04 |
 
 ## Rendering

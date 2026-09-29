@@ -16,6 +16,8 @@ Check groups (stable ids):
   ENUM-*  enum and constant parity: DuallityStatus, DuallityAlgorithm,
           DuallityWfstKind values and DUALLITY_ABI_VERSION /
           DUALLITY_API_REVISION across model, Rust, and header.
+  CFG-*   planned revision-3 configuration record and enum declarations in
+          the C header exactly match the authoritative model.
   JS-*    JavaScript facade parity: export-map subpaths resolve; the
           d.ts/mjs/cjs/cljs surfaces export the same names; every
           @vinary-tree/* dependency is exact-pinned; versions agree with
@@ -150,6 +152,22 @@ def header_enum_values(source: str, name: str, prefix: str) -> dict[str, int] | 
         if enumerator.startswith(prefix):
             values[enumerator[len(prefix) :]] = int(value)
     return values
+
+
+def header_record_fields(source: str, name: str) -> list[str] | None:
+    """Read one plain C record declaration without evaluating C code."""
+    match = re.search(
+        rf"typedef struct {re.escape(name)} \{{(.*?)\}} {re.escape(name)};",
+        source,
+        re.DOTALL,
+    )
+    if match is None:
+        return None
+    return [
+        " ".join(field.split()).replace(" *", "*")
+        for field in match.group(1).split(";")
+        if field.strip()
+    ]
 
 
 def match_arm_values(
@@ -424,6 +442,97 @@ def check_enums(report: Report, model: dict) -> None:
                 False,
                 f"{constant} drift: model={model_value} ffi.rs={rust_value} duallity.h={header_value}",
             )
+
+
+# ── CFG: staged, additive configuration ABI declarations ───────────────────
+
+
+def check_config_abi(report: Report, model: dict) -> None:
+    config = model.get("configAbi")
+    if not isinstance(config, dict):
+        report.add("CFG-0-model", False, "configAbi is missing from bindings/api.json")
+        return
+    header = read_text(report, "CFG-0-header", ROOT / "include" / "duallity.h")
+    if header is None:
+        return
+
+    since = config.get("sinceApiRevision")
+    current = model.get("apiRevision")
+    revision_ok = (
+        since == 3
+        and isinstance(current, int)
+        and current >= 2
+        and config.get("recordVersion") == 1
+    )
+    report.add(
+        "CFG-1-revision",
+        revision_ok,
+        "configuration records are version 1, additive in API revision 3"
+        if revision_ok
+        else "configuration record revision or API activation is inconsistent",
+    )
+
+    for check_id, key, name, prefix in (
+        ("CFG-2-cache-policy", "cachePolicies", "DuallityCachePolicyV1", "DUALLITY_"),
+        (
+            "CFG-3-applicability",
+            "operationApplicability",
+            "DuallityOperationApplicabilityV1",
+            "DUALLITY_APPLICABILITY_",
+        ),
+    ):
+        expected = config.get(key)
+        if isinstance(expected, dict) and key == "cachePolicies":
+            expected = {
+                "CACHE_ALL": expected.get("CACHE_ALL"),
+                "NO_CACHE": expected.get("NO_CACHE"),
+                "LRU": expected.get("LRU"),
+            }
+        actual = header_enum_values(header, name, prefix)
+        report.add(
+            check_id,
+            actual == expected,
+            f"{name} {'matches' if actual == expected else 'differs from'} configAbi",
+        )
+
+    records = config.get("records")
+    if not isinstance(records, dict) or not records:
+        report.add("CFG-4-records", False, "configAbi.records is absent or empty")
+        return
+    for name, expected in records.items():
+        actual = header_record_fields(header, name)
+        report.add(
+            f"CFG-record-{name}",
+            actual == expected,
+            f"{name} {'matches' if actual == expected else 'differs from'} configAbi",
+        )
+
+    for check_id, key, macro in (
+        ("CFG-5-api-revision", "sinceApiRevision", "DUALLITY_CONFIG_API_REVISION"),
+        ("CFG-6-record-version", "recordVersion", "DUALLITY_CONFIG_RECORD_VERSION"),
+        ("CFG-7-record-bytes", "maxRecordBytes", "DUALLITY_CONFIG_MAX_RECORD_BYTES"),
+        ("CFG-8-operations", "maxOperations", "DUALLITY_CONFIG_MAX_OPERATIONS"),
+        (
+            "CFG-9-restrictions",
+            "maxRestrictionPairs",
+            "DUALLITY_CONFIG_MAX_RESTRICTION_PAIRS",
+        ),
+        (
+            "CFG-10-text-bytes",
+            "maxCustomTextBytes",
+            "DUALLITY_CONFIG_MAX_CUSTOM_TEXT_BYTES",
+        ),
+    ):
+        expected = config.get(key)
+        match = re.search(rf"#define {macro} (\d+)u", header)
+        actual = int(match.group(1)) if match else None
+        report.add(
+            check_id,
+            isinstance(expected, int)
+            and 0 < expected <= 1 << 30
+            and actual == expected,
+            f"{macro} {'matches' if actual == expected else 'differs from'} configAbi",
+        )
 
 
 # ── JS: facade parity ────────────────────────────────────────────────────────
@@ -1165,6 +1274,7 @@ def main() -> int:
         )
         check_symbols(report, model)
         check_enums(report, model)
+        check_config_abi(report, model)
         check_javascript(report, model)
         check_julia_raku(report, model)
         check_python(report, model)

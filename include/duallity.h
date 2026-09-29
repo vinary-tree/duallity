@@ -60,6 +60,110 @@ typedef enum DuallityWfstKind {
     DUALLITY_WFST_FZF = 8
 } DuallityWfstKind;
 
+/*
+ * Revision-3 configuration record layouts. These type declarations are
+ * additive; the revision-3 constructor/control symbols are not available
+ * until duallity_api_revision() reports at least 3. Existing revision-2
+ * functions and ABI version 1 are unchanged.
+ *
+ * Every header declares its readable byte extent. Version 1 readers require
+ * the complete known prefix and zero for all reserved and unknown trailing
+ * bytes. The caller keeps input arrays alive through the constructor call;
+ * successful construction deep-copies every custom operation and restriction.
+ */
+#define DUALLITY_CONFIG_API_REVISION 3u
+#define DUALLITY_CONFIG_RECORD_VERSION 1u
+#define DUALLITY_CONFIG_MAX_RECORD_BYTES 4096u
+#define DUALLITY_CONFIG_MAX_OPERATIONS 4096u
+#define DUALLITY_CONFIG_MAX_RESTRICTION_PAIRS 4096u
+#define DUALLITY_CONFIG_MAX_CUSTOM_TEXT_BYTES 1048576u
+
+typedef struct DuallityRecordHeaderV1 {
+    uint32_t struct_size;
+    uint32_t record_version;
+    uint64_t reserved;
+} DuallityRecordHeaderV1;
+
+typedef enum DuallityCachePolicyV1 {
+    DUALLITY_CACHE_ALL = 0,
+    DUALLITY_NO_CACHE = 1,
+    DUALLITY_LRU = 2
+} DuallityCachePolicyV1;
+
+typedef enum DuallityOperationApplicabilityV1 {
+    DUALLITY_APPLICABILITY_ANY = 0,
+    DUALLITY_APPLICABILITY_EQUAL = 1,
+    DUALLITY_APPLICABILITY_ADJACENT_TRANSPOSE = 2,
+    DUALLITY_APPLICABILITY_LISTED = 3
+} DuallityOperationApplicabilityV1;
+
+typedef struct DuallityRestrictionV1 {
+    DuallityRecordHeaderV1 header;
+    const uint8_t* source_data;
+    uint64_t source_len;
+    const uint8_t* target_data;
+    uint64_t target_len;
+    uint64_t reserved[2];
+} DuallityRestrictionV1;
+
+typedef struct DuallityOperationV1 {
+    DuallityRecordHeaderV1 header;
+    uint64_t consume_x;
+    uint64_t consume_y;
+    double weight;
+    uint32_t applicability;
+    uint32_t reserved_zero;
+    const uint8_t* name_data;
+    uint64_t name_len;
+    const DuallityRestrictionV1* restrictions;
+    uint64_t restriction_count;
+    uint64_t restriction_stride;
+    uint64_t reserved[2];
+} DuallityOperationV1;
+
+typedef struct DuallityGeneralizedLimitsV1 {
+    DuallityRecordHeaderV1 header;
+    uint64_t max_query_bytes;
+    uint64_t max_query_scalars;
+    uint64_t max_operation_source_scalars;
+    uint64_t max_operation_query_scalars;
+    uint64_t max_retained_dictionary_nodes;
+    uint64_t max_retained_wfst_states;
+    uint64_t max_paths_per_expansion;
+    uint64_t max_work_units_per_expansion;
+    uint64_t reserved[2];
+} DuallityGeneralizedLimitsV1;
+
+typedef struct DuallityWfstOptionsV1 {
+    DuallityRecordHeaderV1 header;
+    uint32_t kind;
+    uint32_t algorithm;
+    uint64_t maximum_distance;
+    uint32_t cache_policy;
+    uint32_t reserved_zero;
+    uint64_t cache_capacity;
+    const DuallityGeneralizedLimitsV1* limits;
+    const DuallityOperationV1* operations;
+    uint64_t operation_count;
+    uint64_t operation_stride;
+    uint64_t reserved[2];
+} DuallityWfstOptionsV1;
+
+typedef struct DuallityCacheStatisticsV1 {
+    DuallityRecordHeaderV1 header;
+    uint64_t hits;
+    uint64_t misses;
+    uint64_t faults;
+    uint64_t uncacheable_results;
+    uint64_t insertions;
+    uint64_t evictions;
+    uint64_t raced_publications;
+    uint64_t clears;
+    uint64_t resident_states;
+    uint64_t recency_records;
+    uint64_t reserved[2];
+} DuallityCacheStatisticsV1;
+
 typedef struct DuallityWfst DuallityWfst;
 
 DUALLITY_API uint32_t duallity_abi_version(void);

@@ -18,6 +18,7 @@ use liblevenshtein::transducer::universal::{MergeAndSplit, Standard, Transpositi
 use liblevenshtein::transducer::{Algorithm, OperationSet};
 use lling_llang::bindings::{OwnedWfstResource, ScalarWfstProvider, ScalarWfstState};
 use lling_llang::prelude::{ArcticWeight, StateExpansion, StateId, TropicalWeight, Wfst};
+use lling_llang::wfst::SharedCachePolicy;
 use std::ffi::c_void;
 use std::fmt;
 use std::sync::{Arc, Mutex};
@@ -49,6 +50,17 @@ pub enum WfstKind {
     GeneralizedPhonetic = 7,
     /// FZF V2 path scorer in the Arctic (max-plus) semiring.
     Fzf = 8,
+}
+
+/// Native, owned construction inputs shared by legacy and configured paths.
+/// Foreign records are validated before conversion into this value.
+pub(crate) struct WfstConstruction {
+    pub maximum_distance: usize,
+    pub algorithm: Algorithm,
+    pub kind: WfstKind,
+    pub limits: Option<GeneralizedWfstLimits>,
+    pub operations: Option<OperationSet>,
+    pub cache_policy: SharedCachePolicy,
 }
 
 /// Error while capturing a dictionary or constructing its duallity WFST.
@@ -706,11 +718,14 @@ pub unsafe fn create_wfst(
         create_wfst_configured(
             dictionary,
             query,
-            maximum_distance,
-            algorithm,
-            kind,
-            None,
-            None,
+            WfstConstruction {
+                maximum_distance,
+                algorithm,
+                kind,
+                limits: None,
+                operations: None,
+                cache_policy: SharedCachePolicy::CacheAll,
+            },
         )
     }
 }
@@ -725,12 +740,16 @@ pub unsafe fn create_wfst(
 pub(crate) unsafe fn create_wfst_configured(
     dictionary: VtResource,
     query: &str,
-    maximum_distance: usize,
-    algorithm: Algorithm,
-    kind: WfstKind,
-    limits: Option<GeneralizedWfstLimits>,
-    operations: Option<OperationSet>,
+    construction: WfstConstruction,
 ) -> Result<OwnedWfstResource, BindingError> {
+    let WfstConstruction {
+        maximum_distance,
+        algorithm,
+        kind,
+        limits,
+        operations,
+        cache_policy,
+    } = construction;
     let dictionary = ResourceDictionary::capture(dictionary)?;
     let scope = dictionary
         .provider
@@ -798,12 +817,13 @@ pub(crate) unsafe fn create_wfst_configured(
         ),
     };
     scope.check().map_err(BindingError::Provider)?;
-    Ok(OwnedWfstResource::from_provider(Arc::new(
-        AdapterProvider {
+    Ok(OwnedWfstResource::from_provider_with_cache(
+        Arc::new(AdapterProvider {
             adapter,
             dictionary,
-        },
-    )))
+        }),
+        cache_policy,
+    ))
 }
 
 #[cfg(test)]

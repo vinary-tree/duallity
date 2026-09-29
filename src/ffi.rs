@@ -3,6 +3,8 @@
 // Revision-3 record parsing is staged until cache control and foreign mirrors
 // are qualified together. No revision-3 callable symbol is exported yet.
 #[allow(dead_code)]
+mod cache;
+#[allow(dead_code)]
 mod config;
 
 use crate::bindings::{BindingError, WfstKind};

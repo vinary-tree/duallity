@@ -5,12 +5,14 @@
 //! have passed the same qualification boundary.
 
 use super::{algorithm, kind, set_error, DuallityStatus};
-use crate::bindings::WfstKind;
+use crate::bindings::{WfstConstruction, WfstKind};
 use crate::GeneralizedWfstLimits;
 use liblevenshtein::transducer::{
     Algorithm, OperationApplicability, OperationSet, OperationType, SubstitutionSet,
 };
+use lling_llang::wfst::SharedCachePolicy;
 use std::mem::{align_of, size_of};
+use std::num::NonZeroUsize;
 use std::slice;
 use std::str;
 
@@ -112,6 +114,24 @@ pub(super) enum RequestedCachePolicy {
     Lru { capacity: usize },
 }
 
+impl RequestedCachePolicy {
+    /// Resolve the legacy zero-capacity heuristic before constructing the
+    /// single exported provider cache. It is not a second cache layer.
+    pub(super) fn effective(self, kind: WfstKind) -> SharedCachePolicy {
+        match self {
+            Self::CacheAll => SharedCachePolicy::CacheAll,
+            Self::NoCache => SharedCachePolicy::NoCache,
+            Self::Lru { capacity: 0 } if kind == WfstKind::Fzf => SharedCachePolicy::NoCache,
+            Self::Lru { capacity: 0 } => SharedCachePolicy::Lru {
+                capacity: NonZeroUsize::new(100_000).expect("positive native cache default"),
+            },
+            Self::Lru { capacity } => SharedCachePolicy::Lru {
+                capacity: NonZeroUsize::new(capacity).expect("nonzero capacity"),
+            },
+        }
+    }
+}
+
 pub(super) struct ParsedOptions {
     pub kind: WfstKind,
     pub algorithm: Algorithm,
@@ -119,6 +139,19 @@ pub(super) struct ParsedOptions {
     pub cache_policy: RequestedCachePolicy,
     pub limits: Option<GeneralizedWfstLimits>,
     pub operations: Option<OperationSet>,
+}
+
+impl ParsedOptions {
+    pub(super) fn into_construction(self) -> WfstConstruction {
+        WfstConstruction {
+            maximum_distance: self.maximum_distance,
+            algorithm: self.algorithm,
+            kind: self.kind,
+            limits: self.limits,
+            operations: self.operations,
+            cache_policy: self.cache_policy.effective(self.kind),
+        }
+    }
 }
 
 fn reject(status: DuallityStatus, message: impl Into<String>) -> DuallityStatus {
@@ -325,12 +358,15 @@ fn decode_limits(
     Ok(limits)
 }
 
-fn cache_policy(raw: &DuallityWfstOptionsV1) -> Result<RequestedCachePolicy, DuallityStatus> {
-    match raw.cache_policy {
-        0 if raw.cache_capacity == 0 => Ok(RequestedCachePolicy::CacheAll),
-        1 if raw.cache_capacity == 0 => Ok(RequestedCachePolicy::NoCache),
+pub(super) fn cache_policy(
+    policy: u32,
+    capacity: u64,
+) -> Result<RequestedCachePolicy, DuallityStatus> {
+    match policy {
+        0 if capacity == 0 => Ok(RequestedCachePolicy::CacheAll),
+        1 if capacity == 0 => Ok(RequestedCachePolicy::NoCache),
         2 => Ok(RequestedCachePolicy::Lru {
-            capacity: integer(raw.cache_capacity, "cache capacity")?,
+            capacity: integer(capacity, "cache capacity")?,
         }),
         0 | 1 => Err(reject(
             DuallityStatus::InvalidArgument,
@@ -362,7 +398,7 @@ pub(super) unsafe fn parse_options(
     let kind = kind(raw.kind)?;
     let algorithm = algorithm(raw.algorithm)?;
     let maximum_distance = integer(raw.maximum_distance, "maximum distance")?;
-    let cache_policy = cache_policy(&raw)?;
+    let cache_policy = cache_policy(raw.cache_policy, raw.cache_capacity)?;
     let generalized = matches!(
         kind,
         WfstKind::GeneralizedStandard
@@ -954,11 +990,7 @@ mod tests {
             crate::bindings::create_wfst_configured(
                 source.as_raw(),
                 "cat",
-                parsed.maximum_distance,
-                parsed.algorithm,
-                parsed.kind,
-                None,
-                parsed.operations,
+                parsed.into_construction(),
             )
         };
         assert!(result.is_ok(), "custom operation construction failed");
@@ -974,11 +1006,7 @@ mod tests {
             crate::bindings::create_wfst_configured(
                 source.as_raw(),
                 "cat",
-                parsed.maximum_distance,
-                parsed.algorithm,
-                parsed.kind,
-                parsed.limits,
-                parsed.operations,
+                parsed.into_construction(),
             )
         };
         assert!(matches!(
@@ -1012,11 +1040,7 @@ mod tests {
             crate::bindings::create_wfst_configured(
                 source.as_raw(),
                 "cat",
-                parsed.maximum_distance,
-                parsed.algorithm,
-                parsed.kind,
-                parsed.limits,
-                parsed.operations,
+                parsed.into_construction(),
             )
         }
         .unwrap();

@@ -5,6 +5,10 @@
 #[allow(dead_code)]
 mod cache;
 #[allow(dead_code)]
+mod inspection;
+
+use inspection::OwnedOptions;
+#[allow(dead_code)]
 mod config;
 
 use crate::bindings::{BindingError, WfstKind};
@@ -49,6 +53,16 @@ pub enum DuallityStatus {
 /// Opaque duallity WFST handle.
 pub struct DuallityWfst {
     resource: OwnedWfstResource,
+    options: OwnedOptions,
+}
+
+impl DuallityWfst {
+    /// Staged internal readback. The public sized-record C entry point is
+    /// introduced only at the complete revision-3 qualification boundary.
+    #[allow(dead_code)]
+    fn inspect_options(&self) -> Result<config::DuallityWfstOptionsV1, DuallityStatus> {
+        self.options.readback(&self.resource)
+    }
 }
 
 thread_local! {
@@ -195,6 +209,7 @@ pub extern "C" fn duallity_wfst_new(
         let query = query(query_data, query_len)?;
         let algorithm = algorithm(algorithm_value)?;
         let kind = kind(kind_value)?;
+        let options = OwnedOptions::legacy(kind, algorithm, maximum_distance)?;
         let resource = unsafe {
             crate::bindings::create_wfst(dictionary, query, maximum_distance, algorithm, kind)
         }
@@ -210,7 +225,7 @@ pub extern "C" fn duallity_wfst_new(
         // validation order (query, algorithm, kind, construction, then output).
         // Found by the W8 asan/lsan leg; see finding DUAL-B10.
         let slot = output(out_wfst, "out_wfst")?;
-        *slot = Box::into_raw(Box::new(DuallityWfst { resource }));
+        *slot = Box::into_raw(Box::new(DuallityWfst { resource, options }));
         Ok(())
     })
 }

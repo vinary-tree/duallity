@@ -1,7 +1,8 @@
 # 07 · Versioned configurable WFST ABI contract
 
 > **Status:** record declarations, model checks, the internal owned
-> constructor parser, and single-owner cache-control core are staged; the
+> constructor parser, handle-owned inspection views, and single-owner
+> cache-control core are staged; the
 > callable revision-3 functions described here are **not shipped** while
 > `duallity_api_revision()` returns `2`. A consumer must negotiate the returned
 > revision before using them. This chapter defines the implementation and
@@ -168,6 +169,10 @@ records and deep-copies operation and restriction text before construction;
 its [focused qualification](../scientific-ledger/configurable-construction-2026-09-29.md)
 also compares the complete lazy WFST graph with the legacy generalized path
 after dropping the source dictionary. The internal
+[inspection qualification](../scientific-ledger/configurable-inspection-2026-09-29.md)
+checks that name, restriction, operation, and limits pointers refer to
+handle-owned storage even after caller buffers are dropped, while a separately
+retained WFST resource remains valid after the handle is freed. The internal
 [cache-control qualification](../scientific-ledger/configurable-cache-2026-09-29.md)
 tests normalization, exact LRU residency, cloned resources, statistics,
 concurrent calls, and reentrant clear against the exported provider cache.

@@ -13,7 +13,7 @@ from typing import Any
 from vinary_tree_interop import NativeResource, VtResource
 
 ABI_VERSION = 1
-API_REVISION = 2
+API_REVISION = 3
 
 
 class Status(IntEnum):
@@ -50,6 +50,103 @@ class WfstKind(IntEnum):
     GENERALIZED_MERGE_AND_SPLIT = 6
     GENERALIZED_PHONETIC = 7
     FZF = 8
+
+
+class DuallityRecordHeaderV1(ctypes.Structure):
+    """Common sized-record prefix; callers set all three fields before a call."""
+
+    _fields_ = [
+        ("struct_size", ctypes.c_uint32),
+        ("record_version", ctypes.c_uint32),
+        ("reserved", ctypes.c_uint64),
+    ]
+
+
+class DuallityRestrictionV1(ctypes.Structure):
+    """Borrowed UTF-8 source/target pair for one listed operation."""
+
+    _fields_ = [
+        ("header", DuallityRecordHeaderV1),
+        ("source_data", ctypes.POINTER(ctypes.c_uint8)),
+        ("source_len", ctypes.c_uint64),
+        ("target_data", ctypes.POINTER(ctypes.c_uint8)),
+        ("target_len", ctypes.c_uint64),
+        ("reserved", ctypes.c_uint64 * 2),
+    ]
+
+
+class DuallityOperationV1(ctypes.Structure):
+    """One custom edit operation; nested buffers are borrowed for construction."""
+
+    _fields_ = [
+        ("header", DuallityRecordHeaderV1),
+        ("consume_x", ctypes.c_uint64),
+        ("consume_y", ctypes.c_uint64),
+        ("weight", ctypes.c_double),
+        ("applicability", ctypes.c_uint32),
+        ("reserved_zero", ctypes.c_uint32),
+        ("name_data", ctypes.POINTER(ctypes.c_uint8)),
+        ("name_len", ctypes.c_uint64),
+        ("restrictions", ctypes.POINTER(DuallityRestrictionV1)),
+        ("restriction_count", ctypes.c_uint64),
+        ("restriction_stride", ctypes.c_uint64),
+        ("reserved", ctypes.c_uint64 * 2),
+    ]
+
+
+class DuallityGeneralizedLimitsV1(ctypes.Structure):
+    """Inclusive generalized-construction and expansion ceilings."""
+
+    _fields_ = [
+        ("header", DuallityRecordHeaderV1),
+        ("max_query_bytes", ctypes.c_uint64),
+        ("max_query_scalars", ctypes.c_uint64),
+        ("max_operation_source_scalars", ctypes.c_uint64),
+        ("max_operation_query_scalars", ctypes.c_uint64),
+        ("max_retained_dictionary_nodes", ctypes.c_uint64),
+        ("max_retained_wfst_states", ctypes.c_uint64),
+        ("max_paths_per_expansion", ctypes.c_uint64),
+        ("max_work_units_per_expansion", ctypes.c_uint64),
+        ("reserved", ctypes.c_uint64 * 2),
+    ]
+
+
+class DuallityWfstOptionsV1(ctypes.Structure):
+    """Configured WFST input or handle-borrowed effective readback."""
+
+    _fields_ = [
+        ("header", DuallityRecordHeaderV1),
+        ("kind", ctypes.c_uint32),
+        ("algorithm", ctypes.c_uint32),
+        ("maximum_distance", ctypes.c_uint64),
+        ("cache_policy", ctypes.c_uint32),
+        ("reserved_zero", ctypes.c_uint32),
+        ("cache_capacity", ctypes.c_uint64),
+        ("limits", ctypes.POINTER(DuallityGeneralizedLimitsV1)),
+        ("operations", ctypes.POINTER(DuallityOperationV1)),
+        ("operation_count", ctypes.c_uint64),
+        ("operation_stride", ctypes.c_uint64),
+        ("reserved", ctypes.c_uint64 * 2),
+    ]
+
+
+class DuallityCacheStatisticsV1(ctypes.Structure):
+    """Cumulative provider-cache counters and current residency."""
+
+    _fields_ = [
+        ("header", DuallityRecordHeaderV1),
+        ("hits", ctypes.c_uint64),
+        ("misses", ctypes.c_uint64),
+        ("faults", ctypes.c_uint64),
+        ("uncacheable_results", ctypes.c_uint64),
+        ("insertions", ctypes.c_uint64),
+        ("evictions", ctypes.c_uint64),
+        ("raced_publications", ctypes.c_uint64),
+        ("clears", ctypes.c_uint64),
+        ("resident_states", ctypes.c_uint64),
+        ("recency_records", ctypes.c_uint64),
+        ("reserved", ctypes.c_uint64 * 2),
+    ]
 
 
 class NativeError(RuntimeError):
@@ -125,6 +222,30 @@ _bind("duallity_wfst_free", [ctypes.c_void_p], None)
 _bind(
     "duallity_wfst_resource",
     [ctypes.c_void_p, ctypes.POINTER(VtResource)],
+)
+_bind("duallity_wfst_options_default", [ctypes.POINTER(DuallityWfstOptionsV1)])
+_bind(
+    "duallity_wfst_new_configured_ref",
+    [
+        ctypes.POINTER(VtResource),
+        ctypes.POINTER(ctypes.c_uint8),
+        ctypes.c_size_t,
+        ctypes.POINTER(DuallityWfstOptionsV1),
+        ctypes.POINTER(ctypes.c_void_p),
+    ],
+)
+_bind(
+    "duallity_wfst_options_get",
+    [ctypes.c_void_p, ctypes.POINTER(DuallityWfstOptionsV1)],
+)
+_bind(
+    "duallity_wfst_cache_statistics",
+    [ctypes.c_void_p, ctypes.POINTER(DuallityCacheStatisticsV1)],
+)
+_bind("duallity_wfst_cache_clear", [ctypes.c_void_p])
+_bind(
+    "duallity_wfst_cache_set_policy",
+    [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint64],
 )
 
 

@@ -319,7 +319,7 @@ in the dictionary size.
 ## 9. Version compatibility
 
 A binding negotiates by calling `duallity_abi_version()` (currently `1`) at load time and refusing a
-major it does not understand; `duallity_api_revision()` (currently `2`) advertises additive additions.
+major it does not understand; `duallity_api_revision()` (currently `3`) advertises additive additions.
 The interop layer evolves additively behind a `struct_size` vtable prefix, so a newer consumer safely
 reads an older, shorter provider vtable.
 

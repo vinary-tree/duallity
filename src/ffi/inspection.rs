@@ -21,6 +21,7 @@ use std::ptr;
 
 /// Stable, immutable backing for every pointer returned by options inspection.
 pub(super) struct OwnedOptions {
+    kind: WfstKind,
     record: DuallityWfstOptionsV1,
     _limits: Option<Box<DuallityGeneralizedLimitsV1>>,
     _operations: Box<[DuallityOperationV1]>,
@@ -218,12 +219,17 @@ impl OwnedOptions {
             reserved: [0; 2],
         };
         Ok(Self {
+            kind,
             record,
             _limits: limits,
             _operations: operation_records,
             _restrictions: restriction_arrays,
             _text: texts,
         })
+    }
+
+    pub(super) fn kind(&self) -> WfstKind {
+        self.kind
     }
 
     /// Copy the record while reading policy from the resource's cache owner.

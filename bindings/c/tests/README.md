@@ -49,6 +49,11 @@ owning library.
   [`tests/support/counting_dictionary.rs`](../../../tests/support/counting_dictionary.rs))
   and tearing it down in **both orders** leaves the retain/release ledger
   balanced at zero (no leaked snapshot retain, no double free).
+- **DUAL-CONFIG-C-1** — the same linked binary calls both the historical
+  constructor and the revision-3 sized-record constructor. It checks defaults,
+  effective option readback, caller-buffer independence, cache statistics and
+  policy control, resource ownership after handle destruction, and rejection
+  of unknown record versions and nonzero reserved fields.
 
 ## Resource-ownership contract exercised
 
@@ -72,7 +77,9 @@ compiles `family_pipeline.c` with `-std=c17 -Wall -Wextra -Werror`, wiring the
 include paths (each crate's `include/` plus
 `../vinary-tree-interop/include`), the library search paths,
 and the runtime rpaths. `SKIP_BUILD=1` reuses already-built cdylibs; `CC` and
-`PROFILE` (`release`|`debug`) are overridable.
+`PROFILE` (`release`|`debug`) are overridable. `LLING_DIR` selects a separate
+lling-llang development checkout, and `CARGO_TARGET_DIR` places all four
+builds and the C executable in one disk-backed build directory.
 
 The `c-family-pipeline` job in
 [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) runs exactly this

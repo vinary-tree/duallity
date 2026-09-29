@@ -1,12 +1,10 @@
 # 07 · Versioned configurable WFST ABI contract
 
-> **Status:** record declarations, model checks, the internal owned
-> constructor parser, handle-owned inspection views, and single-owner
-> cache-control core are staged; the
-> callable revision-3 functions described here are **not shipped** while
-> `duallity_api_revision()` returns `2`. A consumer must negotiate the returned
-> revision before using them. This chapter defines the implementation and
-> conformance contract for the next additive API revision, not a release claim.
+> **Status:** this development branch exports API revision 3 while preserving
+> ABI version 1 and the eight earlier function signatures. The release has
+> **not** been published; language-level facades and final conformance remain
+> separate qualification tasks. Consumers must negotiate the returned API
+> revision before calling these functions.
 >
 > **Prerequisites:** [resource ABI and bindings](06-resource-abi-and-bindings.md),
 > [lazy evaluation and caching](04-lazy-evaluation-and-caching.md), and
@@ -25,12 +23,18 @@ shared name as proof of layout agreement.
 
 ## The configuration boundary
 
-The revision-3 entry points will be `duallity_wfst_new_configured_ref`,
+The revision-3 entry points are `duallity_wfst_new_configured_ref`,
 `duallity_wfst_options_default`, `duallity_wfst_options_get`,
 `duallity_wfst_cache_statistics`, `duallity_wfst_cache_clear`, and
 `duallity_wfst_cache_set_policy`. The pointer-form constructor avoids
 by-value aggregate rules that differ among foreign-function interfaces.
 The two existing constructors retain their signatures and behavior.
+
+`duallity_wfst_options_default` fills a caller-sized record with a
+parameterized Levenshtein WFST, standard edit algorithm, maximum distance 2,
+`CACHE_ALL`, and no custom limits or operations. The caller must initialize
+the record header to its writable `sizeof`, version 1, and zero reserved word
+before calling. A caller may then change supported fields before construction.
 
 `DuallityWfstOptionsV1` selects the automaton kind, edit algorithm, maximum
 distance, cache policy/capacity, optional generalized hard limits, and an
@@ -42,7 +46,7 @@ the source handle may subsequently be changed or dropped without changing
 that WFST's meaning. A failed constructor leaves the output handle null and
 releases every temporary copy and retain.
 
-`duallity_wfst_options_get` will report the *effective* configuration. Its
+`duallity_wfst_options_get` reports the *effective* configuration. Its
 catalog and limits pointers refer to immutable storage owned by the
 `DuallityWfst` handle and remain readable until that handle is freed. They
 must not be modified, freed, or used after freeing the handle. A separately
@@ -55,8 +59,9 @@ not the query-start dictionary snapshot or operation grammar.
 
 ## Sized-record rules
 
-Every record begins with `DuallityRecordHeaderV1`: `struct_size` counts
-readable bytes including the header, `record_version` is `1`, and `reserved`
+Every record begins with `DuallityRecordHeaderV1`: for input records,
+`struct_size` counts readable bytes including the header; for output records,
+it declares the writable extent. `record_version` is `1`, and `reserved`
 is zero. `struct_size` must include the complete known version-1 layout and
 must not exceed 4096 bytes. An input with a larger size is accepted only
 when its unknown trailing bytes are zero. This lets a newer caller use an
@@ -163,8 +168,8 @@ untouched; no callback is invoked while cache synchronization is held.
 
 ## Verification boundary
 
-The model/header checker and C layout compilation prove the staged
-declarations are synchronized. The internal Rust parser now validates the
+The model/header checker and C layout compilation check that the exported
+declarations are synchronized. The internal Rust parser validates the
 records and deep-copies operation and restriction text before construction;
 its [focused qualification](../scientific-ledger/configurable-construction-2026-09-29.md)
 also compares the complete lazy WFST graph with the legacy generalized path
@@ -176,8 +181,8 @@ retained WFST resource remains valid after the handle is freed. The internal
 [cache-control qualification](../scientific-ledger/configurable-cache-2026-09-29.md)
 tests normalization, exact LRU residency, cloned resources, statistics,
 concurrent calls, and reentrant clear against the exported provider cache.
-These tests do **not** prove that revision-3 calls exist or qualify a foreign
-caller's ABI. Public cache controls, foreign mirrors, old/new C consumers,
-and hostile-lifecycle tests remain necessary before the API revision is
-raised and documented as available. No package publication is implied by
-this contract.
+The [revision-3 C-boundary qualification](../scientific-ledger/configurable-c-boundary-2026-09-29.md)
+checks the callable symbols, old/new C consumers, malformed records, output
+failure behavior, and snapshot-retain balance. The higher-level foreign
+facades and final package-wide conformance are follow-up tasks. No package
+publication is implied by this development-branch contract.

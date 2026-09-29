@@ -169,7 +169,7 @@
   },
   "packageVersion": "4.0.0-rc.6",
   "abiVersion": 1,
-  "apiRevision": 2,
+  "apiRevision": 3,
   "configAbi": {
     "sinceApiRevision": 3,
     "recordVersion": 1,
@@ -604,6 +604,74 @@
         "bind": false,
         "reason": "Resource lifetime is owned by Vinary::Tree::Interop::Resource; NativeCall does not portably pass VtResource by value"
       }
+    },
+    {
+      "name": "duallity_wfst_options_default",
+      "rustModule": "ffi",
+      "sinceApiRevision": 3,
+      "return": { "cType": "DuallityStatus", "ownership": "value", "nullability": "not-applicable" },
+      "parameters": [
+        { "name": "out_options", "cType": "DuallityWfstOptionsV1*", "direction": "out", "ownership": "caller-sized-output", "nullability": "non-null" }
+      ],
+      "raku": { "bind": true }
+    },
+    {
+      "name": "duallity_wfst_new_configured_ref",
+      "rustModule": "ffi",
+      "sinceApiRevision": 3,
+      "return": { "cType": "DuallityStatus", "ownership": "value", "nullability": "not-applicable" },
+      "parameters": [
+        { "name": "dictionary", "cType": "const VtResource*", "direction": "in", "ownership": "borrowed-capture-snapshot", "nullability": "non-null" },
+        { "name": "query_data", "cType": "const uint8_t*", "direction": "in", "ownership": "borrowed-for-call", "nullability": "nullable-if-query_len-is-zero" },
+        { "name": "query_len", "cType": "size_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "options", "cType": "const DuallityWfstOptionsV1*", "direction": "in", "ownership": "borrowed-deep-copied-for-call", "nullability": "non-null" },
+        { "name": "out_wfst", "cType": "DuallityWfst**", "direction": "out", "ownership": "owned-output-on-success", "nullability": "non-null" }
+      ],
+      "raku": { "bind": true }
+    },
+    {
+      "name": "duallity_wfst_options_get",
+      "rustModule": "ffi",
+      "sinceApiRevision": 3,
+      "return": { "cType": "DuallityStatus", "ownership": "value", "nullability": "not-applicable" },
+      "parameters": [
+        { "name": "wfst", "cType": "const DuallityWfst*", "direction": "in", "ownership": "borrowed-for-call", "nullability": "non-null" },
+        { "name": "out_options", "cType": "DuallityWfstOptionsV1*", "direction": "out", "ownership": "caller-sized-output-with-handle-borrowed-nested-pointers", "nullability": "non-null" }
+      ],
+      "raku": { "bind": true }
+    },
+    {
+      "name": "duallity_wfst_cache_statistics",
+      "rustModule": "ffi",
+      "sinceApiRevision": 3,
+      "return": { "cType": "DuallityStatus", "ownership": "value", "nullability": "not-applicable" },
+      "parameters": [
+        { "name": "wfst", "cType": "const DuallityWfst*", "direction": "in", "ownership": "borrowed-for-call", "nullability": "non-null" },
+        { "name": "out_statistics", "cType": "DuallityCacheStatisticsV1*", "direction": "out", "ownership": "caller-sized-output", "nullability": "non-null" }
+      ],
+      "raku": { "bind": true }
+    },
+    {
+      "name": "duallity_wfst_cache_clear",
+      "rustModule": "ffi",
+      "sinceApiRevision": 3,
+      "return": { "cType": "DuallityStatus", "ownership": "value", "nullability": "not-applicable" },
+      "parameters": [
+        { "name": "wfst", "cType": "DuallityWfst*", "direction": "in", "ownership": "borrowed-for-call", "nullability": "non-null" }
+      ],
+      "raku": { "bind": true }
+    },
+    {
+      "name": "duallity_wfst_cache_set_policy",
+      "rustModule": "ffi",
+      "sinceApiRevision": 3,
+      "return": { "cType": "DuallityStatus", "ownership": "value", "nullability": "not-applicable" },
+      "parameters": [
+        { "name": "wfst", "cType": "DuallityWfst*", "direction": "in", "ownership": "borrowed-for-call", "nullability": "non-null" },
+        { "name": "policy", "cType": "uint32_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "capacity", "cType": "uint64_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" }
+      ],
+      "raku": { "bind": true }
     }
   ],
   "javascript": {

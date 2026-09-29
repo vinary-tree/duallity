@@ -1,7 +1,7 @@
 //! Stable project-owned C ABI for duallity dictionary/WFST adapters.
 
-// Revision-3 record parsing is staged until cache control and foreign mirrors
-// are qualified together. No revision-3 callable symbol is exported yet.
+// Revision-3 configuration, inspection, and cache control share the
+// provider-owned snapshot and cache with the revision-2 entry points.
 #[allow(dead_code)]
 mod cache;
 #[allow(dead_code)]
@@ -10,6 +10,10 @@ mod inspection;
 use inspection::OwnedOptions;
 #[allow(dead_code)]
 mod config;
+pub use config::{
+    DuallityCacheStatisticsV1, DuallityGeneralizedLimitsV1, DuallityOperationV1,
+    DuallityRecordHeaderV1, DuallityRestrictionV1, DuallityWfstOptionsV1,
+};
 
 use crate::bindings::{BindingError, WfstKind};
 use crate::GeneralizedWfstError;
@@ -18,7 +22,9 @@ use liblevenshtein::transducer::Algorithm;
 use lling_llang::bindings::OwnedWfstResource;
 use std::cell::RefCell;
 use std::ffi::{c_char, CString};
+use std::mem::{align_of, size_of};
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::ptr;
 use std::slice;
 use std::str;
 use vinary_tree_interop::{VtResource, VtStatus};
@@ -26,7 +32,7 @@ use vinary_tree_interop::{VtResource, VtStatus};
 /// Stable duallity C ABI version.
 pub const DUALLITY_ABI_VERSION: u32 = 1;
 /// Additive project API revision.
-pub const DUALLITY_API_REVISION: u32 = 2;
+pub const DUALLITY_API_REVISION: u32 = 3;
 
 /// Status returned by duallity C functions.
 #[repr(u32)]
@@ -57,9 +63,7 @@ pub struct DuallityWfst {
 }
 
 impl DuallityWfst {
-    /// Staged internal readback. The public sized-record C entry point is
-    /// introduced only at the complete revision-3 qualification boundary.
-    #[allow(dead_code)]
+    /// Read back effective options while the handle still owns nested data.
     fn inspect_options(&self) -> Result<config::DuallityWfstOptionsV1, DuallityStatus> {
         self.options.readback(&self.resource)
     }
@@ -127,6 +131,70 @@ fn output<'a, T>(pointer: *mut T, name: &'static str) -> Result<&'a mut T, Duall
     } else {
         Ok(unsafe { &mut *pointer })
     }
+}
+
+fn checked_pointer<T>(pointer: *const T, name: &str) -> Result<*const T, DuallityStatus> {
+    if pointer.is_null() {
+        set_error(format!("{name} is null"));
+        return Err(DuallityStatus::NullPointer);
+    }
+    if !(pointer as usize).is_multiple_of(align_of::<T>()) {
+        set_error(format!("{name} is not aligned"));
+        return Err(DuallityStatus::InvalidArgument);
+    }
+    Ok(pointer)
+}
+
+fn checked_mut_pointer<T>(pointer: *mut T, name: &str) -> Result<*mut T, DuallityStatus> {
+    checked_pointer(pointer.cast_const(), name).map(|_| pointer)
+}
+
+/// # Safety
+/// A non-null aligned pointer must designate a live duallity handle for the
+/// duration of this call. The caller synchronizes its destruction.
+unsafe fn live_handle<'a>(
+    pointer: *const DuallityWfst,
+) -> Result<&'a DuallityWfst, DuallityStatus> {
+    let pointer = checked_pointer(pointer, "wfst")?;
+    Ok(unsafe { &*pointer })
+}
+
+/// Validate the caller-declared writable record extent before any output.
+///
+/// # Safety
+/// The pointer must be null or designate writable storage containing at least
+/// a readable `DuallityRecordHeaderV1`; its declared extent must be writable.
+unsafe fn sized_output_extent<T>(pointer: *mut T, name: &str) -> Result<usize, DuallityStatus> {
+    let pointer = checked_mut_pointer(pointer, name)?;
+    let header = unsafe { pointer.cast::<config::DuallityRecordHeaderV1>().read() };
+    let extent = header.struct_size as usize;
+    if extent < size_of::<T>() {
+        set_error(format!("{name} needs at least {} bytes", size_of::<T>()));
+        return Err(DuallityStatus::LimitExceeded);
+    }
+    if extent > config::CONFIG_MAX_RECORD_BYTES
+        || header.record_version != config::CONFIG_RECORD_VERSION
+        || header.reserved != 0
+    {
+        set_error(format!(
+            "{name} has an unsupported size, version, or reserved field"
+        ));
+        return Err(DuallityStatus::InvalidArgument);
+    }
+    Ok(extent)
+}
+
+/// Commit a fully constructed record and zero newer unknown trailing fields.
+///
+/// # Safety
+/// `pointer` must be aligned and writable for `extent` bytes, and `extent`
+/// must be at least `size_of::<T>()`.
+unsafe fn write_sized<T: Copy>(pointer: *mut T, extent: usize, value: T) {
+    let known = size_of::<T>();
+    if extent > known {
+        unsafe { ptr::write_bytes(pointer.cast::<u8>().add(known), 0, extent - known) };
+    }
+    unsafe { pointer.write(value) };
 }
 
 fn algorithm(value: u32) -> Result<Algorithm, DuallityStatus> {
@@ -313,6 +381,146 @@ pub extern "C" fn duallity_resource_release(resource: VtResource) {
             release(resource.context);
         }
     }
+}
+
+/// Fill a caller-sized record with the standard configurable WFST defaults.
+/// The caller initializes its header with its writable size and version 1.
+///
+/// # Safety
+/// `out_options` must be null or writable for its declared byte extent.
+#[no_mangle]
+pub unsafe extern "C" fn duallity_wfst_options_default(
+    out_options: *mut config::DuallityWfstOptionsV1,
+) -> DuallityStatus {
+    boundary(|| {
+        let extent = unsafe { sized_output_extent(out_options, "out_options")? };
+        let defaults = config::DuallityWfstOptionsV1 {
+            header: config::DuallityRecordHeaderV1 {
+                struct_size: size_of::<config::DuallityWfstOptionsV1>() as u32,
+                record_version: config::CONFIG_RECORD_VERSION,
+                reserved: 0,
+            },
+            kind: WfstKind::Levenshtein as u32,
+            algorithm: 0,
+            maximum_distance: 2,
+            cache_policy: 0,
+            reserved_zero: 0,
+            cache_capacity: 0,
+            limits: ptr::null(),
+            operations: ptr::null(),
+            operation_count: 0,
+            operation_stride: 0,
+            reserved: [0; 2],
+        };
+        unsafe { write_sized(out_options, extent, defaults) };
+        Ok(())
+    })
+}
+
+/// Validate and own a configured WFST before capturing one dictionary revision.
+/// The output slot is cleared on every failure after it is validated.
+///
+/// # Safety
+/// `dictionary`, `options`, and non-null nested pointers must designate live,
+/// readable input for this call. `out_wfst` must be writable. Caller memory
+/// must not be concurrently mutated during parsing or alias the output slot.
+#[no_mangle]
+pub unsafe extern "C" fn duallity_wfst_new_configured_ref(
+    dictionary: *const VtResource,
+    query_data: *const u8,
+    query_len: usize,
+    options: *const config::DuallityWfstOptionsV1,
+    out_wfst: *mut *mut DuallityWfst,
+) -> DuallityStatus {
+    boundary(|| {
+        let slot = checked_mut_pointer(out_wfst, "out_wfst")?;
+        unsafe { slot.write(ptr::null_mut()) };
+        let dictionary = checked_pointer(dictionary, "dictionary")?;
+        let query = query(query_data, query_len)?;
+        let parsed = unsafe { config::parse_options(options)? };
+        let owned_options = inspection::OwnedOptions::from_parsed(&parsed)?;
+        let resource = unsafe {
+            crate::bindings::create_wfst_configured(
+                dictionary.read(),
+                query,
+                parsed.into_construction(),
+            )
+        }
+        .map_err(map_error)?;
+        let handle = Box::into_raw(Box::new(DuallityWfst {
+            resource,
+            options: owned_options,
+        }));
+        unsafe { slot.write(handle) };
+        Ok(())
+    })
+}
+
+/// Copy effective options, borrowing nested pointers from the live handle.
+///
+/// # Safety
+/// `wfst` must be a live handle. `out_options` must be writable for its
+/// declared extent. Returned nested pointers expire when `wfst` is freed.
+#[no_mangle]
+pub unsafe extern "C" fn duallity_wfst_options_get(
+    wfst: *const DuallityWfst,
+    out_options: *mut config::DuallityWfstOptionsV1,
+) -> DuallityStatus {
+    boundary(|| {
+        let extent = unsafe { sized_output_extent(out_options, "out_options")? };
+        let handle = unsafe { live_handle(wfst)? };
+        let record = handle.inspect_options()?;
+        unsafe { write_sized(out_options, extent, record) };
+        Ok(())
+    })
+}
+
+/// Copy cumulative cache counters and a coherent current-residency view.
+///
+/// # Safety
+/// `wfst` must be a live handle and `out_statistics` writable for its declared
+/// extent. Concurrent counters may advance during the call.
+#[no_mangle]
+pub unsafe extern "C" fn duallity_wfst_cache_statistics(
+    wfst: *const DuallityWfst,
+    out_statistics: *mut config::DuallityCacheStatisticsV1,
+) -> DuallityStatus {
+    boundary(|| {
+        let extent = unsafe { sized_output_extent(out_statistics, "out_statistics")? };
+        let handle = unsafe { live_handle(wfst)? };
+        let record = cache::statistics(&handle.resource)?;
+        unsafe { write_sized(out_statistics, extent, record) };
+        Ok(())
+    })
+}
+
+/// Evict cached state payloads without changing the captured WFST semantics.
+///
+/// # Safety
+/// `wfst` must be a live handle for this call; callers synchronize freeing it.
+#[no_mangle]
+pub unsafe extern "C" fn duallity_wfst_cache_clear(wfst: *mut DuallityWfst) -> DuallityStatus {
+    boundary(|| {
+        let handle = unsafe { live_handle(wfst.cast_const())? };
+        cache::clear(&handle.resource)
+    })
+}
+
+/// Publish a new cache policy and empty generation atomically.
+///
+/// # Safety
+/// `wfst` must be a live handle for this call; callers synchronize freeing it.
+#[no_mangle]
+pub unsafe extern "C" fn duallity_wfst_cache_set_policy(
+    wfst: *mut DuallityWfst,
+    policy: u32,
+    capacity: u64,
+) -> DuallityStatus {
+    boundary(|| {
+        let handle = unsafe { live_handle(wfst.cast_const())? };
+        let requested = config::cache_policy(policy, capacity)?;
+        cache::set_policy(&handle.resource, requested, handle.options.kind())
+    })
 }
 
 #[cfg(test)]

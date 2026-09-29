@@ -17,6 +17,8 @@
 #   CC        C compiler                       (default: cc)
 #   PROFILE   cargo profile: release|debug     (default: release)
 #   SKIP_BUILD=1  reuse already-built cdylibs  (default: unset)
+#   LLING_DIR  alternate lling-llang checkout (default: sibling lling-llang)
+#   CARGO_TARGET_DIR  shared build directory (default: each checkout's target)
 #
 # gxhash (via a persistent-artrie dependency of libdictenstein) requires AES-NI
 # and SSE2 at compile time, so RUSTFLAGS pins those features (matching CI).
@@ -28,7 +30,7 @@ duallity_root="$(cd "${script_dir}/../../.." && pwd)"
 parent="$(dirname "${duallity_root}")"
 
 libdictenstein_dir="${parent}/libdictenstein"
-lling_dir="${parent}/lling-llang"
+lling_dir="${LLING_DIR:-${parent}/lling-llang}"
 liblevenshtein_dir="${parent}/liblevenshtein-rust"
 interop_include="${liblevenshtein_dir}/vinary-tree-interop/include"
 
@@ -63,10 +65,10 @@ if [ "${SKIP_BUILD:-}" != "1" ]; then
   build_cdylib duallity "${duallity_root}"
 fi
 
-libdictenstein_lib="${libdictenstein_dir}/target/${PROFILE}"
-lling_lib="${lling_dir}/target/${PROFILE}"
-liblevenshtein_lib="${liblevenshtein_dir}/target/${PROFILE}"
-duallity_lib="${duallity_root}/target/${PROFILE}"
+libdictenstein_lib="${CARGO_TARGET_DIR:-${libdictenstein_dir}/target}/${PROFILE}"
+lling_lib="${CARGO_TARGET_DIR:-${lling_dir}/target}/${PROFILE}"
+liblevenshtein_lib="${CARGO_TARGET_DIR:-${liblevenshtein_dir}/target}/${PROFILE}"
+duallity_lib="${CARGO_TARGET_DIR:-${duallity_root}/target}/${PROFILE}"
 
 for so in \
   "${libdictenstein_lib}/liblibdictenstein.so" \
@@ -79,8 +81,8 @@ for so in \
   fi
 done
 
-binary="${duallity_root}/target/family_pipeline_c"
-mkdir -p "${duallity_root}/target"
+binary="${CARGO_TARGET_DIR:-${duallity_root}/target}/family_pipeline_c"
+mkdir -p "$(dirname "${binary}")"
 
 echo "::group::compile family_pipeline.c (-std=c17 -Wall -Wextra -Werror)"
 "${CC}" -std=c17 -Wall -Wextra -Werror \

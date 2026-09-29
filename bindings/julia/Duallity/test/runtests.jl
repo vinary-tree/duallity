@@ -43,7 +43,7 @@ end
 
 @testset "ABI and all public selectors" begin
     @test abi_version() == ABI_VERSION == 1
-    @test api_revision() >= API_REVISION == 2
+    @test api_revision() >= API_REVISION == 3
 
     dictionary = LD.DynamicDawg()
     try

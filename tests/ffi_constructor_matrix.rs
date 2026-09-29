@@ -383,5 +383,5 @@ fn version_pins_match_header_constants() {
     assert_eq!(duallity_abi_version(), DUALLITY_ABI_VERSION);
     assert_eq!(duallity_api_revision(), DUALLITY_API_REVISION);
     assert_eq!(duallity_abi_version(), 1);
-    assert_eq!(duallity_api_revision(), 2);
+    assert_eq!(duallity_api_revision(), 3);
 }

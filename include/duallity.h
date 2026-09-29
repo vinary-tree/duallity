@@ -28,7 +28,7 @@ extern "C" {
 #endif
 
 #define DUALLITY_ABI_VERSION 1u
-#define DUALLITY_API_REVISION 2u
+#define DUALLITY_API_REVISION 3u
 
 typedef enum DuallityStatus {
     DUALLITY_STATUS_OK = 0,
@@ -61,9 +61,8 @@ typedef enum DuallityWfstKind {
 } DuallityWfstKind;
 
 /*
- * Revision-3 configuration record layouts. These type declarations are
- * additive; the revision-3 constructor/control symbols are not available
- * until duallity_api_revision() reports at least 3. Existing revision-2
+ * Revision-3 configuration record layouts. The new constructor/control
+ * symbols require duallity_api_revision() >= 3. Existing revision-2
  * functions and ABI version 1 are unchanged.
  *
  * Every header declares its readable byte extent. Version 1 readers require
@@ -186,10 +185,32 @@ DUALLITY_API DuallityStatus duallity_wfst_new_ref(
     uint32_t algorithm,
     uint32_t kind,
     DuallityWfst** out_wfst);
+/* Caller sets header.struct_size, record_version=1, reserved=0. */
+DUALLITY_API DuallityStatus duallity_wfst_options_default(
+    DuallityWfstOptionsV1* out_options);
+/* All nested inputs are borrowed only for the call and deep-copied. */
+DUALLITY_API DuallityStatus duallity_wfst_new_configured_ref(
+    const VtResource* dictionary,
+    const uint8_t* query_data,
+    size_t query_len,
+    const DuallityWfstOptionsV1* options,
+    DuallityWfst** out_wfst);
 DUALLITY_API void duallity_wfst_free(DuallityWfst* wfst);
 /* On success, out_resource owns one retain. */
 DUALLITY_API DuallityStatus duallity_wfst_resource(
     const DuallityWfst* wfst, VtResource* out_resource);
+/* Nested pointers are read-only and expire when the WFST handle is freed. */
+DUALLITY_API DuallityStatus duallity_wfst_options_get(
+    const DuallityWfst* wfst,
+    DuallityWfstOptionsV1* out_options);
+DUALLITY_API DuallityStatus duallity_wfst_cache_statistics(
+    const DuallityWfst* wfst,
+    DuallityCacheStatisticsV1* out_statistics);
+DUALLITY_API DuallityStatus duallity_wfst_cache_clear(DuallityWfst* wfst);
+DUALLITY_API DuallityStatus duallity_wfst_cache_set_policy(
+    DuallityWfst* wfst,
+    uint32_t policy,
+    uint64_t capacity);
 DUALLITY_API void duallity_resource_release(VtResource resource);
 
 #ifdef __cplusplus

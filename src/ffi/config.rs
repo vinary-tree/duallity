@@ -1,8 +1,7 @@
-//! Owned validation for the staged configurable WFST C ABI.
+//! Owned validation for the revision-3 configurable WFST C ABI.
 //!
-//! Record layouts are public in the C header. Callable revision-3 symbols
-//! remain unadvertised until constructor, cache control, and foreign mirrors
-//! have passed the same qualification boundary.
+//! Record layouts are public in the C header. Parsing deep-copies every
+//! borrowed custom operation before a dictionary snapshot is captured.
 
 use super::{algorithm, kind, set_error, DuallityStatus};
 use crate::bindings::{WfstConstruction, WfstKind};

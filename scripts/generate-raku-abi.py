@@ -34,9 +34,13 @@ RAKU_PARAMETER_TYPES = {
     "const DuallityWfst*": "Pointer",
     "DuallityWfst*": "Pointer",
     "DuallityWfst**": "Pointer",
+    "const DuallityWfstOptionsV1*": "Pointer",
+    "DuallityWfstOptionsV1*": "Pointer",
+    "DuallityCacheStatisticsV1*": "Pointer",
     "VtResource*": "Vinary::Tree::Interop::RawResource",
     "size_t": "size_t",
     "uint32_t": "uint32",
+    "uint64_t": "uint64",
 }
 
 
@@ -322,7 +326,10 @@ def render_raku(model: dict) -> str:
         parameters = []
         for parameter in function["parameters"]:
             rendered = RAKU_PARAMETER_TYPES[parameter["cType"]]
-            if parameter["direction"] in {"out", "inout"}:
+            if parameter["direction"] in {"out", "inout"} and parameter["cType"] in {
+                "DuallityWfst**",
+                "VtResource*",
+            }:
                 rendered += " is rw"
             parameters.append(rendered)
         returned = RAKU_RETURN_TYPES[function["return"]["cType"]]

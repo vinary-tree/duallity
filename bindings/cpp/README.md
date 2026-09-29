@@ -110,8 +110,10 @@ boundary is caught, an exception here is a *reported* error, never undefined beh
 
 ## Version compatibility
 
-Negotiate with `duallity_abi_version()` (currently `1`) and `duallity_api_revision()` (currently `2`)
-at load time; refuse a major you do not understand. This binding tracks crate `duallity 4.0.0-rc.6`
+Negotiate with `duallity_abi_version()` (currently `1`) and `duallity_api_revision()` (currently `3`)
+at load time; refuse an ABI version you do not understand. The C++ facade still exposes its
+original constructor; the new revision-3 controls are currently available through the C header
+pending the typed C++ facade follow-up. This binding tracks crate `duallity 4.0.0-rc.6`
 (**MSRV 1.95**) and `vinary-tree-interop 4.0.0-rc.6` (ABI version `1`). The living version record is the
 [bindings findings ledger](../../docs/scientific-ledger/bindings-findings-ledger.md).
 

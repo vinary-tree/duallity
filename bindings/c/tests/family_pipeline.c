@@ -939,6 +939,87 @@ static void run_ledger(int source_first) {
 /* main                                                                      */
 /* ------------------------------------------------------------------------- */
 
+static void run_configured_revision3(void) {
+    printf("[phase C] revision-3 configured constructor and cache controls\n");
+    check(duallity_api_revision() == DUALLITY_API_REVISION,
+          "duallity revision-3 symbols match the public header");
+
+    LdictDictionary *dictionary = NULL;
+    check(ldict_dynamic_dawg_new(VT_UNIT_DOMAIN_UNICODE_SCALAR, &dictionary) == LDICT_STATUS_OK,
+          "revision-3 source dictionary created");
+    LdictOptionalU64 no_value = {.value = 0, .has_value = 0, .reserved = {0}};
+    uint8_t inserted = 0;
+    check(ldict_dictionary_insert_text(dictionary, (const uint8_t *)"cat", 3,
+                                       no_value, &inserted) == LDICT_STATUS_OK,
+          "revision-3 source term inserted");
+    VtResource source = {0};
+    check(ldict_dictionary_resource(dictionary, &source) == LDICT_STATUS_OK,
+          "revision-3 source resource borrowed");
+
+    DuallityWfstOptionsV1 options = {0};
+    options.header = (DuallityRecordHeaderV1){sizeof(options), DUALLITY_CONFIG_RECORD_VERSION, 0};
+    check(duallity_wfst_options_default(&options) == DUALLITY_STATUS_OK,
+          "revision-3 defaults accepted caller-sized record");
+    check(options.kind == DUALLITY_WFST_LEVENSHTEIN && options.maximum_distance == 2 &&
+              options.cache_policy == DUALLITY_CACHE_ALL,
+          "revision-3 defaults are explicit and normalized");
+    options.maximum_distance = 1;
+    options.cache_policy = DUALLITY_LRU;
+    options.cache_capacity = 1;
+
+    DuallityWfst *configured = NULL;
+    check(duallity_wfst_new_configured_ref(&source, (const uint8_t *)"cat", 3,
+                                            &options, &configured) == DUALLITY_STATUS_OK,
+          "revision-3 constructor linked and captured source");
+    check(configured != NULL, "revision-3 constructor returned a handle");
+    options.cache_capacity = 99;
+
+    DuallityWfstOptionsV1 inspected = {0};
+    inspected.header = (DuallityRecordHeaderV1){sizeof(inspected), 1, 0};
+    check(duallity_wfst_options_get(configured, &inspected) == DUALLITY_STATUS_OK,
+          "revision-3 effective options read back");
+    check(inspected.cache_policy == DUALLITY_LRU && inspected.cache_capacity == 1,
+          "revision-3 constructor did not retain caller options storage");
+
+    DuallityCacheStatisticsV1 statistics = {0};
+    statistics.header = (DuallityRecordHeaderV1){sizeof(statistics), 1, 0};
+    check(duallity_wfst_cache_statistics(configured, &statistics) == DUALLITY_STATUS_OK,
+          "revision-3 cache statistics read back");
+    check(statistics.resident_states == 0, "revision-3 WFST starts lazy");
+    check(duallity_wfst_cache_clear(configured) == DUALLITY_STATUS_OK,
+          "revision-3 cache clear is callable");
+    check(duallity_wfst_cache_set_policy(configured, DUALLITY_NO_CACHE, 0) == DUALLITY_STATUS_OK,
+          "revision-3 cache policy can change");
+    inspected.header = (DuallityRecordHeaderV1){sizeof(inspected), 1, 0};
+    check(duallity_wfst_options_get(configured, &inspected) == DUALLITY_STATUS_OK &&
+              inspected.cache_policy == DUALLITY_NO_CACHE,
+          "revision-3 readback reports the effective policy");
+    check(duallity_wfst_cache_set_policy(configured, DUALLITY_NO_CACHE, 1) ==
+              DUALLITY_STATUS_INVALID_ARGUMENT,
+          "revision-3 invalid policy is rejected");
+
+    VtResource exported = {0};
+    check(duallity_wfst_resource(configured, &exported) == DUALLITY_STATUS_OK,
+          "revision-3 handle exports an independently retained resource");
+    duallity_wfst_free(configured);
+    check(exported.context != NULL, "revision-3 exported resource outlives handle");
+    duallity_resource_release(exported);
+
+    DuallityWfst *rejected = (DuallityWfst *)(uintptr_t)1;
+    options.header.record_version = 2;
+    check(duallity_wfst_new_configured_ref(&source, (const uint8_t *)"cat", 3,
+                                            &options, &rejected) == DUALLITY_STATUS_INVALID_ARGUMENT,
+          "revision-3 unknown record version rejected");
+    check(rejected == NULL, "revision-3 rejected constructor clears output slot");
+    options.header.record_version = 1;
+    options.header.reserved = 1;
+    check(duallity_wfst_new_configured_ref(&source, (const uint8_t *)"cat", 3,
+                                            &options, &rejected) == DUALLITY_STATUS_INVALID_ARGUMENT,
+          "revision-3 nonzero reserved header rejected");
+
+    ldict_dictionary_free(dictionary);
+}
+
 int main(void) {
     printf("family_pipeline: four disjoint cdylibs in one process\n");
 
@@ -951,6 +1032,7 @@ int main(void) {
     run_family_pipeline();
     run_ledger(1);
     run_ledger(0);
+    run_configured_revision3();
 
     printf("\nOK: all %u assertions passed across four cdylibs.\n", g_passed);
     return 0;

@@ -1074,6 +1074,12 @@ def check_python(report: Report, model: dict) -> None:
         "duallity_wfst_new_ref",
         "duallity_wfst_free",
         "duallity_wfst_resource",
+        "duallity_wfst_options_default",
+        "duallity_wfst_new_configured_ref",
+        "duallity_wfst_options_get",
+        "duallity_wfst_cache_statistics",
+        "duallity_wfst_cache_clear",
+        "duallity_wfst_cache_set_policy",
     }
     symbols_ok = symbols == required and symbols <= modeled
     report.add(

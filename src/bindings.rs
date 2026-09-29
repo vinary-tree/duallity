@@ -6,13 +6,16 @@
 //! expansion borrows shared direct state sources. One lling-llang resource cache
 //! owns exported residency; native wrapper caches are neither cloned nor used.
 
-use crate::{FzfWfst, GeneralizedWfstBuilder, LevenshteinWfst, UniversalLevenshteinWfst};
+use crate::{
+    FzfWfst, GeneralizedWfstBuilder, GeneralizedWfstLimits, LevenshteinWfst,
+    UniversalLevenshteinWfst,
+};
 mod fault_scope;
 use crate::DirectStateSource;
 use fault_scope::FaultScope;
 use libdictenstein::{Dictionary, DictionaryNode, SnapshotTraversalCursor, SyncStrategy};
 use liblevenshtein::transducer::universal::{MergeAndSplit, Standard, Transposition};
-use liblevenshtein::transducer::Algorithm;
+use liblevenshtein::transducer::{Algorithm, OperationSet};
 use lling_llang::bindings::{OwnedWfstResource, ScalarWfstProvider, ScalarWfstState};
 use lling_llang::prelude::{ArcticWeight, StateExpansion, StateId, TropicalWeight, Wfst};
 use std::ffi::c_void;
@@ -699,6 +702,35 @@ pub unsafe fn create_wfst(
     algorithm: Algorithm,
     kind: WfstKind,
 ) -> Result<OwnedWfstResource, BindingError> {
+    unsafe {
+        create_wfst_configured(
+            dictionary,
+            query,
+            maximum_distance,
+            algorithm,
+            kind,
+            None,
+            None,
+        )
+    }
+}
+
+/// Construct through the legacy path with optional owned generalized grammar
+/// and resource ceilings. Foreign records must be validated and deep-copied
+/// before calling this function; only the resulting native values cross the
+/// dictionary snapshot boundary.
+///
+/// # Safety
+/// `dictionary` must be a live compatible dictionary resource for this call.
+pub(crate) unsafe fn create_wfst_configured(
+    dictionary: VtResource,
+    query: &str,
+    maximum_distance: usize,
+    algorithm: Algorithm,
+    kind: WfstKind,
+    limits: Option<GeneralizedWfstLimits>,
+    operations: Option<OperationSet>,
+) -> Result<OwnedWfstResource, BindingError> {
     let dictionary = ResourceDictionary::capture(dictionary)?;
     let scope = dictionary
         .provider
@@ -738,12 +770,21 @@ pub unsafe fn create_wfst(
                 BindingError::InvalidArgument("generalized maximum distance must fit u8".into())
             })?;
             let builder = GeneralizedWfstBuilder::new(&dictionary).max_distance(distance);
-            let builder = match kind {
-                WfstKind::GeneralizedStandard => builder.with_standard_ops(),
-                WfstKind::GeneralizedTransposition => builder.with_transposition(),
-                WfstKind::GeneralizedMergeAndSplit => builder.with_merge_split(),
-                WfstKind::GeneralizedPhonetic => builder.with_phonetic_digraphs(),
-                _ => unreachable!(),
+            let builder = if let Some(operations) = operations {
+                builder.with_operations(operations)
+            } else {
+                match kind {
+                    WfstKind::GeneralizedStandard => builder.with_standard_ops(),
+                    WfstKind::GeneralizedTransposition => builder.with_transposition(),
+                    WfstKind::GeneralizedMergeAndSplit => builder.with_merge_split(),
+                    WfstKind::GeneralizedPhonetic => builder.with_phonetic_digraphs(),
+                    _ => unreachable!(),
+                }
+            };
+            let builder = if let Some(limits) = limits {
+                builder.limits(limits)
+            } else {
+                builder
             };
             Adapter::Generalized(
                 builder

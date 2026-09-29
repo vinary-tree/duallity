@@ -1,5 +1,10 @@
 //! Stable project-owned C ABI for duallity dictionary/WFST adapters.
 
+// Revision-3 record parsing is staged until cache control and foreign mirrors
+// are qualified together. No revision-3 callable symbol is exported yet.
+#[allow(dead_code)]
+mod config;
+
 use crate::bindings::{BindingError, WfstKind};
 use crate::GeneralizedWfstError;
 use liblevenshtein::cost::ScaleError;

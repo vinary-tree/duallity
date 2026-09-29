@@ -1,7 +1,8 @@
 # 07 · Versioned configurable WFST ABI contract
 
-> **Status:** record declarations and model checks are staged; the callable
-> revision-3 functions described here are **not shipped** while
+> **Status:** record declarations, model checks, and the internal owned
+> constructor parser are staged; the callable revision-3 functions described
+> here are **not shipped** while
 > `duallity_api_revision()` returns `2`. A consumer must negotiate the returned
 > revision before using them. This chapter defines the implementation and
 > conformance contract for the next additive API revision, not a release claim.
@@ -161,9 +162,13 @@ untouched; no callback is invoked while cache synchronization is held.
 
 ## Verification boundary
 
-The current model/header checker and C layout compilation prove the staged
-declarations are synchronized. They do **not** prove that revision-3 calls
-exist or that malformed records are safely parsed. Those claims require
-the subsequent constructor, cache-control, foreign-mirror, C-consumer, and
-hostile-lifecycle tests before the API revision is raised and documented as
-available. No package publication is implied by this contract.
+The model/header checker and C layout compilation prove the staged
+declarations are synchronized. The internal Rust parser now validates the
+records and deep-copies operation and restriction text before construction;
+its [focused qualification](../scientific-ledger/configurable-construction-2026-09-29.md)
+also compares the complete lazy WFST graph with the legacy generalized path
+after dropping the source dictionary. These tests do **not** prove that
+revision-3 calls exist or qualify a foreign caller's ABI. Cache control,
+foreign mirrors, old/new C consumers, and hostile-lifecycle tests remain
+necessary before the API revision is raised and documented as available. No
+package publication is implied by this contract.

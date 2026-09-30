@@ -1,7 +1,7 @@
 # duallity — C++ binding
 
 A header-only **RAII** (**R**esource **A**cquisition **I**s **I**nitialization) wrapper over duallity's
-eight-function C ABI. It turns a dictionary resource into a lazy, composable **WFST** (**W**eighted
+versioned C ABI. It turns a dictionary resource into a lazy, composable **WFST** (**W**eighted
 **F**inite-**S**tate **T**ransducer) resource with move-only handles and exception-based errors, so
 lifetimes are managed by scope rather than by hand.
 
@@ -18,6 +18,8 @@ Everything lives in namespace `vinary_tree::duallity`:
 |-----------------|------|
 | `class wfst` | owns a `DuallityWfst*`; frees it in its destructor |
 | `class resource` | owns one `VtResource` retain; releases it in its destructor |
+| `default_options()` | returns an initialized revision-3 options record |
+| `configuration_snapshot` | owns a deep copy of effective options, limits, and operation text |
 | `class error : std::runtime_error` | thrown on any non-`OK` status; `.status()` returns the `DuallityStatus` |
 | `void check(DuallityStatus)` | throws `error` unless the status is `OK` |
 
@@ -75,6 +77,35 @@ The constructor's `algorithm` (default `DUALLITY_ALGORITHM_STANDARD`) is consume
 kind only; `kind` (default `DUALLITY_WFST_LEVENSHTEIN`) selects one of the nine adapters — see
 [architecture/06 §4](../../docs/architecture/06-resource-abi-and-bindings.md#4-the-nine-automaton-kinds-and-their-algorithms).
 
+## Configured construction and cache controls
+
+The original constructor remains valid. To use API revision 3, initialize the
+versioned record with `default_options()`, change the fields you need, then
+construct with `wfst(dict, query, options)`. For example:
+
+```cpp
+auto options = default_options();
+options.maximum_distance = 1;
+options.cache_policy = DUALLITY_LRU;
+options.cache_capacity = 128;
+wfst graph(dict, "cat", options);
+auto effective = graph.options();  // copied text and limits outlive graph
+auto statistics = graph.cache_statistics();
+graph.clear_cache();
+graph.set_cache_policy(DUALLITY_NO_CACHE);
+```
+
+`options.operations` and nested restriction buffers are borrowed only during
+construction, then deep-copied natively. Populate each nested record's header
+with its actual `sizeof`, record version `1`, and zero reserved word; use
+`operation_stride` and `restriction_stride` for arrays. Invalid sizes, versions,
+reserved fields, enum values, or combinations raise `error` with the native
+status. `wfst::options()` copies names and restriction text before returning,
+so no pointer from `duallity_wfst_options_get` escapes the live handle.
+`set_cache_policy` clears residency but preserves the captured dictionary
+revision and state identities. The handle and each `retained_resource()` own
+independent lifetimes.
+
 ## Ownership and memory model
 
 RAII binds the two C lifecycles to scope:
@@ -111,9 +142,9 @@ boundary is caught, an exception here is a *reported* error, never undefined beh
 ## Version compatibility
 
 Negotiate with `duallity_abi_version()` (currently `1`) and `duallity_api_revision()` (currently `3`)
-at load time; refuse an ABI version you do not understand. The C++ facade still exposes its
-original constructor; the new revision-3 controls are currently available through the C header
-pending the typed C++ facade follow-up. This binding tracks crate `duallity 4.0.0-rc.6`
+at load time; refuse an ABI version you do not understand. The C++ facade exposes both its
+original constructor and the additive revision-3 constructor/readback/cache controls.
+This binding tracks crate `duallity 4.0.0-rc.6`
 (**MSRV 1.95**) and `vinary-tree-interop 4.0.0-rc.6` (ABI version `1`). The living version record is the
 [bindings findings ledger](../../docs/scientific-ledger/bindings-findings-ledger.md).
 
@@ -126,8 +157,8 @@ pending the typed C++ facade follow-up. This binding tracks crate `duallity 4.0.
 ## Executable conformance evidence
 
 [`tests/package_smoke.cpp`](tests/package_smoke.cpp) is compiled against the
-staged CMake package and exercises the move-only WFST/resource lifecycle through
-public installed headers:
+staged CMake package and checks installed-header version negotiation, record
+defaults, move-only types, and old/new constructor error mapping:
 
 ```sh
 cmake -S bindings/cpp/tests/package -B target/duallity-cpp-package
@@ -135,8 +166,14 @@ cmake --build target/duallity-cpp-package
 ctest --test-dir target/duallity-cpp-package --output-on-failure
 ```
 
-The C family pipeline independently verifies cross-library snapshot isolation,
-exact result parity, and both teardown orders.
+[`tests/configured_consumer.cpp`](tests/configured_consumer.cpp) is compiled
+and run by [`bindings/c/tests/build-and-run.sh`](../c/tests/build-and-run.sh)
+against independent family shared libraries. It constructs both old and
+revision-3 WFSTs from a real Unicode dictionary, checks copied custom-operation
+readback after caller mutation and handle destruction, switches and clears the
+cache, keeps a retained resource beyond handle/source destruction, and rejects
+a malformed record. The C family pipeline independently verifies cross-library
+snapshot isolation, exact result parity, and both teardown orders.
 
 ## Security and provider trust
 

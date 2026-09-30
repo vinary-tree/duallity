@@ -198,6 +198,80 @@ class ApiTests(unittest.TestCase):
         finally:
             failing.close()
 
+    def test_configured_old_and_new_consumers_cache_and_owned_readback(self) -> None:
+        snapshot = TrieSnapshot(("cat", "cot", "dog"))
+        with UnicodeDictionaryResource(lambda: snapshot) as dictionary:
+            with duallity.wfst(dictionary, "cat") as old:
+                self.assertEqual(old.options().kind, duallity.WfstKind.LEVENSHTEIN)
+
+            options = duallity.default_options()
+            self.assertEqual(options.header.struct_size, ctypes.sizeof(options))
+            self.assertEqual(options.header.record_version, 1)
+            options.maximum_distance = 1
+            options.cache_policy = duallity.CachePolicy.NO_CACHE
+            with duallity.configured_wfst(dictionary, "cat", options) as graph:
+                self.assertEqual(language(graph), {"cat": 0.0, "cot": 1.0})
+                self.assertEqual(
+                    graph.options().cache_policy, duallity.CachePolicy.NO_CACHE
+                )
+                self.assertEqual(graph.cache_statistics().resident_states, 0)
+                graph.set_cache_policy(duallity.CachePolicy.LRU, 2)
+                self.assertEqual(graph.options().cache_capacity, 2)
+                self.assertEqual(graph.options().cache_policy, duallity.CachePolicy.LRU)
+                graph.clear_cache()
+                self.assertGreaterEqual(graph.cache_statistics().clears, 2)
+                copied = graph.options()
+            self.assertEqual(copied.maximum_distance, 1)
+            with self.assertRaises(duallity.NativeError):
+                graph.cache_statistics()
+
+    def test_configured_custom_text_is_copied_and_malformed_records_fail(self) -> None:
+        snapshot = TrieSnapshot(("cat",))
+        with UnicodeDictionaryResource(lambda: snapshot) as dictionary:
+            options = duallity.default_options()
+            options.kind = duallity.WfstKind.GENERALIZED_STANDARD
+            options.maximum_distance = 1
+            name = (ctypes.c_uint8 * 6).from_buffer_copy(b"custom")
+            operation = duallity.DuallityOperationV1()
+            operation.header = duallity.DuallityRecordHeaderV1(
+                ctypes.sizeof(operation), 1, 0
+            )
+            operation.consume_x = 1
+            operation.consume_y = 1
+            operation.weight = 1.0
+            operation.applicability = duallity.OperationApplicability.ANY
+            operation.name_data = ctypes.cast(name, ctypes.POINTER(ctypes.c_uint8))
+            operation.name_len = len(name)
+            operations = (duallity.DuallityOperationV1 * 1)(operation)
+            options.operations = operations
+            options.operation_count = 1
+            options.operation_stride = ctypes.sizeof(operation)
+            with duallity.configured_wfst(dictionary, "cat", options) as graph:
+                name[0] = ord("X")
+                copied = graph.options()
+                self.assertEqual(copied.operations[0].name, "custom")
+            self.assertEqual(copied.operations[0].name, "custom")
+
+            malformed = duallity.default_options()
+            malformed.header.reserved = 1
+            with self.assertRaises(duallity.NativeError) as failure:
+                duallity.configured_wfst(dictionary, "cat", malformed)
+            self.assertIs(failure.exception.status, duallity.Status.INVALID_ARGUMENT)
+            malformed = duallity.default_options()
+            malformed.header.record_version = 99
+            with self.assertRaises(duallity.NativeError) as failure:
+                duallity.configured_wfst(dictionary, "cat", malformed)
+            self.assertIs(failure.exception.status, duallity.Status.INVALID_ARGUMENT)
+            malformed = duallity.default_options()
+            malformed.kind = duallity.WfstKind.GENERALIZED_STANDARD
+            malformed.operation_count = 1
+            malformed.operation_stride = ctypes.sizeof(duallity.DuallityOperationV1)
+            with self.assertRaises(duallity.NativeError) as failure:
+                duallity.configured_wfst(dictionary, "cat", malformed)
+            self.assertIs(failure.exception.status, duallity.Status.NULL_POINTER)
+            with self.assertRaises(TypeError):
+                duallity.configured_wfst(dictionary, "cat", object())  # type: ignore[arg-type]
+
 
 if __name__ == "__main__":
     unittest.main()

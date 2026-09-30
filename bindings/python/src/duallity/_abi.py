@@ -52,6 +52,23 @@ class WfstKind(IntEnum):
     FZF = 8
 
 
+class CachePolicy(IntEnum):
+    """Effective provider expansion-cache policy."""
+
+    CACHE_ALL = 0
+    NO_CACHE = 1
+    LRU = 2
+
+
+class OperationApplicability(IntEnum):
+    """Predicate used by a custom generalized edit operation."""
+
+    ANY = 0
+    EQUAL = 1
+    ADJACENT_TRANSPOSE = 2
+    LISTED = 3
+
+
 class DuallityRecordHeaderV1(ctypes.Structure):
     """Common sized-record prefix; callers set all three fields before a call."""
 
@@ -206,6 +223,14 @@ def _bind(
 _bind("duallity_abi_version", [])
 _bind("duallity_api_revision", [])
 _bind("duallity_last_error_message", [], ctypes.c_char_p)
+_loaded_abi = int(lib.duallity_abi_version())
+_loaded_revision = int(lib.duallity_api_revision())
+if _loaded_abi != ABI_VERSION:
+    raise ImportError(f"duallity native ABI {_loaded_abi} does not match {ABI_VERSION}")
+if _loaded_revision < API_REVISION:
+    raise ImportError(
+        f"duallity native API revision {_loaded_revision} is older than {API_REVISION}"
+    )
 _bind(
     "duallity_wfst_new_ref",
     [
@@ -219,6 +244,7 @@ _bind(
     ],
 )
 _bind("duallity_wfst_free", [ctypes.c_void_p], None)
+_bind("duallity_resource_release", [VtResource], None)
 _bind(
     "duallity_wfst_resource",
     [ctypes.c_void_p, ctypes.POINTER(VtResource)],
@@ -289,13 +315,3 @@ def abi_version() -> int:
 def api_revision() -> int:
     """Return the loaded native additive API revision."""
     return int(lib.duallity_api_revision())
-
-
-if abi_version() != ABI_VERSION:
-    raise ImportError(
-        f"duallity native ABI {abi_version()} does not match {ABI_VERSION}"
-    )
-if api_revision() < API_REVISION:
-    raise ImportError(
-        f"duallity native API revision {api_revision()} is older than {API_REVISION}"
-    )

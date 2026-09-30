@@ -203,6 +203,59 @@ def python_class_constants(source: str, class_name: str) -> dict[str, int] | Non
     return None
 
 
+def python_record_fields(source: str, class_name: str) -> list[tuple[str, str]] | None:
+    """Read ordered ctypes field names and declarations without importing the ABI."""
+    for node in ast.parse(source).body:
+        if not isinstance(node, ast.ClassDef) or node.name != class_name:
+            continue
+        for statement in node.body:
+            if not isinstance(statement, ast.Assign) or not any(
+                isinstance(target, ast.Name) and target.id == "_fields_"
+                for target in statement.targets
+            ):
+                continue
+            if not isinstance(statement.value, ast.List):
+                return None
+            fields: list[tuple[str, str]] = []
+            for item in statement.value.elts:
+                if (
+                    not isinstance(item, ast.Tuple)
+                    or len(item.elts) != 2
+                    or not isinstance(item.elts[0], ast.Constant)
+                    or not isinstance(item.elts[0].value, str)
+                ):
+                    return None
+                fields.append((item.elts[0].value, ast.unparse(item.elts[1])))
+            return fields
+    return None
+
+
+def model_ctypes_fields(fields: list[str]) -> list[tuple[str, str]]:
+    """Translate the model's bounded C wire vocabulary into ctypes syntax."""
+    scalars = {
+        "uint8_t": "ctypes.c_uint8",
+        "uint32_t": "ctypes.c_uint32",
+        "uint64_t": "ctypes.c_uint64",
+        "double": "ctypes.c_double",
+    }
+    result = []
+    for field in fields:
+        c_type, name = field.rsplit(" ", 1)
+        array = re.fullmatch(r"(\w+)\[(\d+)\]", name)
+        if array:
+            name, count = array.groups()
+        c_type = c_type.removeprefix("const ")
+        if c_type.endswith("*"):
+            base = c_type[:-1].strip()
+            expression = f"ctypes.POINTER({scalars.get(base, base)})"
+        else:
+            expression = scalars.get(c_type, c_type)
+        if array:
+            expression = f"{expression} * {count}"
+        result.append((name, expression))
+    return result
+
+
 def python_literal_assignment(source: str, name: str) -> object | None:
     """Read one module-level literal assignment without executing package code."""
     tree = ast.parse(source)
@@ -1065,6 +1118,27 @@ def check_python(report: Report, model: dict) -> None:
             "bindings/python/src/duallity/_abi.py",
         )
 
+    for check_id, class_name, model_key in (
+        ("PY-11-cache-policy", "CachePolicy", "cachePolicies"),
+        ("PY-12-applicability", "OperationApplicability", "operationApplicability"),
+    ):
+        compare_maps(
+            report,
+            check_id,
+            f"Python {class_name}",
+            model["configAbi"][model_key],
+            python_class_constants(abi_source, class_name),
+            "bindings/python/src/duallity/_abi.py",
+        )
+    for name, fields in model["configAbi"]["records"].items():
+        actual = python_record_fields(abi_source, name)
+        expected = model_ctypes_fields(fields)
+        report.add(
+            f"PY-13-record-{name}",
+            actual == expected,
+            f"{name} ctypes layout {'agrees' if actual == expected else 'DRIFT'} with configAbi",
+        )
+
     modeled = {item["name"] for item in model["cFunctions"]}
     symbols = set(re.findall(r'_bind\(\s*"(duallity_[a-z0-9_]+)"', abi_source))
     required = {
@@ -1073,6 +1147,7 @@ def check_python(report: Report, model: dict) -> None:
         "duallity_last_error_message",
         "duallity_wfst_new_ref",
         "duallity_wfst_free",
+        "duallity_resource_release",
         "duallity_wfst_resource",
         "duallity_wfst_options_default",
         "duallity_wfst_new_configured_ref",
@@ -1127,14 +1202,17 @@ def check_python(report: Report, model: dict) -> None:
     facade_ok = (
         "class Wfst(ScalarWfst):" in facade_source
         and "duallity_wfst_new_ref" in facade_source
-        and "return Wfst.adopt(resource)" in facade_source
+        and "duallity_wfst_new_configured_ref" in facade_source
+        and "graph = Wfst(resource)" in facade_source
+        and "lib.duallity_resource_release(resource)" in facade_source
+        and "lib.duallity_wfst_free(handle)" in facade_source
         and "DUALLITY_LIBRARY" in abi_source
     )
     report.add(
         "PY-9-resource-handoff",
         facade_ok,
         (
-            "Python uses pointer-form construction and zero-copy ScalarWfst adoption"
+            "Python uses pointer-form construction with independently retained handle and resource"
             if facade_ok
             else "Python resource construction/handoff contract is incomplete"
         ),

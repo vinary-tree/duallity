@@ -35,6 +35,7 @@ liblevenshtein_dir="${parent}/liblevenshtein-rust"
 interop_include="${liblevenshtein_dir}/vinary-tree-interop/include"
 
 CC="${CC:-cc}"
+CXX="${CXX:-c++}"
 PROFILE="${PROFILE:-release}"
 cargo_profile_flag="--release"
 if [ "${PROFILE}" = "debug" ]; then
@@ -104,6 +105,27 @@ echo "::group::compile family_pipeline.c (-std=c17 -Wall -Wextra -Werror)"
   -Wl,-rpath,"${duallity_lib}" \
   -lpthread -ldl -lm \
   -o "${binary}"
+echo "::endgroup::"
+
+cpp_binary="${CARGO_TARGET_DIR:-${duallity_root}/target}/cpp_configured_consumer"
+echo "::group::compile configured_consumer.cpp (-std=c++17 -Wall -Wextra -Werror)"
+"${CXX}" -std=c++17 -Wall -Wextra -Werror \
+  -I "${interop_include}" \
+  -I "${libdictenstein_dir}/include" \
+  -I "${duallity_root}/include" \
+  "${duallity_root}/bindings/cpp/tests/configured_consumer.cpp" \
+  -L "${libdictenstein_lib}" \
+  -L "${duallity_lib}" \
+  -llibdictenstein -lduallity \
+  -Wl,-rpath,"${libdictenstein_lib}" \
+  -Wl,-rpath,"${duallity_lib}" \
+  -lpthread -ldl -lm \
+  -o "${cpp_binary}"
+echo "::endgroup::"
+
+echo "::group::run ${cpp_binary}"
+LD_LIBRARY_PATH="${libdictenstein_lib}:${duallity_lib}:${LD_LIBRARY_PATH:-}" \
+  "${cpp_binary}"
 echo "::endgroup::"
 
 echo "::group::run ${binary}"

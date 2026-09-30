@@ -100,6 +100,39 @@ Every result is a `duallity.Wfst`, which extends
 `state_count`, `state_info(state)`, `arcs(state)`, `state(state)`, `snapshot()`,
 `native_resource`, and `close()`.
 
+## Revision-3 configured construction
+
+The original `wfst()` call remains compatible. For configured construction,
+`default_options()` returns a correctly sized and versioned
+`DuallityWfstOptionsV1` raw record. Change its fields, then call
+`configured_wfst(dictionary, query, options)`:
+
+```python
+options = duallity.default_options()
+options.maximum_distance = 1
+options.cache_policy = duallity.CachePolicy.LRU
+options.cache_capacity = 128
+with duallity.configured_wfst(dictionary, "cat", options) as graph:
+    effective = graph.options()  # immutable, deep-copied Python readback
+    graph.clear_cache()
+    graph.set_cache_policy(duallity.CachePolicy.NO_CACHE)
+    print(graph.cache_statistics().resident_states)
+```
+
+For custom generalized edits, use the exported `DuallityOperationV1`,
+`DuallityRestrictionV1`, and `DuallityGeneralizedLimitsV1` ctypes records.
+Each nested record needs `DuallityRecordHeaderV1(sizeof(record), 1, 0)`;
+arrays need their element byte stride. Keep ctypes arrays and encoded UTF-8
+buffers alive through `configured_wfst()`. The constructor deep-copies those
+inputs on success. `graph.options()` copies the effective catalog, restrictions,
+and limits into frozen Python values, so they remain valid after `close()`.
+The underlying handle and the interop resource retain are released separately
+and exactly once. Cache policy changes clear residency but not snapshot
+semantics; an `LRU` policy requires positive capacity. Malformed raw records
+raise `NativeError` with the C status. See the
+[revision-3 ABI contract](../../docs/architecture/07-versioned-configurable-wfst-abi.md)
+for all field rules and supported kind/algorithm combinations.
+
 ## Host-defined dictionaries
 
 Python can implement the input resource without a libdictenstein dependency.
@@ -128,8 +161,9 @@ Provider methods must obey the contracts documented by
 
 `wfst()` borrows the two-word input resource only for the constructor call. The
 native layer invokes its snapshot callback exactly once and retains that
-revision. On success, the temporary project handle transfers one owned resource
-retain into `Wfst`; no dictionary terms or WFST state arrays cross the boundary.
+revision. On success, `Wfst` keeps both the project handle (for inspection and
+cache controls) and an independent resource retain (for traversal); no
+dictionary terms or WFST state arrays cross the boundary.
 
 Use `with` for deterministic release. `close()` is idempotent, and a finalizer
 is a last-resort leak guard rather than the normal lifecycle:

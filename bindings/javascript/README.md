@@ -6,10 +6,20 @@ Given a dictionary resource and a query, it captures the dictionary once and ret
 WFST resource that hands off in $`\mathcal{O}(1)`$ to `@vinary-tree/lling-llang` composition — no
 serialization, no full state-space materialization.
 
-It is a thin skin over the eight-function `duallity_*` C ABI documented in
+It is a facade over the positional `duallity_*` C ABI documented in
 [docs/architecture/06](../../docs/architecture/06-resource-abi-and-bindings.md); this README is the
 JavaScript-specific guide. The task-oriented cross-language walkthrough is
 [docs/guides/07 · Language bindings](../../docs/guides/07-language-bindings.md).
+
+The native C library currently reports ABI version 1, API revision 4. Its
+configured WFST constructor and cache controls were added at API revision 3,
+but the shared JavaScript runtime used by this package does **not yet bridge
+those controls** for its native-addon, browser-WebAssembly, or WASI hosts.
+This package therefore supports only the positional constructor below.
+Passing a configuration object or a sixth argument throws a `TypeError`
+instead of silently discarding it; TypeScript intentionally has no config
+declarations yet. The missing runtime bridge is tracked as
+`bridge-duallity-config-through-javascript-runtime` in pgmcp.
 
 ## Surface
 
@@ -36,6 +46,9 @@ wfst(
 
 TypeScript declarations ship in [`index.d.ts`](index.d.ts). A ClojureScript namespace,
 `vinary-tree.duallity`, exposes `wfst`, `start`, `state`, and `close!`.
+Its optional fourth argument is a map containing only `:algorithm` and/or
+`:kind`; keys such as `:cache-policy`, `:operations`, and `:limits` are
+rejected until the shared runtime supports them.
 
 ## Install
 
@@ -51,16 +64,16 @@ and `./wasi`; a `./typescript` and a `./clojurescript` facade are also exported.
 
 ```js
 import { wfst } from "@vinary-tree/duallity";
-import { compose } from "@vinary-tree/lling-llang";
 
-// `dictionary` is a DictionaryResource from a @vinary-tree dictionary package.
-const edit = wfst(dictionary, "helo", 2, "standard", "levenshtein");
-
-// Compose with any downstream WFST on the same runtime; the handoff is O(1).
-const pipeline = compose(edit, languageModel);
-// … run a shortest-path search over `pipeline` …
-
-edit.close();   // release the retained resource
+// Pass a same-runtime DictionaryResource from a @vinary-tree dictionary package.
+export function withEditWfst(dictionary, consume) {
+  const edit = wfst(dictionary, "helo", 2, "standard", "levenshtein");
+  try {
+    return consume(edit); // e.g. hand off to a same-runtime lling-llang pipeline
+  } finally {
+    edit.close();
+  }
+}
 ```
 
 ClojureScript:
@@ -68,7 +81,8 @@ ClojureScript:
 ```clojure
 (require '[vinary-tree.duallity :as d])
 
-(let [edit (d/wfst dictionary "helo" 2 "standard" "levenshtein")]
+(let [edit (d/wfst dictionary "helo" 2 {:algorithm :standard
+                                         :kind :levenshtein})]
   (try
     ;; (d/start edit) / (d/state edit s) walk the lazy WFST
     (finally (d/close! edit))))
@@ -87,12 +101,14 @@ source dictionary.
 
 ## Errors
 
-A failed construction throws; the thrown error carries the boundary message
+A failed native construction throws; the thrown error carries the boundary message
 (`duallity_last_error_message()`) and corresponds to one `DuallityStatus`. The mapping is **total** —
 see the [error-mapping totality table](../../docs/guides/07-language-bindings.md#5-error-mapping-totality).
 Common cases: a non-`UnicodeScalar` dictionary or stale interop ABI throws `INCOMPATIBLE_RESOURCE`; a
 misbehaving dictionary provider throws `PROVIDER_ERROR`; an out-of-range `kind`/`algorithm` or a
 $`k > 255`$ distance for a universal/generalized kind throws `INVALID_ARGUMENT`.
+Unsupported configuration is rejected by the JavaScript/ClojureScript facade
+with `TypeError` before any native call; it does not carry a `DuallityStatus`.
 
 ## Concurrency and zero-copy
 
@@ -112,7 +128,7 @@ $`k > 255`$ distance for a universal/generalized kind throws `INVALID_ARGUMENT`.
 | `@vinary-tree/vinary-tree-interop` (dependency) | `4.0.0-rc.6` |
 | `@vinary-tree/javascript-runtime` (runtime) | `4.0.0-rc.6` |
 | Node | `>= 22.14` |
-| duallity C ABI | version `1`, revision `2` |
+| duallity C ABI | version `1`, API revision `4` (configured controls start at revision `3`, not yet bridged here) |
 
 > **Release policy.** Evaluate the candidate through the exact
 > `4.0.0-rc.6` version or npm's `next` tag. The package and both shared
@@ -128,17 +144,18 @@ $`k > 255`$ distance for a universal/generalized kind throws `INVALID_ARGUMENT`.
 
 ## Executable conformance evidence
 
-[`test/facades.test.mjs`](test/facades.test.mjs) exercises the public
-JavaScript, TypeScript, ClojureScript, native, WebAssembly, and WASI entry points
-against an instrumented runtime contract:
+[`test/facades.test.mjs`](test/facades.test.mjs) checks package exports,
+the ClojureScript option guard, and native/CommonJS, browser-WebAssembly,
+and WASI JavaScript facade behavior against an isolated runtime stub:
 
 ```sh
 npm test --prefix bindings/javascript
 ```
 
-It verifies export parity, selector forwarding, runtime-identity/interface
-guards, state expansion, and deterministic release without importing
-repository-private implementation modules.
+These tests verify positional forwarding and fail-closed configuration and
+runtime-identity guards. They do **not** validate native state expansion,
+cache behavior, or release semantics; those need the shared runtime bridge and
+fresh installed-consumer tests before the full mirror can be claimed complete.
 
 ## Security and provider trust
 
@@ -155,13 +172,14 @@ guard with private handle fields or move a resource between workers/runtimes.
 | different-runtime `TypeError` | Deduplicate the shared runtime and use only one of native, WebAssembly, or WASI in a resource domain. |
 | incompatible-resource error | Supply a Unicode-scalar `vt.dictionary.v1` object from the same runtime. |
 | invalid selector/distance | Check the nine kind strings and each kind's represented maximum distance. |
+| configured options `TypeError` | This package currently accepts only positional `wfst` arguments (or ClojureScript `:algorithm`/`:kind`); use the C ABI directly if configuration is required until the shared runtime bridge ships. |
 | native module load failure | Verify Node version, OS/CPU artifact, exact family pins, and reinstall the package. |
 | rising native memory | Close every returned WFST in `finally`; GC finalizers are fallback containment only. |
 
 ## Maintainer workflow
 
 1. Update [`bindings/api.json`](../api.json), `package.json`, declarations, and every entry point together.
-2. Keep JavaScript, TypeScript, and ClojureScript exports and selector semantics identical.
-3. Add positive, negative, cross-runtime, and close-after-error cases to `facades.test.mjs`.
+2. Bridge configured controls in the shared JavaScript runtime for native-addon, browser-WebAssembly, and WASI hosts before exposing new facade methods or declarations.
+3. Keep JavaScript, TypeScript, and ClojureScript exports and selector semantics identical. Add positive, negative, cross-runtime, and close-after-error cases to `facades.test.mjs` and installed-consumer tests.
 4. Run both binding gates, npm tests, and the family pipeline.
 5. Validate native, WebAssembly, and WASI packages without weakening runtime identity.

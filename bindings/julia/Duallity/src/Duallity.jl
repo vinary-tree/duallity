@@ -2,9 +2,13 @@ module Duallity
 
 using Libdl
 import VinaryTreeInterop
+import LlingLlang
+import Libdictenstein
 
 const VTI = VinaryTreeInterop
+const LD = Libdictenstein
 include("GeneratedAbi.jl")
+include("Phonetic.jl")
 
 @doc "Native duallity ABI version required by this facade." ABI_VERSION
 @doc "Minimum additive duallity API revision required by this facade." API_REVISION
@@ -21,6 +25,13 @@ export ABI_VERSION,
     abi_version,
     api_revision,
     wfst,
+    PhoneticRewriteRule,
+    PhoneticMatch,
+    phonetic_nfa,
+    phonetic_product,
+    rewrite_wfst,
+    phonetic_pipeline,
+    phonetic_matches,
     ALGORITHM_STANDARD,
     ALGORITHM_TRANSPOSITION,
     ALGORITHM_MERGE_AND_SPLIT,

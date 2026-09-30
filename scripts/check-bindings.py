@@ -305,14 +305,16 @@ def compare_maps(
 def check_symbols(report: Report, model: dict) -> None:
     modeled = {item["name"] for item in model["cFunctions"]}
     ffi = read_text(report, "SYM-1-ffi", ROOT / "src" / "ffi.rs")
+    phonetic_ffi = read_text(report, "SYM-1-ffi", ROOT / "src" / "ffi" / "phonetic.rs")
     header = read_text(report, "SYM-2-header", ROOT / "include" / "duallity.h")
     hpp = read_text(report, "SYM-3-hpp", ROOT / "include" / "duallity.hpp")
-    if ffi is None or header is None or hpp is None:
+    if ffi is None or phonetic_ffi is None or header is None or hpp is None:
         return
 
     exported = set(
         re.findall(
-            r'pub\s+(?:unsafe\s+)?extern\s+"C"\s+fn\s+(duallity_[a-z0-9_]+)\s*\(', ffi
+            r'pub\s+(?:unsafe\s+)?extern\s+"C"\s+fn\s+(duallity_[a-z0-9_]+)\s*\(',
+            ffi + "\n" + phonetic_ffi,
         )
     )
     if exported == modeled:
@@ -495,6 +497,18 @@ def check_enums(report: Report, model: dict) -> None:
                 False,
                 f"{constant} drift: model={model_value} ffi.rs={rust_value} duallity.h={header_value}",
             )
+
+    minimal_revision = re.search(
+        r'#\[cfg\(not\(feature = "phonetic-rules"\)\)\]\s*'
+        r'pub const DUALLITY_API_REVISION: u32 = (\d+);',
+        ffi,
+    )
+    report.add(
+        "ENUM-10-minimal-api-revision",
+        minimal_revision is not None
+        and int(minimal_revision.group(1)) == int(model["configAbi"]["sinceApiRevision"]),
+        "minimal ffi reports revision 3 without feature-gated phonetic symbols",
+    )
 
 
 # ── CFG: staged, additive configuration ABI declarations ───────────────────

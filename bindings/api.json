@@ -169,7 +169,24 @@
   },
   "packageVersion": "4.0.0-rc.6",
   "abiVersion": 1,
-  "apiRevision": 3,
+  "apiRevision": 4,
+  "phoneticAbi": {
+    "sinceApiRevision": 4,
+    "feature": "phonetic-rules",
+    "maxTextBytes": 1048576,
+    "maxRules": 4096,
+    "ruleRecord": [
+      "DuallityRecordHeaderV1 header",
+      "const uint8_t* input_data",
+      "size_t input_len",
+      "const uint8_t* output_data",
+      "size_t output_len",
+      "double cost",
+      "int32_t priority",
+      "uint32_t reserved"
+    ],
+    "outputOwnership": "owned-vt.scalar-wfst.1-resource"
+  },
   "configAbi": {
     "sinceApiRevision": 3,
     "recordVersion": 1,
@@ -672,6 +689,70 @@
         { "name": "capacity", "cType": "uint64_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" }
       ],
       "raku": { "bind": true }
+    },
+    {
+      "name": "duallity_phonetic_nfa_new",
+      "rustModule": "ffi::phonetic",
+      "sinceApiRevision": 4,
+      "return": { "cType": "DuallityStatus", "ownership": "value", "nullability": "not-applicable" },
+      "parameters": [
+        { "name": "pattern_data", "cType": "const uint8_t*", "direction": "in", "ownership": "borrowed-for-call", "nullability": "nullable-if-pattern_len-is-zero" },
+        { "name": "pattern_len", "cType": "size_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "alphabet_data", "cType": "const uint8_t*", "direction": "in", "ownership": "borrowed-for-call", "nullability": "null-selects-default-alphabet" },
+        { "name": "alphabet_len", "cType": "size_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "phonetic_weight", "cType": "double", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "cache_policy", "cType": "uint32_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "cache_capacity", "cType": "uint64_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "out_resource", "cType": "VtResource*", "direction": "out", "ownership": "owned-output-on-success", "nullability": "non-null" }
+      ],
+      "raku": { "bind": false, "reason": "The phonetic Raku facade has a dedicated parity leaf and must first model Unicode buffer ownership and rule records" }
+    },
+    {
+      "name": "duallity_phonetic_product_new_ref",
+      "rustModule": "ffi::phonetic",
+      "sinceApiRevision": 4,
+      "return": { "cType": "DuallityStatus", "ownership": "value", "nullability": "not-applicable" },
+      "parameters": [
+        { "name": "dictionary", "cType": "const VtResource*", "direction": "in", "ownership": "borrowed-capture-snapshot", "nullability": "non-null" },
+        { "name": "pattern_data", "cType": "const uint8_t*", "direction": "in", "ownership": "borrowed-for-call", "nullability": "nullable-if-pattern_len-is-zero" },
+        { "name": "pattern_len", "cType": "size_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "maximum_distance", "cType": "uint32_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "phonetic_weight", "cType": "double", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "edit_weight", "cType": "double", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "cache_policy", "cType": "uint32_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "cache_capacity", "cType": "uint64_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "out_resource", "cType": "VtResource*", "direction": "out", "ownership": "owned-output-on-success", "nullability": "non-null" }
+      ],
+      "raku": { "bind": false, "reason": "The phonetic Raku facade has a dedicated parity leaf and must first model Unicode buffer ownership and rule records" }
+    },
+    {
+      "name": "duallity_phonetic_rewrite_new",
+      "rustModule": "ffi::phonetic",
+      "sinceApiRevision": 4,
+      "return": { "cType": "DuallityStatus", "ownership": "value", "nullability": "not-applicable" },
+      "parameters": [
+        { "name": "rules", "cType": "const DuallityPhoneticRuleV1*", "direction": "in", "ownership": "borrowed-deep-copied-for-call", "nullability": "nullable-if-rule_count-is-zero" },
+        { "name": "rule_count", "cType": "size_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "allow_identity", "cType": "uint8_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "cache_policy", "cType": "uint32_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "cache_capacity", "cType": "uint64_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "out_resource", "cType": "VtResource*", "direction": "out", "ownership": "owned-output-on-success", "nullability": "non-null" }
+      ],
+      "raku": { "bind": false, "reason": "The phonetic Raku facade has a dedicated parity leaf and must first model Unicode buffer ownership and rule records" }
+    },
+    {
+      "name": "duallity_phonetic_rewrite_builtin_new",
+      "rustModule": "ffi::phonetic",
+      "sinceApiRevision": 4,
+      "return": { "cType": "DuallityStatus", "ownership": "value", "nullability": "not-applicable" },
+      "parameters": [
+        { "name": "locale", "cType": "uint32_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "allow_identity", "cType": "uint8_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "cache_policy", "cType": "uint32_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "cache_capacity", "cType": "uint64_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "out_resource", "cType": "VtResource*", "direction": "out", "ownership": "owned-output-on-success", "nullability": "non-null" }
+      ],
+      "raku": { "bind": false, "reason": "The phonetic Raku facade has a dedicated parity leaf and must first model locale selectors and resource ownership" }
     }
   ],
   "javascript": {

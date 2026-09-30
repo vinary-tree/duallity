@@ -52,7 +52,7 @@ fn defaults() -> DuallityWfstOptionsV1 {
 
 #[test]
 fn configured_constructor_captures_once_and_handle_outlives_caller_inputs() {
-    assert_eq!(duallity_api_revision(), 3);
+    assert!(duallity_api_revision() >= 3);
     let fixture = CountingDictionary::from_terms(&["cat", "cot"]);
     let dictionary = fixture.resource();
     let mut options = defaults();

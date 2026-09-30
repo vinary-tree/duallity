@@ -10,6 +10,8 @@ use crate::{
     FzfWfst, GeneralizedWfstBuilder, GeneralizedWfstLimits, LevenshteinWfst,
     UniversalLevenshteinWfst,
 };
+#[cfg(feature = "phonetic-rules")]
+use crate::{PhoneticNfaWfst, PhoneticStateSource, RewriteRule, RewriteWfst};
 mod fault_scope;
 use crate::DirectStateSource;
 use fault_scope::FaultScope;
@@ -571,24 +573,31 @@ enum Adapter {
     UniversalMergeAndSplit(UniversalLevenshteinWfst<MergeAndSplit, ResourceDictionary>),
     Generalized(crate::GeneralizedWfst<ResourceDictionary>),
     Fzf(FzfWfst<ResourceDictionary>),
+    #[cfg(feature = "phonetic-rules")]
+    PhoneticNfa(PhoneticNfaWfst),
+    #[cfg(feature = "phonetic-rules")]
+    PhoneticProduct(PhoneticStateSource<ResourceDictionary>),
+    #[cfg(feature = "phonetic-rules")]
+    Rewrite(RewriteWfst),
 }
 
 struct AdapterProvider {
     adapter: Adapter,
-    dictionary: ResourceDictionary,
+    dictionary: Option<ResourceDictionary>,
 }
 
 fn scalar_state<W, S>(
     wfst: &W,
-    dictionary: &ResourceDictionary,
+    dictionary: Option<&ResourceDictionary>,
     state: u64,
+    is_valid_state: impl Fn(&W, StateId) -> bool,
     weight_value: impl Fn(S) -> f64,
 ) -> Result<ScalarWfstState, VtStatus>
 where
-    W: Wfst<char, S> + DirectStateSource<char, S>,
+    W: DirectStateSource<char, S>,
     S: lling_llang::prelude::Semiring,
 {
-    dictionary.with_checked(|| {
+    let compute = || {
         let invalid = || ScalarWfstState {
             valid: false,
             is_final: false,
@@ -598,7 +607,7 @@ where
         let Ok(state) = StateId::try_from(state) else {
             return Ok(invalid());
         };
-        if !wfst.is_valid_state(state) {
+        if !is_valid_state(wfst, state) {
             return Ok(invalid());
         }
         let (is_final, final_weight, transitions) = match wfst.expand_state(state) {
@@ -636,29 +645,45 @@ where
             final_weight: weight_value(final_weight),
             arcs,
         })
-    })
+    };
+    match dictionary {
+        Some(dictionary) => dictionary.with_checked(compute),
+        None => compute(),
+    }
 }
 
 fn tropical_state<W>(
     wfst: &W,
-    dictionary: &ResourceDictionary,
+    dictionary: Option<&ResourceDictionary>,
     state: u64,
 ) -> Result<ScalarWfstState, VtStatus>
 where
     W: Wfst<char, TropicalWeight> + DirectStateSource<char, TropicalWeight>,
 {
-    scalar_state(wfst, dictionary, state, |weight| weight.value())
+    scalar_state(
+        wfst,
+        dictionary,
+        state,
+        |wfst, state| wfst.is_valid_state(state),
+        |weight| weight.value(),
+    )
 }
 
 fn arctic_state<W>(
     wfst: &W,
-    dictionary: &ResourceDictionary,
+    dictionary: Option<&ResourceDictionary>,
     state: u64,
 ) -> Result<ScalarWfstState, VtStatus>
 where
     W: Wfst<char, ArcticWeight> + DirectStateSource<char, ArcticWeight>,
 {
-    scalar_state(wfst, dictionary, state, |weight| weight.value())
+    scalar_state(
+        wfst,
+        dictionary,
+        state,
+        |wfst, state| wfst.is_valid_state(state),
+        |weight| weight.value(),
+    )
 }
 
 impl ScalarWfstProvider for AdapterProvider {
@@ -678,6 +703,12 @@ impl ScalarWfstProvider for AdapterProvider {
             Adapter::UniversalMergeAndSplit(wfst) => wfst.start(),
             Adapter::Generalized(wfst) => wfst.start(),
             Adapter::Fzf(wfst) => wfst.start(),
+            #[cfg(feature = "phonetic-rules")]
+            Adapter::PhoneticNfa(wfst) => wfst.start(),
+            #[cfg(feature = "phonetic-rules")]
+            Adapter::PhoneticProduct(wfst) => lling_llang::prelude::StateSource::start(wfst),
+            #[cfg(feature = "phonetic-rules")]
+            Adapter::Rewrite(wfst) => wfst.start(),
         };
         Ok(u64::from(start))
     }
@@ -688,12 +719,30 @@ impl ScalarWfstProvider for AdapterProvider {
 
     fn state(&self, state: u64) -> Result<ScalarWfstState, VtStatus> {
         match &self.adapter {
-            Adapter::Levenshtein(wfst) => tropical_state(wfst, &self.dictionary, state),
-            Adapter::UniversalStandard(wfst) => tropical_state(wfst, &self.dictionary, state),
-            Adapter::UniversalTransposition(wfst) => tropical_state(wfst, &self.dictionary, state),
-            Adapter::UniversalMergeAndSplit(wfst) => tropical_state(wfst, &self.dictionary, state),
-            Adapter::Generalized(wfst) => tropical_state(wfst, &self.dictionary, state),
-            Adapter::Fzf(wfst) => arctic_state(wfst, &self.dictionary, state),
+            Adapter::Levenshtein(wfst) => tropical_state(wfst, self.dictionary.as_ref(), state),
+            Adapter::UniversalStandard(wfst) => {
+                tropical_state(wfst, self.dictionary.as_ref(), state)
+            }
+            Adapter::UniversalTransposition(wfst) => {
+                tropical_state(wfst, self.dictionary.as_ref(), state)
+            }
+            Adapter::UniversalMergeAndSplit(wfst) => {
+                tropical_state(wfst, self.dictionary.as_ref(), state)
+            }
+            Adapter::Generalized(wfst) => tropical_state(wfst, self.dictionary.as_ref(), state),
+            Adapter::Fzf(wfst) => arctic_state(wfst, self.dictionary.as_ref(), state),
+            #[cfg(feature = "phonetic-rules")]
+            Adapter::PhoneticNfa(wfst) => tropical_state(wfst, None, state),
+            #[cfg(feature = "phonetic-rules")]
+            Adapter::PhoneticProduct(wfst) => scalar_state(
+                wfst,
+                self.dictionary.as_ref(),
+                state,
+                |source, state| source.is_valid_product_state(state),
+                |weight: TropicalWeight| weight.value(),
+            ),
+            #[cfg(feature = "phonetic-rules")]
+            Adapter::Rewrite(wfst) => tropical_state(wfst, None, state),
         }
     }
 }
@@ -820,8 +869,111 @@ pub(crate) unsafe fn create_wfst_configured(
     Ok(OwnedWfstResource::from_provider_with_cache(
         Arc::new(AdapterProvider {
             adapter,
+            dictionary: Some(dictionary),
+        }),
+        cache_policy,
+    ))
+}
+
+#[cfg(feature = "phonetic-rules")]
+fn compiled_phonetic_nfa(
+    pattern: &str,
+) -> Result<liblevenshtein::phonetic::nfa::NFAChar, BindingError> {
+    use liblevenshtein::phonetic::nfa::compiler::compile;
+    use liblevenshtein::phonetic::regex::parse;
+    let ast = parse(pattern).map_err(|error| {
+        BindingError::InvalidArgument(format!("phonetic pattern parse error: {error:?}"))
+    })?;
+    compile(&ast).map_err(|error| {
+        BindingError::InvalidArgument(format!("phonetic pattern compile error: {error:?}"))
+    })
+}
+
+#[cfg(feature = "phonetic-rules")]
+fn export_phonetic_adapter(
+    adapter: Adapter,
+    dictionary: Option<ResourceDictionary>,
+    cache_policy: SharedCachePolicy,
+) -> OwnedWfstResource {
+    OwnedWfstResource::from_provider_with_cache(
+        Arc::new(AdapterProvider {
+            adapter,
             dictionary,
         }),
+        cache_policy,
+    )
+}
+
+/// Compile an independent phonetic-language graph with explicit wide-label alphabet.
+#[cfg(feature = "phonetic-rules")]
+pub(crate) fn create_phonetic_nfa(
+    pattern: &str,
+    alphabet: Option<&str>,
+    phonetic_weight: f64,
+    cache_policy: SharedCachePolicy,
+) -> Result<OwnedWfstResource, BindingError> {
+    let nfa = compiled_phonetic_nfa(pattern)?;
+    let graph = match alphabet {
+        Some(alphabet) => PhoneticNfaWfst::with_phonetic_weight_and_alphabet(
+            nfa,
+            phonetic_weight,
+            alphabet.chars(),
+        ),
+        None => PhoneticNfaWfst::with_phonetic_weight(nfa, phonetic_weight),
+    }
+    .map_err(|error| BindingError::InvalidArgument(error.to_string()))?;
+    Ok(export_phonetic_adapter(
+        Adapter::PhoneticNfa(graph),
+        None,
+        cache_policy,
+    ))
+}
+
+/// Capture one dictionary revision and construct its phonetic/edit product.
+#[cfg(feature = "phonetic-rules")]
+pub(crate) unsafe fn create_phonetic_product(
+    dictionary: VtResource,
+    pattern: &str,
+    maximum_distance: u8,
+    phonetic_weight: f64,
+    edit_weight: f64,
+    cache_policy: SharedCachePolicy,
+) -> Result<OwnedWfstResource, BindingError> {
+    let nfa = compiled_phonetic_nfa(pattern)?;
+    let dictionary = unsafe { ResourceDictionary::capture(dictionary)? };
+    let scope = dictionary
+        .provider
+        .fault_scope()
+        .map_err(BindingError::Provider)?;
+    let graph = PhoneticStateSource::with_weights(
+        &dictionary,
+        nfa,
+        maximum_distance,
+        phonetic_weight,
+        edit_weight,
+    )
+    .map_err(|error| BindingError::InvalidArgument(error.to_string()))?;
+    scope.check().map_err(BindingError::Provider)?;
+    Ok(export_phonetic_adapter(
+        Adapter::PhoneticProduct(graph),
+        Some(dictionary),
+        cache_policy,
+    ))
+}
+
+/// Construct a standalone priority-ordered phonetic rewrite graph.
+#[cfg(feature = "phonetic-rules")]
+pub(crate) fn create_phonetic_rewrite(
+    rules: Vec<RewriteRule>,
+    allow_identity: bool,
+    cache_policy: SharedCachePolicy,
+) -> Result<OwnedWfstResource, BindingError> {
+    let mut graph = RewriteWfst::with_rules(rules)
+        .map_err(|error| BindingError::InvalidArgument(error.to_string()))?;
+    graph.set_allow_identity(allow_identity);
+    Ok(export_phonetic_adapter(
+        Adapter::Rewrite(graph),
+        None,
         cache_policy,
     ))
 }

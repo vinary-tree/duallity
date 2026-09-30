@@ -54,6 +54,11 @@ owning library.
   effective option readback, caller-buffer independence, cache statistics and
   policy control, resource ownership after handle destruction, and rejection
   of unknown record versions and nonzero reserved fields.
+- **DUAL-PHONETIC-C-1** — revision-4 constructors create an ambiguous native
+  phonetic NFA, a dictionary-backed edit product, a custom rewrite graph, and
+  a built-in German rewrite graph. The C walker verifies both spellings and
+  snapshot survival after source release; malformed records and locales fail
+  without transferring ownership.
 
 ## Resource-ownership contract exercised
 
@@ -61,6 +66,7 @@ owning library.
 | --------------------------- | --------------------------------------------------------------- |
 | `ldict_dictionary_resource` | **Borrow** — valid while the dictionary handle lives; do NOT release. A retaining consumer takes its own retain (duallity snapshots it; liblevenshtein retains it). |
 | `duallity_wfst_resource`    | **Owned** — one retain; release with `duallity_resource_release`. |
+| `duallity_phonetic_*_new`   | **Owned** — one direct `vt.scalar-wfst.1` retain; release with `duallity_resource_release`. |
 | `lling_wfst_resource`       | **Owned** — one retain; release with `lling_resource_release`.    |
 | `lling_wfst_compose`        | Lazily **retains** both inputs; freeing the composition releases them. |
 
@@ -72,7 +78,8 @@ owning library.
 bindings/c/tests/build-and-run.sh
 ```
 
-The script builds the four cdylibs (`--no-default-features --features ffi`) and
+The script builds the three sibling cdylibs with `ffi` and duallity with
+`c-bindings` (including the native phonetic family), then
 compiles `family_pipeline.c` with `-std=c17 -Wall -Wextra -Werror`, wiring the
 include paths (each crate's `include/` plus
 `../vinary-tree-interop/include`), the library search paths,

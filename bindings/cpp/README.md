@@ -141,7 +141,8 @@ boundary is caught, an exception here is a *reported* error, never undefined beh
 
 ## Version compatibility
 
-Negotiate with `duallity_abi_version()` (currently `1`) and `duallity_api_revision()` (currently `3`)
+Negotiate with `duallity_abi_version()` (currently `1`) and `duallity_api_revision()`
+(currently `3` for minimal FFI builds or `4` with native phonetic constructors)
 at load time; refuse an ABI version you do not understand. The C++ facade exposes both its
 original constructor and the additive revision-3 constructor/readback/cache controls.
 This binding tracks crate `duallity 4.0.0-rc.6`

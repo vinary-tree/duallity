@@ -107,6 +107,104 @@ Universal and generalized variants represent distances through `UInt8`, so
 their maximum distance is at most 255. The native boundary reports an error
 instead of narrowing a larger value.
 
+### Phonetic patterns, rewrites, and dictionary products
+
+The generalized phonetic selector above enables *digraph edit operations*;
+it is not the same as a phonetic regular-expression NFA. Duallity.jl also
+exposes the three native phonetic WFST forms and their composition:
+
+| Julia constructor | Native graph | Intended use |
+|---|---|---|
+| `phonetic_nfa(pattern)` | `PhoneticNfaWfst` | Compile alternatives and character classes into a standalone language graph. |
+| `phonetic_product(dictionary, pattern)` | `PhoneticStateSource` / `PhoneticWfst` semantics | Match a pattern through a bounded edit automaton against one captured dictionary revision. |
+| `rewrite_wfst(rules)` or `rewrite_wfst(locale)` | `RewriteWfst` | Apply unconditional phonetic substitutions, deletions, and insertions. |
+| `phonetic_pipeline(dictionary, pattern; rewrite_rules=..., locale=...)` | Lazy lling-llang composition | Chain either custom rules or a built-in locale with the dictionary-backed product. |
+
+This is the same native algorithm family described in the
+[phonetic architecture guide](../../../docs/design/phonetic-pipeline-builder.md)
+and [route diagram](../../../docs/diagrams/phonetic-route-decision.svg).
+Julia supplies configuration and resource ownership, not a second regex or
+edit-distance implementation.
+
+```julia
+using Duallity
+import Libdictenstein as LD
+
+dictionary = LD.DynamicDawg()
+LD.insert_batch!(dictionary, ["phone" => nothing, "fone" => nothing])
+
+pattern = phonetic_nfa("(ph|f)one"; phonetic_weight=0.25)
+product = phonetic_product(dictionary, "(ph|f)one";
+    maximum_distance=0, cache=:lru, capacity=1024)
+try
+    @assert Set(match.term for match in phonetic_matches(product;
+        max_visits=1000, max_output_scalars=16)) == Set(["phone", "fone"])
+finally
+    close(product)
+    close(pattern)
+    close(dictionary)
+end
+```
+
+`phonetic_nfa` uses a printable-ASCII finite alphabet for wide regex labels by
+default; pass `alphabet="éö..."` to enumerate other Unicode scalars for wide
+classes. Literal Unicode labels are exact regardless of this alphabet.
+Invalid and empty patterns fail with `NativeError`, preserving the native
+parser's contract. The product's distance is an *unweighted edit count* in
+`0:255`; `phonetic_weight` charges consumed NFA edges and `edit_weight` scales
+accepted edit distance. Both must be finite and nonnegative. Neither changes
+the threshold.
+
+Rewrite rules are ordered by descending priority, with insertion order
+breaking ties; the rule strings are copied into native storage. An empty
+output represents deletion. Built-in `:en`, `:de`, and `:fr` selectors use the
+native English, German, and French unconditional rule sets:
+
+```julia
+using Duallity
+import Libdictenstein as LD
+
+dictionary = LD.DynamicDawg()
+dictionary["fone"] = nothing
+rule = PhoneticRewriteRule("ph", "f"; cost=0.5, priority=2)
+rewrite = rewrite_wfst([rule]; allow_identity=false, cache=:none)
+german = rewrite_wfst(:de)
+pipeline = phonetic_pipeline(dictionary, "fone";
+    rewrite_rules=[rule], maximum_distance=1)
+try
+    candidates = phonetic_matches(pipeline;
+        max_visits=10_000, max_output_scalars=32,
+        max_results=20, max_cost=2.0)
+finally
+    close(pipeline)
+    close(german)
+    close(rewrite)
+    close(dictionary)
+end
+```
+
+Use `phonetic_pipeline(dictionary, pattern; locale=:de)` for a built-in
+rewrite stage, or `rewrite_rules=[...]` for custom rules; specifying both is
+an argument error. `rewrite_cache`/`rewrite_capacity` configure the rewrite
+stage separately from the product's `cache`/`capacity` keywords.
+
+The convenience search enumerates at most `max_visits` distinct state/output
+pairs, bounds output by Unicode scalar count, filters by cost, deduplicates
+terms at their least *observed* cost, and returns cost-then-lexicographically
+ordered `PhoneticMatch(term, cost)` values. When a traversal bound cuts the
+graph, the result is deliberately not advertised as globally optimal top-k.
+An application needing exhaustive ranking must choose bounds sufficient for
+its language. Zero-cost cycles remain safe under finite visit/output bounds.
+
+Locale names select rule sets only: neither native duallity nor this facade
+implicitly case-folds or Unicode-normalizes input. Normalize text explicitly
+and consistently at dictionary construction and query time if the application
+needs that policy; implicit normalization would change exact label semantics.
+All four constructors yield owned, tropical Unicode-scalar graphs and can be
+composed with lling-llang or custom `vt.scalar-wfst.1` providers. The cache
+selector is `:all`, `:none`, or `:lru` (with a positive capacity or native
+default); it changes residency, not accepted language or weights.
+
 ## Ownership & memory model
 
 `wfst` borrows the input only for the call, captures its current immutable
@@ -124,6 +222,12 @@ before crossing the ABI. Native validation rejects invalid UTF-8, unknown enum
 values, incompatible/non-Unicode dictionary providers, malformed callback
 pages, and unrepresentable distances. No Rust panic or foreign-provider
 exception unwinds across the C boundary.
+
+Phonetic constructors additionally reject malformed/empty patterns, unknown
+locales, invalid rewrite records, and nonfinite or negative weights. The C
+boundary clears every output resource on failure; failed construction never
+leaks a dictionary retain. A composed pipeline closes its intermediate
+graphs after lling-llang captures independent operand retains.
 
 ## Concurrency
 
@@ -170,7 +274,7 @@ resource words across incompatible runtimes or processes.
 |---|---:|
 | Duallity.jl | `4.0.0-rc.6` |
 | duallity C ABI | `1` |
-| duallity API revision | at least `2` |
+| duallity API revision | at least `4` for phonetic constructors |
 | VinaryTreeInterop.jl | major version `4` |
 | Julia | `1.10` or newer |
 
@@ -181,7 +285,9 @@ Module initialization validates the native ABI and minimum API revision.
 [`test/runtests.jl`](test/runtests.jl) constructs all nine kinds and all four
 algorithms against a real libdictenstein dictionary, verifies weight domains,
 proves capture-once behavior under live mutation, and composes the result with
-an lling-llang case-mapping graph.
+an lling-llang case-mapping graph. It also exercises phonetic ambiguity,
+Unicode, empty-pattern errors, edit thresholds, priority rewrites, locale
+presets, cache policies, resource independence, and bounded traversal.
 
 ```sh
 TMPDIR="$PWD/target/julia-tmp" \

@@ -1020,6 +1020,77 @@ static void run_configured_revision3(void) {
     ldict_dictionary_free(dictionary);
 }
 
+static void run_phonetic_revision4(void) {
+    printf("[phase D] revision-4 native phonetic family\n");
+    check(duallity_api_revision() >= 4, "native phonetic constructors are available");
+
+    VtResource nfa = {0};
+    const char *pattern = "(ph|f)one";
+    check(duallity_phonetic_nfa_new((const uint8_t *)pattern, strlen(pattern),
+                                    NULL, 0, 0.25, DUALLITY_LRU, 2, &nfa) == DUALLITY_STATUS_OK,
+          "phonetic NFA constructor exports an owned WFST");
+    LangMap nfa_language = {0};
+    wfst_language(nfa, &nfa_language);
+    check(nfa_language.len == 2 && lang_get(&nfa_language, "phone", NULL) &&
+              lang_get(&nfa_language, "fone", NULL),
+          "phonetic NFA preserves both ambiguous spellings");
+    lang_free(&nfa_language);
+    duallity_resource_release(nfa);
+
+    LdictDictionary *dictionary = NULL;
+    check(ldict_dynamic_dawg_new(VT_UNIT_DOMAIN_UNICODE_SCALAR, &dictionary) == LDICT_STATUS_OK,
+          "phonetic product source dictionary created");
+    LdictOptionalU64 no_value = {.value = 0, .has_value = 0, .reserved = {0}};
+    uint8_t inserted = 0;
+    check(ldict_dictionary_insert_text(dictionary, (const uint8_t *)"phone", 5,
+                                       no_value, &inserted) == LDICT_STATUS_OK,
+          "first phonetic term inserted");
+    check(ldict_dictionary_insert_text(dictionary, (const uint8_t *)"fone", 4,
+                                       no_value, &inserted) == LDICT_STATUS_OK,
+          "second phonetic term inserted");
+    VtResource source = {0};
+    check(ldict_dictionary_resource(dictionary, &source) == LDICT_STATUS_OK,
+          "phonetic product source resource borrowed");
+    VtResource product = {0};
+    check(duallity_phonetic_product_new_ref(&source, (const uint8_t *)pattern, strlen(pattern),
+                                            0, 0.0, 1.0, DUALLITY_NO_CACHE, 0, &product) ==
+              DUALLITY_STATUS_OK,
+          "phonetic product captures a dictionary revision");
+    ldict_dictionary_free(dictionary);
+    LangMap product_language = {0};
+    wfst_language(product, &product_language);
+    check(product_language.len == 2 && lang_get(&product_language, "phone", NULL) &&
+              lang_get(&product_language, "fone", NULL),
+          "captured phonetic product survives source release");
+    lang_free(&product_language);
+    duallity_resource_release(product);
+
+    DuallityPhoneticRuleV1 rule = {
+        .header = {sizeof(DuallityPhoneticRuleV1), 1, 0},
+        .input_data = (const uint8_t *)"ph", .input_len = 2,
+        .output_data = (const uint8_t *)"f", .output_len = 1,
+        .cost = 0.5, .priority = 2, .reserved = 0,
+    };
+    VtResource rewrite = {0};
+    check(duallity_phonetic_rewrite_new(&rule, 1, 0, DUALLITY_CACHE_ALL, 0, &rewrite) ==
+              DUALLITY_STATUS_OK,
+          "versioned rewrite records construct an owned graph");
+    duallity_resource_release(rewrite);
+    rule.header.record_version = 2;
+    check(duallity_phonetic_rewrite_new(&rule, 1, 0, DUALLITY_CACHE_ALL, 0, &rewrite) ==
+              DUALLITY_STATUS_INVALID_ARGUMENT && rewrite.context == NULL,
+          "invalid rewrite record fails without transferring ownership");
+
+    VtResource builtin = {0};
+    check(duallity_phonetic_rewrite_builtin_new(1, 1, DUALLITY_NO_CACHE, 0, &builtin) ==
+              DUALLITY_STATUS_OK,
+          "native German rewrite family constructs an owned graph");
+    duallity_resource_release(builtin);
+    check(duallity_phonetic_rewrite_builtin_new(3, 1, DUALLITY_NO_CACHE, 0, &builtin) ==
+              DUALLITY_STATUS_INVALID_ARGUMENT && builtin.context == NULL,
+          "unknown locale fails without transferring ownership");
+}
+
 int main(void) {
     printf("family_pipeline: four disjoint cdylibs in one process\n");
 
@@ -1033,6 +1104,7 @@ int main(void) {
     run_ledger(1);
     run_ledger(0);
     run_configured_revision3();
+    run_phonetic_revision4();
 
     printf("\nOK: all %u assertions passed across four cdylibs.\n", g_passed);
     return 0;

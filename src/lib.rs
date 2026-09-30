@@ -128,7 +128,9 @@ pub use fzf_scorer::{FzfConfig, FzfError, FzfMatch, FzfScheme, FzfScorer, FzfSta
 pub use fzf_state_source::FzfStateSource;
 pub use fzf_wfst::FzfWfst;
 pub use generalized_builder::GeneralizedWfstBuilder;
-pub use generalized_limits::{GeneralizedWfstError, GeneralizedWfstLimits, GeneralizedWfstResource};
+pub use generalized_limits::{
+    GeneralizedWfstError, GeneralizedWfstLimits, GeneralizedWfstResource,
+};
 pub use generalized_wfst::GeneralizedWfst;
 pub use wallbreaker_builder::WallBreakerWfstBuilder;
 pub use wallbreaker_wfst::WallBreakerWfst;

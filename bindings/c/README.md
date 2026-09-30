@@ -1,10 +1,11 @@
 # duallity C binding
 
 The C17/C23 facade adapts an immutable Unicode-scalar `vt.dictionary.v1`
-snapshot into one of nine lazy edit/phonetic weighted finite-state transducers
-(WFSTs) and exports the result as `vt.scalar-wfst.1`. The project surface has
-eight `duallity_*` functions in [`duallity.h`](../../include/duallity.h); the
-normative semantics are in the
+snapshot into a lazy edit/phonetic weighted finite-state transducer (WFST),
+or constructs a standalone phonetic pattern/rewrite graph. Every constructor
+exports an owned `vt.scalar-wfst.1` resource. The original nine edit/phonetic
+selectors and the revision-4 native phonetic family are declared in
+[`duallity.h`](../../include/duallity.h); the normative semantics are in the
 [resource ABI reference](../../docs/architecture/06-resource-abi-and-bindings.md).
 
 ## Installation and loading
@@ -44,11 +45,46 @@ distances, terms, post-capture mutation isolation, and a zero retain ledger.
 | `duallity_wfst_resource` | Returns one independently retained `vt.scalar-wfst.1` resource. |
 | `duallity_wfst_free` | Frees the project handle; previously exported resources remain valid. |
 | `duallity_resource_release` | Releases exactly one resource retain. |
+| `duallity_phonetic_nfa_new` | Compiles a Unicode phonetic pattern into a standalone lazy WFST; optional alphabet controls expansion of wide labels. |
+| `duallity_phonetic_product_new_ref` | Captures one dictionary revision and constructs the lazy phonetic-NFA × bounded edit × dictionary product. |
+| `duallity_phonetic_rewrite_new` | Copies versioned, priority-ordered Unicode rewrite rules into a standalone graph. |
+| `duallity_phonetic_rewrite_builtin_new` | Constructs the native English, German, or French rewrite rule set. |
 
 The dictionary must advertise Unicode-scalar units. Query input is
 pointer-plus-byte-length UTF-8, so it may be non-NUL-terminated but must be
 valid. Maximum-distance limits are kind-specific; universal/generalized state
 encodings reject values beyond their represented range instead of truncating.
+
+The four phonetic constructors require a library built with `phonetic-rules`
+and `duallity_api_revision() >= 4`. Pattern, alphabet, and rule text are
+borrowed UTF-8 byte spans during the call. Null alphabet plus zero length
+selects the native printable-ASCII default; an explicitly non-null, empty
+alphabet means an empty expansion alphabet. Literal symbols still match
+exactly. The product's `maximum_distance` is an unweighted edit limit in
+`0..=255`; nonnegative finite `phonetic_weight`, `edit_weight`, and rule costs
+govern tropical ranking, not that limit. Built-in locales use `0` for English,
+`1` for German, and `2` for French. Neither the C boundary nor the native rule
+sets implicitly case-fold or Unicode-normalize input.
+
+All four functions write one independently owned `VtResource` on success.
+Release it once with `duallity_resource_release`; no `DuallityWfst*` handle is
+involved. The product borrows the source dictionary only during construction
+and retains its captured revision, so later source mutation or release cannot
+change the graph. Failed constructors set a valid output slot to null and
+transfer no retain. A caller that passes rewrite records must populate
+`DuallityPhoneticRuleV1.header` with `struct_size = sizeof(DuallityPhoneticRuleV1)`,
+`record_version = 1`, and zero reserved fields; the strings are copied before
+return. A finite LRU cache uses policy `2` with an explicit positive capacity,
+or the library default when capacity is zero; policies `0` and `1` select
+all-state and no-state caching respectively.
+
+Traversal is performed through the standard `vt.scalar-wfst.1` interface, so
+callers can compose a rewrite graph with a phonetic product in lling-llang or
+use a custom consumer. Bound traversal by states, output length, cost, and
+result count when the pattern or rewrite graph admits cycles; a finite bound
+may omit a globally better candidate that was not yet visited. The
+[Julia facade](../julia/Duallity/README.md) gives a concrete bounded-search
+example over the same native resources.
 
 ## Ownership and capture-once semantics
 

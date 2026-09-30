@@ -10,10 +10,14 @@ mod inspection;
 use inspection::OwnedOptions;
 #[allow(dead_code)]
 mod config;
+#[cfg(feature = "phonetic-rules")]
+mod phonetic;
 pub use config::{
     DuallityCacheStatisticsV1, DuallityGeneralizedLimitsV1, DuallityOperationV1,
     DuallityRecordHeaderV1, DuallityRestrictionV1, DuallityWfstOptionsV1,
 };
+#[cfg(feature = "phonetic-rules")]
+pub use phonetic::DuallityPhoneticRuleV1;
 
 use crate::bindings::{BindingError, WfstKind};
 use crate::GeneralizedWfstError;
@@ -31,7 +35,11 @@ use vinary_tree_interop::{VtResource, VtStatus};
 
 /// Stable duallity C ABI version.
 pub const DUALLITY_ABI_VERSION: u32 = 1;
-/// Additive project API revision.
+/// Additive project API revision for a build with the phonetic constructors.
+#[cfg(feature = "phonetic-rules")]
+pub const DUALLITY_API_REVISION: u32 = 4;
+/// Additive project API revision for the minimal FFI build.
+#[cfg(not(feature = "phonetic-rules"))]
 pub const DUALLITY_API_REVISION: u32 = 3;
 
 /// Status returned by duallity C functions.

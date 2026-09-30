@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Build the four family cdylibs (each with ONLY its own `ffi` feature, so the
-# exported C ABIs are disjoint), then compile and run bindings/c/tests/
+# Build the four family cdylibs (each exports only its own project C ABI;
+# duallity also enables its native phonetic constructors), then run bindings/c/tests/
 # family_pipeline.c against all four in one process.
 #
 # Layout assumption (the standard sibling checkout, mirrored by the
@@ -63,7 +63,10 @@ if [ "${SKIP_BUILD:-}" != "1" ]; then
   build_cdylib libdictenstein "${libdictenstein_dir}"
   build_cdylib lling-llang "${lling_dir}"
   build_cdylib liblevenshtein "${liblevenshtein_dir}"
-  build_cdylib duallity "${duallity_root}"
+  echo "::group::cargo build duallity (--no-default-features --features c-bindings)"
+  cargo build ${cargo_profile_flag} --no-default-features --features c-bindings \
+    --manifest-path "${duallity_root}/Cargo.toml"
+  echo "::endgroup::"
 fi
 
 libdictenstein_lib="${CARGO_TARGET_DIR:-${libdictenstein_dir}/target}/${PROFILE}"

@@ -28,7 +28,7 @@ extern "C" {
 #endif
 
 #define DUALLITY_ABI_VERSION 1u
-#define DUALLITY_API_REVISION 3u
+#define DUALLITY_API_REVISION 4u
 
 typedef enum DuallityStatus {
     DUALLITY_STATUS_OK = 0,
@@ -165,6 +165,18 @@ typedef struct DuallityCacheStatisticsV1 {
 
 typedef struct DuallityWfst DuallityWfst;
 
+/* Revision-4 phonetic constructors return owned vt.scalar-wfst.1 resources. */
+typedef struct DuallityPhoneticRuleV1 {
+    DuallityRecordHeaderV1 header;
+    const uint8_t* input_data;
+    size_t input_len;
+    const uint8_t* output_data;
+    size_t output_len;
+    double cost;
+    int32_t priority;
+    uint32_t reserved;
+} DuallityPhoneticRuleV1;
+
 DUALLITY_API uint32_t duallity_abi_version(void);
 DUALLITY_API uint32_t duallity_api_revision(void);
 DUALLITY_API const char* duallity_last_error_message(void);
@@ -212,6 +224,31 @@ DUALLITY_API DuallityStatus duallity_wfst_cache_set_policy(
     uint32_t policy,
     uint64_t capacity);
 DUALLITY_API void duallity_resource_release(VtResource resource);
+
+/* Available when the native library is built with phonetic-rules. Caller owns
+ * every successful out_resource and releases it through the resource vtable.
+ * Cache policy: 0=all, 1=none, 2=LRU (positive capacity or default when zero).
+ * All input buffers and records are borrowed for the call only. */
+DUALLITY_API DuallityStatus duallity_phonetic_nfa_new(
+    const uint8_t* pattern_data, size_t pattern_len,
+    const uint8_t* alphabet_data, size_t alphabet_len,
+    double phonetic_weight, uint32_t cache_policy, uint64_t cache_capacity,
+    VtResource* out_resource);
+DUALLITY_API DuallityStatus duallity_phonetic_product_new_ref(
+    const VtResource* dictionary,
+    const uint8_t* pattern_data, size_t pattern_len,
+    uint32_t maximum_distance, double phonetic_weight, double edit_weight,
+    uint32_t cache_policy, uint64_t cache_capacity,
+    VtResource* out_resource);
+DUALLITY_API DuallityStatus duallity_phonetic_rewrite_new(
+    const DuallityPhoneticRuleV1* rules, size_t rule_count,
+    uint8_t allow_identity, uint32_t cache_policy, uint64_t cache_capacity,
+    VtResource* out_resource);
+/* Built-in unconditional rules: locale 0=English, 1=German, 2=French. */
+DUALLITY_API DuallityStatus duallity_phonetic_rewrite_builtin_new(
+    uint32_t locale, uint8_t allow_identity,
+    uint32_t cache_policy, uint64_t cache_capacity,
+    VtResource* out_resource);
 
 #ifdef __cplusplus
 }

@@ -48,6 +48,25 @@ jobs:
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 
+  javascript:
+    name: JavaScript-family configured WFST facades (Node 24)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with: { persist-credentials: false }
+      - uses: ./.github/actions/checkout-dev-siblings
+        with:
+          coordinated-ref: ${{ github.head_ref || github.ref_name }}
+      - uses: actions/setup-node@v6
+        with: { node-version: "24", package-manager-cache: false }
+      - name: Check JavaScript, TypeScript, and ClojureScript binding surfaces
+        run: python3 scripts/check-bindings.py
+      - name: Test configured WFST and cache facades across JavaScript hosts
+        run: npm test --prefix bindings/javascript
+      - name: Check the publishable facade archive without publishing
+        run: npm pack --dry-run
+        working-directory: bindings/javascript
+
   python:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest

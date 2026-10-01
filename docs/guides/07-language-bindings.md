@@ -35,15 +35,19 @@ and a **kind**, and returns a lazy **WFST** (**W**eighted **F**inite-**S**tate *
 as a `vt.scalar-wfst.1` resource. That resource composes in $`\mathcal{O}(1)`$ with any other lling-llang
 transducer — a language model, a phonetic rewriter — with no serialization.
 
-- **C ABI** — eight functions in [`include/duallity.h`](../../include/duallity.h):
+- **C ABI** — 18 functions in [`include/duallity.h`](../../include/duallity.h). The original eight are
   `duallity_abi_version`, `duallity_api_revision`, `duallity_last_error_message`, `duallity_wfst_new`,
   `duallity_wfst_new_ref`, `duallity_wfst_resource`, `duallity_wfst_free`,
   `duallity_resource_release`. The two constructors are semantically identical; the pointer form lets
   NativeCall and other aggregate-limited FFIs pass the borrowed `VtResource` without changing the ABI.
+  Six additive functions construct, inspect, and control [configured WFSTs](../architecture/07-versioned-configurable-wfst-abi.md);
+  four more construct phonetic variants. The header and binding model define the exact signatures.
 - **JavaScript facade** — [`@vinary-tree/duallity`](../../bindings/javascript/README.md) exposes
-  `wfst(dictionary, query, maximumDistance, algorithm?, kind?)` returning a `WfstResource`, plus a
-  `runtimeIdentity` guard. TypeScript types ship in `index.d.ts`; a ClojureScript namespace
-  (`vinary-tree.duallity`, functions `wfst` / `start` / `state` / `close!`) ships alongside.
+  positional `wfst(dictionary, query, maximumDistance, algorithm?, kind?)` and explicit
+  `configuredWfst(dictionary, query, options)` with native-effective options and cache controls.
+  Both return a closeable scalar-WFST resource and enforce `runtimeIdentity`. TypeScript types
+  ship in `index.d.ts`; the `vinary-tree.duallity` ClojureScript namespace provides both
+  constructors, kebab-case options, cache inspection/control, and traversal helpers.
 - **C++ facade** — [`include/duallity.hpp`](../../include/duallity.hpp) wraps the C ABI in
   `vinary_tree::duallity::{wfst, resource, error}` with move-only handles and exception-based errors.
 - **Python facade** — [`duallity`](../../bindings/python/README.md) exposes typed `Algorithm` and
@@ -153,6 +157,26 @@ import { wfst } from "@vinary-tree/duallity";
 const edit = wfst(dictionary, "helo", 2, "standard", "levenshtein");
 // … compose `edit` with a downstream WFST via @vinary-tree/lling-llang …
 edit.close();   // release the retained resource (or use the cljs `close!`)
+```
+
+For native-effective options and cache control, construct a configured WFST
+explicitly; positional arguments never absorb an options object:
+
+```js
+import { configuredWfst } from "@vinary-tree/duallity";
+
+const edit = configuredWfst(dictionary, "café", {
+  kind: "generalized-standard",
+  maximumDistance: 1,
+  cachePolicy: "lru",
+  cacheCapacity: 128,
+});
+try {
+  console.log(edit.options.cachePolicy, edit.cacheStatistics.hits);
+  edit.clearCache().setCachePolicy("none");
+} finally {
+  edit.close();
+}
 ```
 
 **Julia.** The returned value is a standard family resource, not a duallity-only wrapper:

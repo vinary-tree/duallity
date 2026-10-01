@@ -5,7 +5,8 @@
 [resource ABI](../architecture/06-resource-abi-and-bindings.md) ·
 [threat model](../security/threat-model.md)
 
-duallity exposes one eight-function C ABI and six standalone facade guides.
+duallity exposes one 18-symbol C ABI, including the additive configured-WFST
+and phonetic operations, and six standalone facade guides.
 JavaScript, TypeScript, and ClojureScript share the same npm package and
 singleton runtime, so their common laws and language-specific syntax live in
 one guide.

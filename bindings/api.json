@@ -790,11 +790,17 @@
     },
     "facadeExports": [
       "runtimeIdentity",
-      "wfst"
+      "wfst",
+      "configuredWfst"
     ],
     "cljsNamespace": "vinary-tree.duallity",
     "cljsFunctions": [
       "wfst",
+      "configured-wfst",
+      "wfst-options",
+      "cache-statistics",
+      "clear-cache!",
+      "set-cache-policy!",
       "start",
       "state",
       "close!"

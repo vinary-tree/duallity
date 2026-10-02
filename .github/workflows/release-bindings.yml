@@ -36,7 +36,7 @@ jobs:
           git clone --depth 1 --branch v4.0.0-rc.6 https://github.com/vinary-tree/lling-llang.git "$parent/lling-llang"
           git clone --depth 1 --branch v4.0.0-rc.6 https://github.com/vinary-tree/liblevenshtein-rust.git "$parent/liblevenshtein-rust"
           git clone --depth 1 --branch v4.0.0-rc.6 https://github.com/vinary-tree/vinary-tree-interop.git "$parent/vinary-tree-interop"
-      - uses: dtolnay/rust-toolchain@1.95
+      - uses: dtolnay/rust-toolchain@1.120
         with: { components: clippy }
       - run: python3 scripts/sync-release-version.py
       - name: Verify immutable tag matches the package version
@@ -81,7 +81,7 @@ jobs:
           git clone --depth 1 --branch v4.0.0-rc.6 https://github.com/vinary-tree/lling-llang.git "$parent/lling-llang"
           git clone --depth 1 --branch v4.0.0-rc.6 https://github.com/vinary-tree/liblevenshtein-rust.git "$parent/liblevenshtein-rust"
           git clone --depth 1 --branch v4.0.0-rc.6 https://github.com/vinary-tree/vinary-tree-interop.git "$parent/vinary-tree-interop"
-      - uses: dtolnay/rust-toolchain@1.95
+      - uses: dtolnay/rust-toolchain@1.120
       - run: cargo build --release --no-default-features --features ffi
       - run: scripts/stage-native-package.sh "${{ matrix.target }}" target/release dist
         shell: bash
@@ -183,7 +183,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with: { persist-credentials: false }
-      - uses: dtolnay/rust-toolchain@1.95
+      - uses: dtolnay/rust-toolchain@1.120
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
@@ -281,7 +281,7 @@ jobs:
           git clone --depth 1 --branch v4.0.0-rc.6 https://github.com/vinary-tree/lling-llang.git "$parent/lling-llang"
           git clone --depth 1 --branch v4.0.0-rc.6 https://github.com/vinary-tree/liblevenshtein-rust.git "$parent/liblevenshtein-rust"
           git clone --depth 1 --branch v4.0.0-rc.6 https://github.com/vinary-tree/vinary-tree-interop.git "$parent/vinary-tree-interop"
-      - uses: dtolnay/rust-toolchain@1.95
+      - uses: dtolnay/rust-toolchain@1.120
       - name: Authenticate with crates.io
         id: crates-io-auth
         uses: rust-lang/crates-io-auth-action@v1

@@ -167,7 +167,6 @@ jobs:
           DUALLITY_LIBRARY: ${{ github.workspace }}/target/debug/libduallity.so
           LIBDICTENSTEIN_LIBRARY: ${{ github.workspace }}/../libdictenstein/target/debug/liblibdictenstein.so
           LLING_LLANG_LIBRARY: ${{ github.workspace }}/../lling-llang/target/debug/liblling_llang.so
-          DUALLITY_DOCS_BUILD: ${{ github.workspace }}/target/julia-docs
         run: |
           julia --project=bindings/julia/Duallity/docs -e '
             using Pkg

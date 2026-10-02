@@ -55,10 +55,15 @@ jobs:
           DUALLITY_LIBRARY: ${{ github.workspace }}/target/debug/libduallity.so
           LIBDICTENSTEIN_LIBRARY: ${{ github.workspace }}/../libdictenstein/target/debug/liblibdictenstein.so
           LLING_LLANG_LIBRARY: ${{ github.workspace }}/../lling-llang/target/debug/liblling_llang.so
-          DUALLITY_DOCS_BUILD: ${{ github.workspace }}/target/julia-docs
           DUALLITY_DOCS_DEPLOY: '1'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           JULIA_DEPOT_PATH: ${{ github.workspace }}/target/julia-depot
         run: >-
           julia --project=bindings/julia/Duallity/docs
           bindings/julia/Duallity/docs/make.jl
+      - name: Read back the deployed dev documentation
+        run: |
+          git fetch --depth 1 origin gh-pages
+          git cat-file -e FETCH_HEAD:dev/index.html
+          git show FETCH_HEAD:dev/index.html |
+            grep -Fq 'A captured fuzzy query and its composition'

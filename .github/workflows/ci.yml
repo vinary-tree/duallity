@@ -161,6 +161,9 @@ jobs:
             ])
             Pkg.test()
           '
+          LIBDICTENSTEIN_LIBRARY="$libdict" LLING_LLANG_LIBRARY="$llinglang" \
+            julia --project=bindings/julia/Duallity \
+            bindings/julia/Duallity/test/installed_consumer.jl
       - name: Build strict Julia API documentation
         env:
           JULIA_DEPOT_PATH: ${{ github.workspace }}/target/julia-depot

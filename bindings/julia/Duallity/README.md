@@ -7,6 +7,9 @@ an input label, produce an output label, and carry a weight. The returned
 `VinaryTreeInterop.Wfst` composes directly with eager, native, or Julia-defined
 automata from LlingLlang.jl.
 
+The [published API guide](https://vinary-tree.github.io/duallity/dev/)
+contains a doctested quickstart and the current development API reference.
+
 The native adapter never copies the dictionary's terms during construction. It
 retains an immutable snapshot and expands only reachable states. The complete
 boundary is illustrated by the

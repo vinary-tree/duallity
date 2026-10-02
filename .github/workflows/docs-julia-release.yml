@@ -1,0 +1,103 @@
+name: Publish registered Julia API documentation
+
+# Run from the exact immutable release tag only after Julia General contains
+# Duallity and its matching native family. No RC.6 tag or package is created here.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact registered Duallity version
+        required: true
+        type: string
+      source_sha:
+        description: Full reviewed Duallity source commit SHA
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: duallity-julia-release-docs
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    environment: github-release
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32 # v3.0.2
+        with:
+          version: '1.12'
+      - name: Require the exact reviewed release tag
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          test "$GITHUB_REF" = "refs/tags/v$EXPECTED_VERSION"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(jq -r .canonical release/version.json)" = "$EXPECTED_VERSION"
+      - name: Require a published immutable GitHub release
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl --fail --silent --show-error --location \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/vinary-tree/duallity/releases/tags/v$EXPECTED_VERSION" |
+            jq -e --arg tag "v$EXPECTED_VERSION" \
+              '.tag_name == $tag and .immutable == true and .draft == false and .published_at != null'
+      - name: Read back General and exercise an installed family consumer
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          JULIA_DEPOT_PATH: ${{ github.workspace }}/target/julia-release-depot
+          TMPDIR: ${{ github.workspace }}/target/julia-release-temp
+        run: |
+          mkdir -p "$JULIA_DEPOT_PATH" "$TMPDIR"
+          julia --startup-file=no \
+            bindings/julia/Duallity/test/registry_readback.jl \
+            "$EXPECTED_VERSION" "$SOURCE_SHA" "$TMPDIR"
+      - name: Build and deploy the registered API documentation
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+          DUALLITY_DOCS_DEPLOY: '1'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JULIA_DEPOT_PATH: ${{ github.workspace }}/target/julia-release-depot
+          TMPDIR: ${{ github.workspace }}/target/julia-release-temp
+        run: |
+          julia --startup-file=no --project=bindings/julia/Duallity/docs -e '
+            using Pkg
+            Pkg.add(Pkg.PackageSpec(name="Duallity", version=ENV["EXPECTED_VERSION"]))
+            Pkg.instantiate()
+          '
+          julia --startup-file=no --project=bindings/julia/Duallity/docs \
+            bindings/julia/Duallity/docs/make.jl
+      - name: Read back the versioned documentation branch
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          git fetch --depth 1 origin gh-pages
+          git cat-file -e "FETCH_HEAD:v$EXPECTED_VERSION/index.html"
+          git show "FETCH_HEAD:v$EXPECTED_VERSION/index.html" |
+            grep -Fq 'A captured fuzzy query and its composition'
+      - name: Read back the public versioned page
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          for attempt in $(seq 1 18); do
+            if curl --fail --silent --show-error --location \
+              "https://vinary-tree.github.io/duallity/v$EXPECTED_VERSION/" \
+              -o "$GITHUB_WORKSPACE/target/julia-release-page.html" &&
+              grep -Fq 'A captured fuzzy query and its composition' \
+                "$GITHUB_WORKSPACE/target/julia-release-page.html"; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo 'Versioned Julia documentation did not appear publicly' >&2
+          exit 1

@@ -82,6 +82,43 @@ publishing, provenance, `next`, and the protected `npm` environment. PyPI
 similarly uses a trusted publisher, provenance, and the protected `pypi`
 environment.
 
+## Julia package documentation
+
+The master-branch `docs-julia.yml` workflow tests and publishes the development
+guide under `dev/`. It uses the coordinated source checkouts and reads back
+`dev/index.html` from `gh-pages`; a green build without that page is a failure.
+GitHub Pages serves that branch at
+[the public development guide](https://vinary-tree.github.io/duallity/dev/).
+It is not a test of a registered Julia package.
+
+Publish versioned Julia documentation only after Duallity, Libdictenstein,
+LlingLlang, and VinaryTreeInterop are registered in
+[Julia General](https://github.com/JuliaRegistries/General), the default Julia
+package registry, at the same exact version. Their native libraries must load
+without local sibling paths or library environment overrides. Dispatch
+`docs-julia-release.yml` from the
+reviewed `v4.0.0-rc.6` tag with the full source commit SHA. The protected
+`github-release` environment requires operator review. The workflow requires
+a published immutable GitHub release, checks the General Duallity tree against
+the tagged package subtree, runs an isolated installed-family consumer, builds
+the API guide from registered packages, and reads back both the `gh-pages`
+versioned page and its public URL. The tag-to-page mapping follows
+[Documenter's versioned deployment rules](https://documenter.juliadocs.org/stable/man/hosting/).
+A failing gate does not authorize a source
+tag move or a package rebuild.
+
+```bash
+source_sha=$(git rev-parse 'v4.0.0-rc.6^{commit}')
+gh workflow run docs-julia-release.yml \
+  --repo vinary-tree/duallity \
+  --ref v4.0.0-rc.6 \
+  -f version=4.0.0-rc.6 \
+  -f source_sha="$source_sha"
+```
+
+This dispatch is deliberately not part of RC.6 source preparation: do not run
+it before the authorized package release and public General readback.
+
 ## Public-byte verification and recovery
 
 Install the public npm tarball and each applicable public Python wheel in clean

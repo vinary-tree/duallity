@@ -165,12 +165,16 @@ jobs:
         env:
           JULIA_DEPOT_PATH: ${{ github.workspace }}/target/julia-depot
           DUALLITY_LIBRARY: ${{ github.workspace }}/target/debug/libduallity.so
+          LIBDICTENSTEIN_LIBRARY: ${{ github.workspace }}/../libdictenstein/target/debug/liblibdictenstein.so
+          LLING_LLANG_LIBRARY: ${{ github.workspace }}/../lling-llang/target/debug/liblling_llang.so
           DUALLITY_DOCS_BUILD: ${{ github.workspace }}/target/julia-docs
         run: |
           julia --project=bindings/julia/Duallity/docs -e '
             using Pkg
             Pkg.develop([
               Pkg.PackageSpec(path="../vinary-tree-interop/bindings/julia/VinaryTreeInterop"),
+              Pkg.PackageSpec(path="../libdictenstein/bindings/julia/Libdictenstein"),
+              Pkg.PackageSpec(path="../lling-llang/bindings/julia/LlingLlang"),
               Pkg.PackageSpec(path="bindings/julia/Duallity"),
             ])
             Pkg.instantiate()

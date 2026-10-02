@@ -75,10 +75,9 @@ jobs:
       - name: Build native Python family libraries
         run: |
           cargo build --no-default-features --features python-bindings
-          cargo build --manifest-path ../libdictenstein/Cargo.toml \
-            --no-default-features --features python-bindings
-          cargo build --manifest-path ../lling-llang/Cargo.toml \
-            --no-default-features --features python-bindings
+          # Cargo loads target flags from its current directory, not --manifest-path.
+          (cd ../libdictenstein && cargo build --no-default-features --features python-bindings)
+          (cd ../lling-llang && cargo build --no-default-features --features python-bindings)
       - name: Type, style, API, and documentation gates
         env:
           DUALLITY_LIBRARY: ${{ github.workspace }}/target/debug/libduallity.so
@@ -146,10 +145,9 @@ jobs:
           JULIA_DEPOT_PATH: ${{ github.workspace }}/target/julia-depot
           DUALLITY_LIBRARY: ${{ github.workspace }}/target/debug/libduallity.so
         run: |
-          cargo build --manifest-path ../libdictenstein/Cargo.toml \
-            --no-default-features --features julia-bindings
-          cargo build --manifest-path ../lling-llang/Cargo.toml \
-            --no-default-features --features julia-bindings
+          # Preserve each sibling's architecture-specific .cargo/config.toml.
+          (cd ../libdictenstein && cargo build --no-default-features --features julia-bindings)
+          (cd ../lling-llang && cargo build --no-default-features --features julia-bindings)
           family_root="$(dirname "$GITHUB_WORKSPACE")"
           libdict="$family_root/libdictenstein/target/debug/liblibdictenstein.so"
           llinglang="$family_root/lling-llang/target/debug/liblling_llang.so"
@@ -195,10 +193,9 @@ jobs:
       - name: Build native family libraries
         run: |
           cargo build --no-default-features --features raku-bindings
-          cargo build --manifest-path ../libdictenstein/Cargo.toml \
-            --no-default-features --features raku-bindings
-          cargo build --manifest-path ../lling-llang/Cargo.toml \
-            --no-default-features --features raku-bindings
+          # Preserve each sibling's architecture-specific .cargo/config.toml.
+          (cd ../libdictenstein && cargo build --no-default-features --features raku-bindings)
+          (cd ../lling-llang && cargo build --no-default-features --features raku-bindings)
       - name: Test Raku adapter and composition
         env:
           DUALLITY_LIBRARY: ${{ github.workspace }}/target/debug/libduallity.so

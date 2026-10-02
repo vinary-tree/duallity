@@ -30,8 +30,12 @@ jobs:
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1.12'
-      - name: Build the documented native surface
-        run: cargo build --no-default-features --features julia-bindings
+      - name: Build the documented native family
+        run: |
+          cargo build --no-default-features --features julia-bindings
+          # Each sibling must load its own architecture-specific Cargo configuration.
+          (cd ../libdictenstein && cargo build --no-default-features --features julia-bindings)
+          (cd ../lling-llang && cargo build --no-default-features --features julia-bindings)
       - name: Instantiate local package dependencies
         env:
           JULIA_DEPOT_PATH: ${{ github.workspace }}/target/julia-depot
@@ -40,6 +44,8 @@ jobs:
             using Pkg
             Pkg.develop([
               Pkg.PackageSpec(path="../vinary-tree-interop/bindings/julia/VinaryTreeInterop"),
+              Pkg.PackageSpec(path="../libdictenstein/bindings/julia/Libdictenstein"),
+              Pkg.PackageSpec(path="../lling-llang/bindings/julia/LlingLlang"),
               Pkg.PackageSpec(path="bindings/julia/Duallity"),
             ])
             Pkg.instantiate()
@@ -47,6 +53,8 @@ jobs:
       - name: Build and deploy strict API documentation
         env:
           DUALLITY_LIBRARY: ${{ github.workspace }}/target/debug/libduallity.so
+          LIBDICTENSTEIN_LIBRARY: ${{ github.workspace }}/../libdictenstein/target/debug/liblibdictenstein.so
+          LLING_LLANG_LIBRARY: ${{ github.workspace }}/../lling-llang/target/debug/liblling_llang.so
           DUALLITY_DOCS_BUILD: ${{ github.workspace }}/target/julia-docs
           DUALLITY_DOCS_DEPLOY: '1'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -302,7 +302,7 @@ def validate(model: dict[str, object]) -> list[str]:
             f"package coordinates must be npm={NPM_PACKAGE} and PyPI={PYPI_PACKAGE}"
         )
     expected_metadata = {
-        "summary": "Compose fuzzy dictionary search with phonetics, grammars, and language models",
+        "summary": "Fuzzy-search transducers for phonetics, grammars, and language models",
         "description": "Turn fuzzy dictionary queries into lazy weighted transducers that compose with phonetic rewrites, grammars, language models, and custom lling-llang pipelines.",
     }
     if metadata != expected_metadata:

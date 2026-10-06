@@ -35,6 +35,7 @@ jobs:
           cargo build --no-default-features --features julia-bindings
           # Each sibling must load its own architecture-specific Cargo configuration.
           (cd ../libdictenstein && cargo build --no-default-features --features julia-bindings)
+          (cd ../liblevenshtein-rust && cargo build --no-default-features --features julia-bindings)
           (cd ../lling-llang && cargo build --no-default-features --features julia-bindings)
       - name: Instantiate local package dependencies
         env:
@@ -45,6 +46,7 @@ jobs:
             Pkg.develop([
               Pkg.PackageSpec(path="../vinary-tree-interop/bindings/julia/VinaryTreeInterop"),
               Pkg.PackageSpec(path="../libdictenstein/bindings/julia/Libdictenstein"),
+              Pkg.PackageSpec(path="../liblevenshtein-rust/bindings/julia/Liblevenshtein"),
               Pkg.PackageSpec(path="../lling-llang/bindings/julia/LlingLlang"),
               Pkg.PackageSpec(path="bindings/julia/Duallity"),
             ])
@@ -54,6 +56,7 @@ jobs:
         env:
           DUALLITY_LIBRARY: ${{ github.workspace }}/target/debug/libduallity.so
           LIBDICTENSTEIN_LIBRARY: ${{ github.workspace }}/../libdictenstein/target/debug/liblibdictenstein.so
+          LIBLEVENSHTEIN_LIBRARY: ${{ github.workspace }}/../liblevenshtein-rust/target/debug/libliblevenshtein.so
           LLING_LLANG_LIBRARY: ${{ github.workspace }}/../lling-llang/target/debug/liblling_llang.so
           DUALLITY_DOCS_DEPLOY: '1'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

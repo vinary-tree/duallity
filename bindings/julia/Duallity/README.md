@@ -110,6 +110,50 @@ Universal and generalized variants represent distances through `UInt8`, so
 their maximum distance is at most 255. The native boundary reports an error
 instead of narrowing a larger value.
 
+### Revision-3 configurable WFST and cache controls
+
+`default_options()` returns the native versioned `DuallityWfstOptionsV1`
+record. Build a modified raw record, then call `configured_wfst`. It returns
+an owned `ConfiguredWfst`; use `.graph` for traversal or composition, and
+close the holder to release both the graph retain and configuration handle.
+
+```julia
+using Duallity
+import Libdictenstein as LD
+import VinaryTreeInterop as VTI
+
+dictionary = LD.DynamicDawg()
+dictionary["cat"] = nothing
+view = LD.snapshot(dictionary)
+base = default_options()
+options = DuallityWfstOptionsV1(base.header,
+    UInt32(WFST_LEVENSHTEIN), base.algorithm, 1,
+    UInt32(LRU), 0, 64, base.limits, base.operations,
+    base.operation_count, base.operation_stride, base.reserved)
+configured = configured_wfst(view, "cat", options)
+try
+    graph = configured.graph
+    @assert VTI.start(graph) >= 0
+    @assert effective_options(configured).cache_policy == LRU
+    clear_cache!(configured)
+    @assert cache_statistics(configured).clears >= 1
+    set_cache_policy!(configured, NO_CACHE)
+finally
+    close(configured)
+    close(view)
+    close(dictionary)
+end
+```
+
+Custom operations and limits use the generated `DuallityOperationV1`,
+`DuallityRestrictionV1`, and `DuallityGeneralizedLimitsV1` wire records.
+Pass `keepalive=(operation_names, operations, limits, ...)` when their pointers
+are non-null. Julia arrays provide contiguous record storage; the native
+constructor borrows those buffers for one call and deep-copies them. The
+[configuration mirror guide](../../../docs/design/revision3-julia-raku-config-mirrors.md)
+explains the record layout, copied readback, malformed-record errors, and
+the separate high-level typed-option work item.
+
 ### Phonetic patterns, rewrites, and dictionary products
 
 The generalized phonetic selector above enables *digraph edit operations*;
@@ -217,6 +261,11 @@ the graph. LlingLlang composition captures another independent retain of each
 operand. Call `close` deterministically; Julia finalizers are leak-safety
 fallbacks.
 
+`configured_wfst` retains both a graph and a native handle. Closing its
+`ConfiguredWfst` holder releases both. `effective_options` copies nested
+native strings and records, so its result remains valid after the holder
+closes; calling handle methods after close raises `ArgumentError`.
+
 ## Errors
 
 Native failures throw `NativeError` with a stable `Status`, operation, and
@@ -290,7 +339,8 @@ algorithms against a real libdictenstein dictionary, verifies weight domains,
 proves capture-once behavior under live mutation, and composes the result with
 an lling-llang case-mapping graph. It also exercises phonetic ambiguity,
 Unicode, empty-pattern errors, edit thresholds, priority rewrites, locale
-presets, cache policies, resource independence, and bounded traversal.
+presets, cache policies, resource independence, bounded traversal, custom
+revision-3 operations and limits, copied readback, and malformed records.
 
 ```sh
 TMPDIR="$PWD/target/julia-tmp" \
@@ -303,8 +353,8 @@ first-state access separately from dictionary construction.
 
 ## Maintainer workflow
 
-1. Change `bindings/api.json`, the C header, Rust exports, and generated enum
-   files together.
+1. Change `bindings/api.json`, the C header, Rust exports, and generated ABI
+   files together; run `python3 scripts/generate-config-abi.py --check`.
 2. Preserve existing ABI entry points; add pointer forms for aggregate-limited
    FFIs and raise only the additive API revision.
 3. Run Rust FFI tests, every Julia test, strict Documenter output, binding and

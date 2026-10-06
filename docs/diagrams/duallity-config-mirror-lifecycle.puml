@@ -1,0 +1,34 @@
+@startuml
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam state {
+  BorderColor #205678
+  FontColor #173247
+  ArrowColor #205678
+}
+title Revision-3 Julia and Raku configured WFST ownership
+
+state "Live dictionary snapshot" as Dictionary #D9F1FF
+state "Borrowed versioned records\nplus nested caller buffers" as Inputs #FFF0C5
+state "Native constructor\ndeep-copies configuration" as Native #E6F6E7
+state "Owned configured handle" as Handle #D9F1FF
+state "Independent interop graph retain" as Graph #E6F6E7
+state "Copied options and counters" as Readback #E8EDF3
+state "Closed" as Closed #E8EDF3
+state "Rejected malformed input" as Failure #FBDCDC
+
+[*] --> Dictionary
+Dictionary --> Inputs : caller assembles raw record
+Inputs --> Native : borrow through one call
+Native --> Failure : invalid extent, version, pointer, or limit
+Native --> Handle : success
+Handle --> Graph : acquire separate retain
+Handle --> Readback : copy before closing
+Handle --> Handle : clear or change cache policy
+Graph --> Graph : source may close or mutate
+Handle --> Closed : close native handle
+Graph --> Closed : close graph retain
+Readback --> [*] : values remain owned by caller
+Failure --> [*] : no result handle
+Closed --> [*]
+@enduml

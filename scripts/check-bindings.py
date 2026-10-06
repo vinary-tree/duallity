@@ -40,6 +40,7 @@ import argparse
 import ast
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -1373,6 +1374,18 @@ def main() -> int:
         check_symbols(report, model)
         check_enums(report, model)
         check_config_abi(report, model)
+        generated = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/generate-config-abi.py"), "--check"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        report.add(
+            "JR-0-config-generated",
+            generated.returncode == 0,
+            "revision-3 Julia/Raku records match bindings/api.json"
+            if generated.returncode == 0 else generated.stderr.strip(),
+        )
         check_javascript(report, model)
         check_julia_raku(report, model)
         check_python(report, model)

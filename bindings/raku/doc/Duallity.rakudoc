@@ -27,9 +27,18 @@ C<MERGE-AND-SPLIT>, and C<DAMERAU-LEVENSHTEIN>.
 C<GENERALIZED-*>, and C<FZF> variants. FZF uses Arctic weights; all others use
 tropical weights.
 
+=item C<default-options> returns a versioned revision-3 raw options record.
+C<configured-wfst($dictionary, $query, $options, :keepalive)> returns an owned
+C<ConfiguredWfst> holder. Its C<.graph> is the ordinary interop WFST; its
+C<.options>, C<.cache-statistics>, C<.clear-cache>, and C<.set-cache-policy>
+methods access the native configuration handle. C<.options> copies nested
+operation text and limits before returning.
+
 =head1 Example
 
 =begin code :lang<raku>
+use Duallity;
+use Libdictenstein;
 my $dictionary = dynamic-dawg;
 $dictionary.insert-batch([cat => Nil, cot => Nil]);
 my $view = $dictionary.snapshot;
@@ -40,12 +49,40 @@ $graph.close;
 $dictionary.close;
 =end code
 
+=head1 Configured graph
+
+=begin code :lang<raku>
+use Duallity;
+use Libdictenstein;
+my $dictionary = dynamic-dawg;
+$dictionary.insert-batch([cat => Nil]);
+my $view = $dictionary.snapshot;
+my $options = default-options();
+$options.cache-policy = LRU;
+$options.cache-capacity = 64;
+my $configured = configured-wfst($view, 'cat', $options);
+say $configured.graph.start;
+$configured.clear-cache;
+say $configured.cache-statistics.clears;
+$configured.close;
+$view.close;
+$dictionary.close;
+=end code
+
+Nested raw pointers require a C<keepalive> array holding every referenced
+buffer and record through construction. The native constructor deep-copies
+custom operation text. The generated C<Duallity::ConfigAbi> record classes
+use writable native-width address slots for C pointers; callers must not use
+C<CArray[Record]> as a contiguous C record array. See the packaged
+C<README.md> and the source configuration mirror guide for exact limits.
+
 =head1 Ownership and composition
 
 Construction captures one immutable dictionary snapshot in constant time with
 respect to dictionary size. Closing or mutating the source cannot alter the
 graph. C<Lling::Llang::compose> retains both operands and expands only reachable
-product states. Close every returned graph deterministically.
+product states. Close every returned graph deterministically. The configured
+holder owns a second native handle and closes both resources together.
 
 =head1 Failure, concurrency, and security
 

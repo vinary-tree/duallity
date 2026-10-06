@@ -79,6 +79,44 @@ The `Algorithm` enum contains `STANDARD`, `TRANSPOSITION`,
 Universal/generalized maximum distances are bounded by `UInt8` and therefore
 cannot exceed 255. FZF ignores the distance selector.
 
+### Revision-3 configurable WFST and cache controls
+
+`default-options` initializes the versioned raw options record. The
+`Duallity::ConfigAbi` module supplies the generated C record layouts and
+applicability selectors. `configured-wfst` returns a `ConfiguredWfst` holder;
+its `.graph` is the ordinary composable interop WFST. Close the holder to
+release both native resources.
+
+```raku
+use Duallity;
+use Libdictenstein;
+
+my $dictionary = dynamic-dawg;
+$dictionary.insert-batch([cat => Nil]);
+my $view = $dictionary.snapshot;
+my $options = default-options();
+$options.cache-policy = LRU;
+$options.cache-capacity = 64;
+my $configured = configured-wfst($view, 'cat', $options);
+say $configured.graph.start;
+say $configured.options<cache-policy>;
+$configured.clear-cache;
+say $configured.cache-statistics.clears;
+$configured.set-cache-policy(NO-CACHE);
+$configured.close;
+$view.close;
+$dictionary.close;
+```
+
+For custom operations or limits, fill the generated records and pass their
+addresses in the `size_t` pointer slots of the options record. Supply
+`keepalive => [$names, $operations, $limits, ...]` so all nested allocations
+stay live during the constructor call. Native construction deep-copies custom
+text. Raku's `CArray[Record]` stores pointers, not a contiguous C array of
+records; multiple operations or restrictions require caller-managed contiguous
+bytes. The [configuration mirror guide](../../docs/design/revision3-julia-raku-config-mirrors.md)
+gives the exact supported surface and ownership sequence.
+
 ## Ownership & memory model
 
 `wfst` borrows the source only during construction, captures its current
@@ -86,6 +124,10 @@ immutable revision exactly once, and returns one independent owned WFST.
 Closing or mutating the source afterward cannot change that graph. Composition
 retains independent snapshots of both operands. Call `.close`
 deterministically; `DESTROY` is a leak-safety fallback.
+
+`configured-wfst` owns an additional native handle for options and cache
+controls. Its `.options` method deep-copies nested native strings and records,
+so the returned `Map` survives close. Calling handle methods after close fails.
 
 ## Errors
 
@@ -133,7 +175,7 @@ parallel reentrancy. Raw handles must not cross runtimes or processes.
 |---|---:|
 | Duallity Raku package | `4.0.0-rc.6` |
 | duallity C ABI | `1` |
-| duallity API revision | at least `2` |
+| duallity API revision | at least `4` for this package; configuration starts at `3` |
 | Vinary Tree Interop | `4.0.0` compatible |
 | Raku | language version `6.d` |
 
@@ -144,7 +186,9 @@ Module initialization checks the native ABI and API revision.
 [`t/01-conformance.rakutest`](t/01-conformance.rakutest) constructs all nine
 kinds and four algorithms over a real libdictenstein dictionary, checks weight
 domains, mutates the live source to prove capture-once isolation, and composes
-the adapter with an lling-llang case mapper.
+the adapter with an lling-llang case mapper. It also checks revision-3 custom
+operation text, limits, cache controls, malformed records, and resource
+lifetimes.
 
 ```sh
 TMPDIR="$PWD/target/raku-tmp" \
@@ -166,6 +210,7 @@ and first-state access independently of dictionary construction.
    ```sh
    python3 scripts/generate-raku-abi.py --write
    python3 scripts/generate-raku-abi.py --check
+   python3 scripts/generate-config-abi.py --check
    ```
 
    The check validates the model against the public C header before comparing

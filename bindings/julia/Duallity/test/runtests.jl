@@ -79,6 +79,78 @@ end
     end
 end
 
+@testset "revision-3 raw configuration and cache ownership" begin
+    @test api_revision() >= 3
+    base = default_options()
+    @test base.header.struct_size == sizeof(DuallityWfstOptionsV1)
+    @test base.header.record_version == 1
+
+    dictionary = LD.DynamicDawg()
+    LD.insert_batch!(dictionary, ["cat" => nothing, "cot" => nothing])
+    view = LD.snapshot(dictionary)
+    name = Vector{UInt8}(codeunits("custom"))
+    source = UInt8['c']
+    target = UInt8['c']
+    restriction = DuallityRestrictionV1(
+        Duallity.record_header(DuallityRestrictionV1),
+        pointer(source), length(source), pointer(target), length(target),
+        (0, 0))
+    restrictions = [restriction]
+    operation = DuallityOperationV1(
+        Duallity.record_header(DuallityOperationV1), 1, 1, 1.0,
+        UInt32(APPLICABILITY_LISTED), 0, pointer(name), length(name),
+        pointer(restrictions), 1, sizeof(DuallityRestrictionV1), (0, 0))
+    operations = [operation]
+    limits = Ref(DuallityGeneralizedLimitsV1(
+        Duallity.record_header(DuallityGeneralizedLimitsV1),
+        32, 32, 4, 4, 128, 256, 64, 128, (0, 0)))
+    options = DuallityWfstOptionsV1(base.header,
+        UInt32(WFST_GENERALIZED_STANDARD), base.algorithm, 1,
+        UInt32(LRU), 0, 2, Base.unsafe_convert(
+            Ptr{DuallityGeneralizedLimitsV1}, limits), pointer(operations),
+        1, sizeof(DuallityOperationV1), (0, 0))
+    @test_throws ArgumentError configured_wfst(view, "cat", options)
+    configured = configured_wfst(view, "cat", options;
+        keepalive=(name, source, target, restrictions, operations, limits))
+    name[1] = UInt8('X')
+    source[1] = UInt8('X')
+    copied = effective_options(configured)
+    @test copied.kind == WFST_GENERALIZED_STANDARD
+    @test copied.cache_policy == LRU
+    @test copied.cache_capacity == 2
+    @test copied.limits.max_query_bytes == 32
+    @test only(copied.operations).name == "custom"
+    @test only(only(copied.operations).restrictions).source == "c"
+    @test VTI.start(configured.graph) >= 0
+    clear_cache!(configured)
+    @test cache_statistics(configured).clears >= 1
+    set_cache_policy!(configured, NO_CACHE)
+    @test effective_options(configured).cache_policy == NO_CACHE
+    close(view)
+    close(dictionary)
+    @test VTI.start(configured.graph) >= 0
+    close(configured)
+    @test !isopen(configured)
+    @test only(copied.operations).name == "custom"
+    @test_throws ArgumentError effective_options(configured)
+
+    dictionary = LD.DynamicDawg()
+    dictionary["cat"] = nothing
+    view = LD.snapshot(dictionary)
+    malformed = DuallityWfstOptionsV1(
+        DuallityRecordHeaderV1(base.header.struct_size, 1, 1),
+        base.kind, base.algorithm, base.maximum_distance,
+        base.cache_policy, base.reserved_zero, base.cache_capacity,
+        base.limits, base.operations, base.operation_count,
+        base.operation_stride, base.reserved)
+    try
+        @test_throws NativeError configured_wfst(view, "cat", malformed)
+    finally
+        close(view)
+        close(dictionary)
+    end
+end
+
 @testset "capture-once and lling-llang composition" begin
     dictionary = LD.DynamicDawg()
     LD.insert_batch!(dictionary,

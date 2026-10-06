@@ -21,10 +21,32 @@ export ABI_VERSION,
     Status,
     Algorithm,
     WfstKind,
+    CachePolicy,
+    OperationApplicability,
     NativeError,
     abi_version,
     api_revision,
     wfst,
+    DuallityRecordHeaderV1,
+    DuallityRestrictionV1,
+    DuallityOperationV1,
+    DuallityGeneralizedLimitsV1,
+    DuallityWfstOptionsV1,
+    DuallityCacheStatisticsV1,
+    ConfiguredWfst,
+    default_options,
+    configured_wfst,
+    effective_options,
+    cache_statistics,
+    clear_cache!,
+    set_cache_policy!,
+    CACHE_ALL,
+    NO_CACHE,
+    LRU,
+    APPLICABILITY_ANY,
+    APPLICABILITY_EQUAL,
+    APPLICABILITY_ADJACENT_TRANSPOSE,
+    APPLICABILITY_LISTED,
     PhoneticRewriteRule,
     PhoneticMatch,
     phonetic_nfa,
@@ -156,5 +178,7 @@ function __init__()
     api_revision() >= API_REVISION || error(
         "duallity API revision $(api_revision()) is older than $API_REVISION")
 end
+
+include("Config.jl")
 
 end # module

@@ -1,5 +1,7 @@
 use v6.d;
 use Test;
+use NativeCall;
+need Duallity::ConfigAbi;
 
 module DictionaryFixture {
     use Libdictenstein;
@@ -98,5 +100,98 @@ is-deeply language($snapshot), Map.new(CAT => 0e0, COT => 1e0),
 is $snapshot.start, 0, 'composed snapshot remains live after source close';
 $snapshot.close;
 $dictionary.close;
+
+my $configured-dictionary = DictionaryFixture::create;
+my $configured-view = $configured-dictionary.snapshot;
+my $default = default-options();
+is $default.struct-size,
+    nativesizeof(Duallity::ConfigAbi::DuallityWfstOptionsV1),
+    'native default options has the modeled C extent';
+is $default.record-version, 1, 'native default record uses version 1';
+my $name = Buf.new('custom'.encode('utf8').list);
+my $source = Buf.new('c'.encode('utf8').list);
+my $target = Buf.new('c'.encode('utf8').list);
+my $restriction = Duallity::ConfigAbi::DuallityRestrictionV1.new(
+    struct-size => nativesizeof(Duallity::ConfigAbi::DuallityRestrictionV1),
+    record-version => 1,
+    source-data => nativecast(Pointer, $source).Int,
+    source-len => $source.elems,
+    target-data => nativecast(Pointer, $target).Int,
+    target-len => $target.elems,
+);
+my $operation = Duallity::ConfigAbi::DuallityOperationV1.new(
+    struct-size => nativesizeof(Duallity::ConfigAbi::DuallityOperationV1),
+    record-version => 1,
+    consume-x => 1,
+    consume-y => 1,
+    weight => 1e0,
+    applicability => Duallity::ConfigAbi::LISTED,
+    name-data => nativecast(Pointer, $name).Int,
+    name-len => $name.elems,
+    restrictions => nativecast(Pointer, $restriction).Int,
+    restriction-count => 1,
+    restriction-stride =>
+        nativesizeof(Duallity::ConfigAbi::DuallityRestrictionV1),
+);
+my $limits = Duallity::ConfigAbi::DuallityGeneralizedLimitsV1.new(
+    struct-size => nativesizeof(Duallity::ConfigAbi::DuallityGeneralizedLimitsV1),
+    record-version => 1,
+    max-query-bytes => 32,
+    max-query-scalars => 32,
+    max-operation-source-scalars => 4,
+    max-operation-query-scalars => 4,
+    max-retained-dictionary-nodes => 128,
+    max-retained-wfst-states => 256,
+    max-paths-per-expansion => 64,
+    max-work-units-per-expansion => 128,
+);
+$default.kind = GENERALIZED-STANDARD;
+$default.maximum-distance = 1;
+$default.cache-policy = LRU;
+$default.cache-capacity = 2;
+$default.limits = nativecast(Pointer, $limits).Int;
+$default.operations = nativecast(Pointer, $operation).Int;
+$default.operation-count = 1;
+$default.operation-stride = nativesizeof(Duallity::ConfigAbi::DuallityOperationV1);
+throws-like {
+    configured-wfst($configured-view, 'cat', $default)
+}, Exception, 'nested pointers require explicit keepalive owners';
+my $configured = configured-wfst($configured-view, 'cat', $default,
+    keepalive => [$name, $source, $target, $restriction, $operation, $limits]);
+$name[0] = 88;
+$source[0] = 88;
+my $copied = $configured.options;
+is $copied<kind>, GENERALIZED-STANDARD,
+    'configured kind round-trips through native options';
+is $copied<cache-policy>, LRU, 'configured cache policy round-trips';
+is $copied<cache-capacity>, 2, 'configured cache capacity round-trips';
+is $copied<limits><max-query-bytes>, 32, 'custom limits round-trip';
+is $copied<operations>[0]<name>, 'custom',
+    'native constructor deep-copies custom operation text';
+is $copied<operations>[0]<restrictions>[0]<source>, 'c',
+    'native constructor deep-copies restriction text';
+ok $configured.graph.start >= 0, 'configured resource is traversable';
+$configured.clear-cache;
+ok $configured.cache-statistics.clears >= 1, 'cache clear is counted';
+$configured.set-cache-policy(NO-CACHE);
+is $configured.options<cache-policy>, NO-CACHE,
+    'cache policy update is observable';
+$configured-view.close;
+$configured-dictionary.close;
+ok $configured.graph.start >= 0, 'configured graph retains its snapshot';
+$configured.close;
+is $copied<operations>[0]<name>, 'custom',
+    'copied configuration survives native handle close';
+throws-like { $configured.options }, Exception,
+    'options reject use after close';
+
+my $bad-dictionary = DictionaryFixture::create;
+my $bad-view = $bad-dictionary.snapshot;
+my $bad = default-options();
+$bad.header-reserved = 1;
+throws-like { configured-wfst($bad-view, 'cat', $bad) },
+    X::Duallity, 'native rejects malformed reserved header';
+$bad-view.close;
+$bad-dictionary.close;
 
 done-testing;

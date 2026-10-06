@@ -100,4 +100,6 @@ Every variant that is a transducer follows the same contract, established in
 - Choosing between variants under real constraints? [guides/02 · Choosing a variant](../guides/02-choosing-a-variant.md).
 - Composing several stages into one matcher? [theory/04 · Composition](../theory/04-composition.md) and
   [guides/03 · Composing pipelines](../guides/03-composing-pipelines.md).
+- Using versioned configuration records from Julia or Raku? Read the
+  [revision-3 foreign mirror contract](revision3-julia-raku-config-mirrors.md).
 </content>

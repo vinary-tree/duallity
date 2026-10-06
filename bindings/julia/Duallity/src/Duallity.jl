@@ -4,6 +4,7 @@ using Libdl
 import VinaryTreeInterop
 import LlingLlang
 import Libdictenstein
+import Liblevenshtein
 
 const VTI = VinaryTreeInterop
 const LD = Libdictenstein
@@ -27,6 +28,10 @@ export ABI_VERSION,
     abi_version,
     api_revision,
     wfst,
+    WallBreakerGraph,
+    WallBreakerStatistics,
+    wallbreaker_wfst,
+    wallbreaker_statistics,
     DuallityRecordHeaderV1,
     DuallityRestrictionV1,
     DuallityOperationV1,
@@ -180,5 +185,6 @@ function __init__()
 end
 
 include("Config.jl")
+include("WallBreaker.jl")
 
 end # module

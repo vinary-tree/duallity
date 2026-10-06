@@ -29,6 +29,7 @@ docs/design/phonetic-pipeline-builder.md
 docs/design/phonetic-rewrite-wfst.md
 docs/design/phonetic-wfst.md
 docs/design/revision3-julia-raku-config-mirrors.md
+docs/design/julia-wallbreaker-wfst.md
 docs/design/universal-wfst.md
 docs/design/wallbreaker-wfst.md
 docs/diagrams/README.md

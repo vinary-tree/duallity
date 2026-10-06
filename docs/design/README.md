@@ -102,4 +102,6 @@ Every variant that is a transducer follows the same contract, established in
   [guides/03 · Composing pipelines](../guides/03-composing-pipelines.md).
 - Using versioned configuration records from Julia or Raku? Read the
   [revision-3 foreign mirror contract](revision3-julia-raku-config-mirrors.md).
+- Building a finite WallBreaker graph in Julia? Read the
+  [Julia WallBreaker result-WFST contract](julia-wallbreaker-wfst.md).
 </content>

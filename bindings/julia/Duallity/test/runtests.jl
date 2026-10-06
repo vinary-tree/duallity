@@ -2,10 +2,12 @@ using Test
 using Duallity
 import Libdictenstein
 import LlingLlang
+import Liblevenshtein
 import VinaryTreeInterop
 
 const LD = Libdictenstein
 const LL = LlingLlang
+const LLEV = Liblevenshtein
 const VTI = VinaryTreeInterop
 
 function language(graph)
@@ -43,6 +45,91 @@ end
 
 function raw_view(graph::LL.Wfst)
     VTI.wfstransducer(LL.resource(graph); take=true)
+end
+
+@testset "WallBreaker finite graph matches native results" begin
+    terms = ["cat", "cot", "dog", "café"]
+    dictionary = LD.Scdawg()
+    LD.insert_batch!(dictionary, [term => nothing for term in terms])
+    try
+        for (algorithm, native_algorithm) in (
+            (ALGORITHM_STANDARD, LLEV.ALGORITHM_STANDARD),
+            (ALGORITHM_TRANSPOSITION, LLEV.ALGORITHM_TRANSPOSITION),
+            (ALGORITHM_MERGE_AND_SPLIT, LLEV.ALGORITHM_MERGE_AND_SPLIT),
+        )
+            matcher = LLEV.WallBreakerMatcher(terms;
+                max_distance=1, algorithm=native_algorithm)
+            expected = try
+                cursor = LLEV.query(matcher, "cat")
+                try
+                    Dict(match.term => Float64(match.distance) for match in cursor)
+                finally
+                    close(cursor)
+                end
+            finally
+                close(matcher)
+            end
+            result = wallbreaker_wfst(dictionary, "cat";
+                maximum_distance=1, algorithm)
+            try
+                @test language(result.graph) == expected
+                stats = wallbreaker_statistics(result)
+                @test stats.results == length(expected)
+                @test stats.states == stats.arcs + 1
+                @test VTI.state_count(result.graph) == stats.states
+                @test VTI.weight_domain(result.graph) == VTI.WEIGHT_TROPICAL_F64
+                mapper = case_mapper(['c', 'a', 't', 'o', 'f', 'é'])
+                try
+                    product = LL.compose(result.graph, mapper)
+                    try
+                        @test language(product) ==
+                            Dict(uppercase(term) => distance for (term, distance) in expected)
+                    finally
+                        close(product)
+                    end
+                finally
+                    close(mapper)
+                end
+            finally
+                close(result)
+            end
+            @test !isopen(result)
+        end
+        unicode = wallbreaker_wfst(dictionary, "café";
+            maximum_distance=0)
+        @test language(unicode.graph) == Dict("café" => 0.0)
+        @test_throws ArgumentError wallbreaker_wfst(dictionary, "cat";
+            limits=LLEV.WallBreakerLimits(max_terms=1))
+        close(dictionary)
+        @test language(unicode.graph) == Dict("café" => 0.0)
+        close(unicode)
+    finally
+        isopen(dictionary) && close(dictionary)
+    end
+    invalid = LD.Scdawg()
+    try
+        @test_throws ArgumentError wallbreaker_wfst(invalid, "a";
+            maximum_distance=9)
+        @test_throws ArgumentError wallbreaker_wfst(invalid, "a";
+            algorithm=ALGORITHM_DAMERAU_LEVENSHTEIN)
+    finally
+        close(invalid)
+    end
+    empty_dictionary = LD.Scdawg()
+    try
+        empty_result = wallbreaker_wfst(empty_dictionary, "cat")
+        @test isempty(language(empty_result.graph))
+        @test wallbreaker_statistics(empty_result) == WallBreakerStatistics(0, 1, 0)
+        close(empty_result)
+    finally
+        close(empty_dictionary)
+    end
+    byte_dictionary = LD.Scdawg(VTI.UNIT_BYTE)
+    try
+        @test_throws ArgumentError wallbreaker_wfst(byte_dictionary, "cat")
+    finally
+        close(byte_dictionary)
+    end
 end
 
 @testset "ABI and all public selectors" begin

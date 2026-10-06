@@ -2,7 +2,8 @@
 
 Duallity.jl captures a Vinary Tree dictionary revision as a lazy fuzzy-query
 weighted finite-state transducer and hands it to Julia or lling-llang without
-materializing the accepted language. The package
+materializing the accepted language. Its separate WallBreaker adapter builds a
+bounded finite result graph eagerly. The package
 [README](https://github.com/vinary-tree/duallity/tree/master/bindings/julia/Duallity#readme)
 defines the nine adapter kinds, four edit algorithms, ownership, composition,
 concurrency, security, and executable examples.
@@ -79,6 +80,33 @@ fuzzy_uppercase_example()
 The source dictionary can close before the fuzzy graph is traversed because
 `wfst` retains the captured revision. Composition retains each graph again;
 closing the product and its snapshot does not change either operand.
+
+## Native WallBreaker result graph
+
+`wallbreaker_wfst` uses the bounded native liblevenshtein WallBreaker matcher
+and builds an owned tropical result forest. Its finite graph is eager and
+can outlive the source dictionary. The package README describes its limits
+and supported algorithms.
+
+```@example wallbreaker
+using Duallity
+import Libdictenstein as LD
+import VinaryTreeInterop as VTI
+
+dictionary = LD.Scdawg()
+try
+    LD.insert_batch!(dictionary, ["cat" => nothing, "cot" => nothing])
+    wall = wallbreaker_wfst(dictionary, "cat"; maximum_distance=1)
+    try
+        @assert wallbreaker_statistics(wall).results == 2
+        VTI.start(wall.graph)
+    finally
+        close(wall)
+    end
+finally
+    close(dictionary)
+end
+```
 
 ## Public API
 

@@ -10,7 +10,7 @@ automata from LlingLlang.jl.
 The [published API guide](https://vinary-tree.github.io/duallity/dev/)
 contains a doctested quickstart and the current development API reference.
 
-The native adapter never copies the dictionary's terms during construction. It
+The default `wfst` adapter never copies the dictionary's terms during construction. It
 retains an immutable snapshot and expands only reachable states. The complete
 boundary is illustrated by the
 [resource data-flow diagram](../../../docs/diagrams/duallity-resource-abi-dataflow.svg).
@@ -23,12 +23,16 @@ packages and build duallity with its Julia facade enabled:
 ```julia
 using Pkg
 Pkg.develop(path="../vinary-tree-interop/bindings/julia/VinaryTreeInterop")
+Pkg.develop(path="../liblevenshtein-rust/bindings/julia/Liblevenshtein")
 Pkg.develop(path="bindings/julia/Duallity")
 ```
 
 ```sh
 cargo build --release --no-default-features --features julia-bindings
 export DUALLITY_LIBRARY="$PWD/target/release/libduallity.so"
+# WallBreaker also loads liblevenshtein's Julia-enabled native library.
+(cd ../liblevenshtein-rust && cargo build --release --no-default-features --features julia-bindings)
+export LIBLEVENSHTEIN_LIBRARY="$PWD/../liblevenshtein-rust/target/release/libliblevenshtein.so"
 ```
 
 Use `libduallity.dylib` on macOS and `duallity.dll` on Windows.
@@ -153,6 +157,43 @@ constructor borrows those buffers for one call and deep-copies them. The
 [configuration mirror guide](../../../docs/design/revision3-julia-raku-config-mirrors.md)
 explains the record layout, copied readback, malformed-record errors, and
 the separate high-level typed-option work item.
+
+### WallBreaker over a captured Unicode dictionary
+
+`wallbreaker_wfst` captures one dictionary revision, copies its complete
+Unicode terms into the bounded native liblevenshtein WallBreaker matcher, and
+builds an owned tropical WFST from the verified matches. The native matcher
+uses an SCDAWG internally. Its result graph is a finite identity-labelled
+forest: each accepted term has its exact selected-algorithm edit distance as
+the final weight. Construction is eager and subject to
+`Liblevenshtein.WallBreakerLimits`, including a hard maximum distance of 8.
+
+```julia
+dictionary = LD.Scdawg()
+LD.insert_batch!(dictionary, ["cat" => nothing, "cot" => nothing])
+wall = wallbreaker_wfst(dictionary, "cat"; maximum_distance=1)
+close(dictionary)
+try
+    @assert wallbreaker_statistics(wall).results == 2
+    @assert VTI.start(wall.graph) == 0
+    # Use wall.graph with LL.paths, LL.compose, or VTI.arcs.
+finally
+    close(wall)
+end
+```
+
+`WallBreakerGraph.graph` owns its native state graph independently of the
+dictionary and matcher. `wallbreaker_statistics` reports immutable result,
+state, and arc counts. This finite graph has no mutable state cache; the
+revision-3 `cache_statistics`, `clear_cache!`, and `set_cache_policy!` methods
+apply to `ConfiguredWfst` handles, not to a `WallBreakerGraph`.
+
+The WallBreaker adapter accepts the standard, adjacent-transposition, and
+merge/split algorithms. Unrestricted Damerau-Levenshtein is rejected because
+the native matcher does not support it. Byte and `UInt64` dictionaries are
+rejected; their unit domains cannot represent Unicode scalar WallBreaker
+labels. The implementation contract and direct native-equivalence tests are
+in [the Julia WallBreaker design note](../../../docs/design/julia-wallbreaker-wfst.md).
 
 ### Phonetic patterns, rewrites, and dictionary products
 

@@ -147,21 +147,24 @@ jobs:
         run: |
           # Preserve each sibling's architecture-specific .cargo/config.toml.
           (cd ../libdictenstein && cargo build --no-default-features --features julia-bindings)
+          (cd ../liblevenshtein-rust && cargo build --no-default-features --features julia-bindings)
           (cd ../lling-llang && cargo build --no-default-features --features julia-bindings)
           family_root="$(dirname "$GITHUB_WORKSPACE")"
           libdict="$family_root/libdictenstein/target/debug/liblibdictenstein.so"
+          liblev="$family_root/liblevenshtein-rust/target/debug/libliblevenshtein.so"
           llinglang="$family_root/lling-llang/target/debug/liblling_llang.so"
-          LIBDICTENSTEIN_LIBRARY="$libdict" LLING_LLANG_LIBRARY="$llinglang" \
+          LIBDICTENSTEIN_LIBRARY="$libdict" LIBLEVENSHTEIN_LIBRARY="$liblev" LLING_LLANG_LIBRARY="$llinglang" \
             julia --project=bindings/julia/Duallity -e '
             using Pkg
             Pkg.develop([
               Pkg.PackageSpec(path="../vinary-tree-interop/bindings/julia/VinaryTreeInterop"),
               Pkg.PackageSpec(path="../libdictenstein/bindings/julia/Libdictenstein"),
+              Pkg.PackageSpec(path="../liblevenshtein-rust/bindings/julia/Liblevenshtein"),
               Pkg.PackageSpec(path="../lling-llang/bindings/julia/LlingLlang"),
             ])
             Pkg.test()
           '
-          LIBDICTENSTEIN_LIBRARY="$libdict" LLING_LLANG_LIBRARY="$llinglang" \
+          LIBDICTENSTEIN_LIBRARY="$libdict" LIBLEVENSHTEIN_LIBRARY="$liblev" LLING_LLANG_LIBRARY="$llinglang" \
             julia --project=bindings/julia/Duallity \
             bindings/julia/Duallity/test/installed_consumer.jl
       - name: Build strict Julia API documentation
@@ -169,6 +172,7 @@ jobs:
           JULIA_DEPOT_PATH: ${{ github.workspace }}/target/julia-depot
           DUALLITY_LIBRARY: ${{ github.workspace }}/target/debug/libduallity.so
           LIBDICTENSTEIN_LIBRARY: ${{ github.workspace }}/../libdictenstein/target/debug/liblibdictenstein.so
+          LIBLEVENSHTEIN_LIBRARY: ${{ github.workspace }}/../liblevenshtein-rust/target/debug/libliblevenshtein.so
           LLING_LLANG_LIBRARY: ${{ github.workspace }}/../lling-llang/target/debug/liblling_llang.so
         run: |
           julia --project=bindings/julia/Duallity/docs -e '
@@ -176,6 +180,7 @@ jobs:
             Pkg.develop([
               Pkg.PackageSpec(path="../vinary-tree-interop/bindings/julia/VinaryTreeInterop"),
               Pkg.PackageSpec(path="../libdictenstein/bindings/julia/Libdictenstein"),
+              Pkg.PackageSpec(path="../liblevenshtein-rust/bindings/julia/Liblevenshtein"),
               Pkg.PackageSpec(path="../lling-llang/bindings/julia/LlingLlang"),
               Pkg.PackageSpec(path="bindings/julia/Duallity"),
             ])

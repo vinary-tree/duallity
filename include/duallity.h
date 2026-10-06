@@ -28,7 +28,7 @@ extern "C" {
 #endif
 
 #define DUALLITY_ABI_VERSION 1u
-#define DUALLITY_API_REVISION 4u
+#define DUALLITY_API_REVISION 5u
 
 typedef enum DuallityStatus {
     DUALLITY_STATUS_OK = 0,
@@ -163,6 +163,19 @@ typedef struct DuallityCacheStatisticsV1 {
     uint64_t reserved[2];
 } DuallityCacheStatisticsV1;
 
+/* Revision-5 native WallBreaker result ingress. All records and term buffers
+ * are borrowed for the call and copied into the returned WFST. The caller
+ * supplies the complete verified result set from one dictionary revision.
+ * At most 4096 results, 1 MiB of UTF-8 term bytes, 256 scalars per term or
+ * query, and maximum_distance <= 8 are accepted. Empty terms are valid. */
+typedef struct DuallityWallBreakerResultV1 {
+    DuallityRecordHeaderV1 header;
+    const uint8_t* term_data;
+    uint64_t term_len;
+    uint64_t distance;
+    uint64_t reserved[2];
+} DuallityWallBreakerResultV1;
+
 typedef struct DuallityWfst DuallityWfst;
 
 /* Revision-4 phonetic constructors return owned vt.scalar-wfst.1 resources. */
@@ -223,6 +236,20 @@ DUALLITY_API DuallityStatus duallity_wfst_cache_set_policy(
     DuallityWfst* wfst,
     uint32_t policy,
     uint64_t capacity);
+/* Available in native-bindings-full builds at API revision 5. The returned
+ * handle supports resource retention, cache statistics, clear and policy
+ * controls, and must be released with duallity_wfst_free. */
+DUALLITY_API DuallityStatus duallity_wallbreaker_wfst_new_results(
+    const uint8_t* query_data,
+    size_t query_len,
+    uint32_t algorithm_value,
+    uint64_t maximum_distance,
+    const DuallityWallBreakerResultV1* results,
+    uint64_t result_count,
+    uint64_t result_stride,
+    uint32_t cache_policy,
+    uint64_t cache_capacity,
+    DuallityWfst** out_wfst);
 DUALLITY_API void duallity_resource_release(VtResource resource);
 
 /* Available when the native library is built with phonetic-rules. Caller owns

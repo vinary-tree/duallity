@@ -169,7 +169,7 @@
   },
   "packageVersion": "4.0.0-rc.6",
   "abiVersion": 1,
-  "apiRevision": 4,
+  "apiRevision": 5,
   "phoneticAbi": {
     "sinceApiRevision": 4,
     "feature": "phonetic-rules",
@@ -271,6 +271,13 @@
         "uint64_t clears",
         "uint64_t resident_states",
         "uint64_t recency_records",
+        "uint64_t reserved[2]"
+      ],
+      "DuallityWallBreakerResultV1": [
+        "DuallityRecordHeaderV1 header",
+        "const uint8_t* term_data",
+        "uint64_t term_len",
+        "uint64_t distance",
         "uint64_t reserved[2]"
       ]
     }
@@ -687,6 +694,25 @@
         { "name": "wfst", "cType": "DuallityWfst*", "direction": "in", "ownership": "borrowed-for-call", "nullability": "non-null" },
         { "name": "policy", "cType": "uint32_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
         { "name": "capacity", "cType": "uint64_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" }
+      ],
+      "raku": { "bind": true }
+    },
+    {
+      "name": "duallity_wallbreaker_wfst_new_results",
+      "rustModule": "ffi::wallbreaker",
+      "sinceApiRevision": 5,
+      "return": { "cType": "DuallityStatus", "ownership": "value", "nullability": "not-applicable" },
+      "parameters": [
+        { "name": "query_data", "cType": "const uint8_t*", "direction": "in", "ownership": "borrowed-for-call", "nullability": "nullable-if-query_len-is-zero" },
+        { "name": "query_len", "cType": "size_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "algorithm_value", "cType": "uint32_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "maximum_distance", "cType": "uint64_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "results", "cType": "const DuallityWallBreakerResultV1*", "direction": "in", "ownership": "borrowed-deep-copied-for-call", "nullability": "nullable-if-result_count-is-zero" },
+        { "name": "result_count", "cType": "uint64_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "result_stride", "cType": "uint64_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "cache_policy", "cType": "uint32_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "cache_capacity", "cType": "uint64_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "out_wfst", "cType": "DuallityWfst**", "direction": "out", "ownership": "owned-output-on-success", "nullability": "non-null" }
       ],
       "raku": { "bind": true }
     },

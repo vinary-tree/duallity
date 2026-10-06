@@ -12,12 +12,16 @@ use inspection::OwnedOptions;
 mod config;
 #[cfg(feature = "phonetic-rules")]
 mod phonetic;
+#[cfg(feature = "native-bindings-full")]
+mod wallbreaker;
 pub use config::{
     DuallityCacheStatisticsV1, DuallityGeneralizedLimitsV1, DuallityOperationV1,
     DuallityRecordHeaderV1, DuallityRestrictionV1, DuallityWfstOptionsV1,
 };
 #[cfg(feature = "phonetic-rules")]
 pub use phonetic::DuallityPhoneticRuleV1;
+#[cfg(feature = "native-bindings-full")]
+pub use wallbreaker::DuallityWallBreakerResultV1;
 
 use crate::bindings::{BindingError, WfstKind};
 use crate::GeneralizedWfstError;
@@ -35,8 +39,11 @@ use vinary_tree_interop::{VtResource, VtStatus};
 
 /// Stable duallity C ABI version.
 pub const DUALLITY_ABI_VERSION: u32 = 1;
-/// Additive project API revision for a build with the phonetic constructors.
-#[cfg(feature = "phonetic-rules")]
+/// Additive project API revision for the complete language-binding surface.
+#[cfg(feature = "native-bindings-full")]
+pub const DUALLITY_API_REVISION: u32 = 5;
+/// Additive revision for a phonetic-only FFI build.
+#[cfg(all(feature = "phonetic-rules", not(feature = "native-bindings-full")))]
 pub const DUALLITY_API_REVISION: u32 = 4;
 /// Additive project API revision for the minimal FFI build.
 #[cfg(not(feature = "phonetic-rules"))]
@@ -67,13 +74,19 @@ pub enum DuallityStatus {
 /// Opaque duallity WFST handle.
 pub struct DuallityWfst {
     resource: OwnedWfstResource,
-    options: OwnedOptions,
+    options: Option<OwnedOptions>,
 }
 
 impl DuallityWfst {
     /// Read back effective options while the handle still owns nested data.
     fn inspect_options(&self) -> Result<config::DuallityWfstOptionsV1, DuallityStatus> {
-        self.options.readback(&self.resource)
+        self.options
+            .as_ref()
+            .ok_or_else(|| {
+                set_error("this WFST has no configurable constructor options");
+                DuallityStatus::IncompatibleResource
+            })?
+            .readback(&self.resource)
     }
 }
 
@@ -301,7 +314,10 @@ pub extern "C" fn duallity_wfst_new(
         // validation order (query, algorithm, kind, construction, then output).
         // Found by the W8 asan/lsan leg; see finding DUAL-B10.
         let slot = output(out_wfst, "out_wfst")?;
-        *slot = Box::into_raw(Box::new(DuallityWfst { resource, options }));
+        *slot = Box::into_raw(Box::new(DuallityWfst {
+            resource,
+            options: Some(options),
+        }));
         Ok(())
     })
 }
@@ -457,7 +473,7 @@ pub unsafe extern "C" fn duallity_wfst_new_configured_ref(
         .map_err(map_error)?;
         let handle = Box::into_raw(Box::new(DuallityWfst {
             resource,
-            options: owned_options,
+            options: Some(owned_options),
         }));
         unsafe { slot.write(handle) };
         Ok(())
@@ -527,7 +543,14 @@ pub unsafe extern "C" fn duallity_wfst_cache_set_policy(
     boundary(|| {
         let handle = unsafe { live_handle(wfst.cast_const())? };
         let requested = config::cache_policy(policy, capacity)?;
-        cache::set_policy(&handle.resource, requested, handle.options.kind())
+        // WallBreaker follows the same zero-capacity default as every
+        // non-FZF provider; it has no configurable-options readback record.
+        let kind = handle
+            .options
+            .as_ref()
+            .map(OwnedOptions::kind)
+            .unwrap_or(WfstKind::Levenshtein);
+        cache::set_policy(&handle.resource, requested, kind)
     })
 }
 

@@ -110,3 +110,14 @@ class DuallityCacheStatisticsV1 is repr('CStruct') is export {
     has uint64 $.reserved0 is rw;
     has uint64 $.reserved1 is rw;
 }
+
+class DuallityWallBreakerResultV1 is repr('CStruct') is export {
+    has uint32 $.struct-size is rw;
+    has uint32 $.record-version is rw;
+    has uint64 $.header-reserved is rw;
+    has size_t $.term-data is rw;
+    has uint64 $.term-len is rw;
+    has uint64 $.distance is rw;
+    has uint64 $.reserved0 is rw;
+    has uint64 $.reserved1 is rw;
+}

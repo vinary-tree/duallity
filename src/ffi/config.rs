@@ -173,7 +173,7 @@ fn integer(value: u64, name: &str) -> Result<usize, DuallityStatus> {
 /// `pointer` must be null or point to aligned, readable storage of at least
 /// the `struct_size` bytes advertised by its header. Foreign C pointers
 /// cannot be proven mapped by the callee.
-unsafe fn record<T: Copy>(
+pub(super) unsafe fn record<T: Copy>(
     pointer: *const T,
     name: &str,
     available: usize,
@@ -217,7 +217,7 @@ unsafe fn record<T: Copy>(
     Ok(unsafe { pointer.read() })
 }
 
-fn array_shape<T>(
+pub(super) fn array_shape<T>(
     pointer: *const T,
     count: u64,
     stride: u64,

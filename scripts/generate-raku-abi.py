@@ -37,6 +37,7 @@ RAKU_PARAMETER_TYPES = {
     "const DuallityWfstOptionsV1*": "Pointer",
     "DuallityWfstOptionsV1*": "Pointer",
     "DuallityCacheStatisticsV1*": "Pointer",
+    "const DuallityWallBreakerResultV1*": "Pointer",
     "VtResource*": "Vinary::Tree::Interop::RawResource",
     "size_t": "size_t",
     "uint32_t": "uint32",

@@ -8,16 +8,18 @@
 
 use crate::{
     FzfWfst, GeneralizedWfstBuilder, GeneralizedWfstLimits, LevenshteinWfst,
-    UniversalLevenshteinWfst,
+    UniversalLevenshteinWfst, WallBreakerWfst,
 };
 #[cfg(feature = "phonetic-rules")]
 use crate::{PhoneticNfaWfst, PhoneticStateSource, RewriteRule, RewriteWfst};
 mod fault_scope;
 use crate::DirectStateSource;
 use fault_scope::FaultScope;
+use libdictenstein::scdawg::ScdawgChar;
 use libdictenstein::{Dictionary, DictionaryNode, SnapshotTraversalCursor, SyncStrategy};
 use liblevenshtein::transducer::universal::{MergeAndSplit, Standard, Transposition};
 use liblevenshtein::transducer::{Algorithm, OperationSet};
+use liblevenshtein::wallbreaker::WallBreakerResult;
 use lling_llang::bindings::{OwnedWfstResource, ScalarWfstProvider, ScalarWfstState};
 use lling_llang::prelude::{ArcticWeight, StateExpansion, StateId, TropicalWeight, Wfst};
 use lling_llang::wfst::SharedCachePolicy;
@@ -573,6 +575,7 @@ enum Adapter {
     UniversalMergeAndSplit(UniversalLevenshteinWfst<MergeAndSplit, ResourceDictionary>),
     Generalized(crate::GeneralizedWfst<ResourceDictionary>),
     Fzf(FzfWfst<ResourceDictionary>),
+    WallBreaker(WallBreakerWfst<'static, ScdawgChar<()>>),
     #[cfg(feature = "phonetic-rules")]
     PhoneticNfa(PhoneticNfaWfst),
     #[cfg(feature = "phonetic-rules")]
@@ -703,6 +706,7 @@ impl ScalarWfstProvider for AdapterProvider {
             Adapter::UniversalMergeAndSplit(wfst) => wfst.start(),
             Adapter::Generalized(wfst) => wfst.start(),
             Adapter::Fzf(wfst) => wfst.start(),
+            Adapter::WallBreaker(wfst) => wfst.start(),
             #[cfg(feature = "phonetic-rules")]
             Adapter::PhoneticNfa(wfst) => wfst.start(),
             #[cfg(feature = "phonetic-rules")]
@@ -714,7 +718,10 @@ impl ScalarWfstProvider for AdapterProvider {
     }
 
     fn num_states(&self) -> Result<Option<usize>, VtStatus> {
-        Ok(None)
+        Ok(match &self.adapter {
+            Adapter::WallBreaker(wfst) => Some(wfst.num_states()),
+            _ => None,
+        })
     }
 
     fn state(&self, state: u64) -> Result<ScalarWfstState, VtStatus> {
@@ -731,6 +738,7 @@ impl ScalarWfstProvider for AdapterProvider {
             }
             Adapter::Generalized(wfst) => tropical_state(wfst, self.dictionary.as_ref(), state),
             Adapter::Fzf(wfst) => arctic_state(wfst, self.dictionary.as_ref(), state),
+            Adapter::WallBreaker(wfst) => tropical_state(wfst, None, state),
             #[cfg(feature = "phonetic-rules")]
             Adapter::PhoneticNfa(wfst) => tropical_state(wfst, None, state),
             #[cfg(feature = "phonetic-rules")]
@@ -745,6 +753,30 @@ impl ScalarWfstProvider for AdapterProvider {
             Adapter::Rewrite(wfst) => tropical_state(wfst, None, state),
         }
     }
+}
+
+/// Export a finite WallBreaker result forest through the same provider cache
+/// used by other duallity resources. The caller owns query/result admission.
+pub(crate) fn create_wallbreaker_result_wfst(
+    query: String,
+    maximum_distance: usize,
+    algorithm: Algorithm,
+    results: Vec<WallBreakerResult>,
+    cache_policy: SharedCachePolicy,
+) -> OwnedWfstResource {
+    let wfst = WallBreakerWfst::<ScdawgChar<()>>::from_owned_results(
+        query,
+        maximum_distance,
+        algorithm,
+        results,
+    );
+    OwnedWfstResource::from_provider_with_cache(
+        Arc::new(AdapterProvider {
+            adapter: Adapter::WallBreaker(wfst),
+            dictionary: None,
+        }),
+        cache_policy,
+    )
 }
 
 /// Capture a dictionary and construct a lazy duallity WFST resource.

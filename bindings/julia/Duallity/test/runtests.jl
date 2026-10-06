@@ -78,6 +78,17 @@ end
                 @test stats.states == stats.arcs + 1
                 @test VTI.state_count(result.graph) == stats.states
                 @test VTI.weight_domain(result.graph) == VTI.WEIGHT_TROPICAL_F64
+                @test cache_statistics(result).misses > 0
+                clear_cache!(result)
+                @test cache_statistics(result).resident_states == 0
+                @test cache_statistics(result).clears >= 1
+                set_cache_policy!(result, NO_CACHE)
+                @test language(result.graph) == expected
+                @test cache_statistics(result).resident_states == 0
+                set_cache_policy!(result, LRU; capacity=1)
+                @test language(result.graph) == expected
+                @test cache_statistics(result).resident_states <= 1
+                set_cache_policy!(result, CACHE_ALL)
                 mapper = case_mapper(['c', 'a', 't', 'o', 'f', 'é'])
                 try
                     product = LL.compose(result.graph, mapper)
@@ -94,6 +105,7 @@ end
                 close(result)
             end
             @test !isopen(result)
+            @test_throws ArgumentError cache_statistics(result)
         end
         unicode = wallbreaker_wfst(dictionary, "café";
             maximum_distance=0)
@@ -132,9 +144,53 @@ end
     end
 end
 
+@testset "WallBreaker Unicode and boundary equivalence" begin
+    terms = ["a", "aa", "😀", "😀a", "é", "e\u0301", "café", "zzzz"]
+    dictionary = LD.Scdawg()
+    LD.insert_batch!(dictionary, [term => nothing for term in terms])
+    try
+        for (algorithm, native_algorithm) in (
+            (ALGORITHM_STANDARD, LLEV.ALGORITHM_STANDARD),
+            (ALGORITHM_TRANSPOSITION, LLEV.ALGORITHM_TRANSPOSITION),
+            (ALGORITHM_MERGE_AND_SPLIT, LLEV.ALGORITHM_MERGE_AND_SPLIT),
+        ), (query, maximum_distance) in (("", 0), ("😀", 1),
+            ("e\u0301", 1), ("cafe", 2), ("zzzz", 8))
+            matcher = LLEV.WallBreakerMatcher(terms;
+                max_distance=maximum_distance, algorithm=native_algorithm)
+            expected = try
+                cursor = LLEV.query(matcher, query)
+                try
+                    Dict(match.term => Float64(match.distance) for match in cursor)
+                finally
+                    close(cursor)
+                end
+            finally
+                close(matcher)
+            end
+            result = wallbreaker_wfst(dictionary, query;
+                maximum_distance, algorithm, cache_policy=LRU, cache_capacity=2)
+            try
+                @test language(result.graph) == expected
+                @test cache_statistics(result).resident_states <= 2
+            finally
+                close(result)
+            end
+        end
+        captured = wallbreaker_wfst(dictionary, "😀"; maximum_distance=1)
+        prior = language(captured.graph)
+        LD.insert_batch!(dictionary, ["😀x" => nothing])
+        @test language(captured.graph) == prior
+        close(dictionary)
+        @test language(captured.graph) == prior
+        close(captured)
+    finally
+        isopen(dictionary) && close(dictionary)
+    end
+end
+
 @testset "ABI and all public selectors" begin
     @test abi_version() == ABI_VERSION == 1
-    @test api_revision() >= API_REVISION == 4
+    @test api_revision() >= API_REVISION == 5
 
     dictionary = LD.DynamicDawg()
     try

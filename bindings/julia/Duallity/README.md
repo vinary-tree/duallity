@@ -182,11 +182,14 @@ finally
 end
 ```
 
-`WallBreakerGraph.graph` owns its native state graph independently of the
+`WallBreakerGraph.graph` retains the native result forest independently of the
 dictionary and matcher. `wallbreaker_statistics` reports immutable result,
-state, and arc counts. This finite graph has no mutable state cache; the
-revision-3 `cache_statistics`, `clear_cache!`, and `set_cache_policy!` methods
-apply to `ConfiguredWfst` handles, not to a `WallBreakerGraph`.
+state, and arc counts. `cache_statistics` reports the provider's expansion
+cache counters; `clear_cache!` evicts its resident states, and
+`set_cache_policy!(result, LRU; capacity=1024)` selects bounded residency.
+`CACHE_ALL` and `NO_CACHE` are also supported. Changing policy or clearing the
+cache preserves accepted terms and weights. Close the `WallBreakerGraph` when
+finished; its graph and native cache handle are then released together.
 
 The WallBreaker adapter accepts the standard, adjacent-transposition, and
 merge/split algorithms. Unrestricted Damerau-Levenshtein is rejected because

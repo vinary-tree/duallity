@@ -54,6 +54,7 @@ use libdictenstein::substring::{BidirectionalDictionaryNode, SubstringDictionary
 use libdictenstein::{Dictionary, DictionaryNode};
 use liblevenshtein::transducer::Algorithm;
 use liblevenshtein::wallbreaker::WallBreaker;
+use liblevenshtein::wallbreaker::WallBreakerResult;
 
 use crate::lazy_cache::{
     cache_char_state_expansion, cached_char_state_status, empty_char_transitions, CachedCharState,
@@ -180,7 +181,19 @@ where
     ) -> Self {
         // Run WallBreaker query to get results
         let wb = WallBreaker::with_algorithm(dictionary, max_distance, algorithm);
-        let results = normalize_wallbreaker_results(wb.query(query), max_distance);
+        let results = wb.query(query).collect();
+        Self::from_owned_results(query.to_owned(), max_distance, algorithm, results)
+    }
+
+    /// Build the same result forest from an independently owned, bounded
+    /// WallBreaker result set. No dictionary borrow survives construction.
+    pub(crate) fn from_owned_results(
+        query: String,
+        max_distance: usize,
+        algorithm: Algorithm,
+        results: Vec<WallBreakerResult>,
+    ) -> Self {
+        let results = normalize_wallbreaker_results(results, max_distance);
         let result_count = results.len();
         let result_chars = ResultCharArena::from_results(&results);
         let result_final_weights = wallbreaker_result_final_weights(&results);
@@ -190,7 +203,7 @@ where
 
         Self {
             _dictionary: PhantomData,
-            query: query.to_string(),
+            query,
             max_distance,
             algorithm,
             result_count,

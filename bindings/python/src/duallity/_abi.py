@@ -13,7 +13,7 @@ from typing import Any
 from vinary_tree_interop import NativeResource, VtResource
 
 ABI_VERSION = 1
-API_REVISION = 4
+API_REVISION = 5
 
 
 class Status(IntEnum):
@@ -166,6 +166,18 @@ class DuallityCacheStatisticsV1(ctypes.Structure):
     ]
 
 
+class DuallityWallBreakerResultV1(ctypes.Structure):
+    """One borrowed native WallBreaker match for owned WFST construction."""
+
+    _fields_ = [
+        ("header", DuallityRecordHeaderV1),
+        ("term_data", ctypes.POINTER(ctypes.c_uint8)),
+        ("term_len", ctypes.c_uint64),
+        ("distance", ctypes.c_uint64),
+        ("reserved", ctypes.c_uint64 * 2),
+    ]
+
+
 class NativeError(RuntimeError):
     """Native duallity failure with its status, operation, and copied detail."""
 
@@ -272,6 +284,21 @@ _bind("duallity_wfst_cache_clear", [ctypes.c_void_p])
 _bind(
     "duallity_wfst_cache_set_policy",
     [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint64],
+)
+_bind(
+    "duallity_wallbreaker_wfst_new_results",
+    [
+        ctypes.POINTER(ctypes.c_uint8),
+        ctypes.c_size_t,
+        ctypes.c_uint32,
+        ctypes.c_uint64,
+        ctypes.POINTER(DuallityWallBreakerResultV1),
+        ctypes.c_uint64,
+        ctypes.c_uint64,
+        ctypes.c_uint32,
+        ctypes.c_uint64,
+        ctypes.POINTER(ctypes.c_void_p),
+    ],
 )
 
 

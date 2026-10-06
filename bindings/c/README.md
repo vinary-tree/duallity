@@ -45,6 +45,7 @@ distances, terms, post-capture mutation isolation, and a zero retain ledger.
 | `duallity_wfst_resource` | Returns one independently retained `vt.scalar-wfst.1` resource. |
 | `duallity_wfst_free` | Frees the project handle; previously exported resources remain valid. |
 | `duallity_resource_release` | Releases exactly one resource retain. |
+| `duallity_wallbreaker_wfst_new_results` | Copies a complete native WallBreaker match set into an owned tropical identity WFST with cache controls. |
 | `duallity_phonetic_nfa_new` | Compiles a Unicode phonetic pattern into a standalone lazy WFST; optional alphabet controls expansion of wide labels. |
 | `duallity_phonetic_product_new_ref` | Captures one dictionary revision and constructs the lazy phonetic-NFA × bounded edit × dictionary product. |
 | `duallity_phonetic_rewrite_new` | Copies versioned, priority-ordered Unicode rewrite rules into a standalone graph. |
@@ -54,6 +55,20 @@ The dictionary must advertise Unicode-scalar units. Query input is
 pointer-plus-byte-length UTF-8, so it may be non-NUL-terminated but must be
 valid. Maximum-distance limits are kind-specific; universal/generalized state
 encodings reject values beyond their represented range instead of truncating.
+
+The WallBreaker result constructor is present in full native-binding builds
+with `duallity_api_revision() >= 5`. Each
+`DuallityWallBreakerResultV1` has a version-1 sized header, a borrowed UTF-8
+term span, its native match distance, and zero reserved fields. Pass zero count,
+null pointer, and zero stride for an empty result set. The constructor copies
+terms before return and bounds the input to 4096 results, 1 MiB of term bytes,
+256 Unicode scalars per query or term, and maximum edit distance 8. The caller
+must supply the complete result set from one captured dictionary revision;
+the constructor validates shape and distance bounds but cannot establish
+completeness from the records alone. Release its `DuallityWfst*` handle with
+`duallity_wfst_free`; resources returned by `duallity_wfst_resource` retain
+the graph and share its provider cache. Cache statistics, clear, and policy
+functions operate on this handle as on configured WFST handles.
 
 The four phonetic constructors require a library built with `phonetic-rules`
 and `duallity_api_revision() >= 4`. Pattern, alphabet, and rule text are

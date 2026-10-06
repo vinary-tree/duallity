@@ -84,9 +84,11 @@ closing the product and its snapshot does not change either operand.
 ## Native WallBreaker result graph
 
 `wallbreaker_wfst` uses the bounded native liblevenshtein WallBreaker matcher
-and builds an owned tropical result forest. Its finite graph is eager and
-can outlive the source dictionary. The package README describes its limits
-and supported algorithms.
+and builds an owned tropical result forest. Its finite graph can outlive the
+source dictionary. Native expansion-cache statistics, clearing, and policy
+changes are available through `cache_statistics`, `clear_cache!`, and
+`set_cache_policy!` on the returned `WallBreakerGraph`. The package README
+describes its limits and supported algorithms.
 
 ```@example wallbreaker
 using Duallity

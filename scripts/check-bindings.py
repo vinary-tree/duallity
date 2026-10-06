@@ -307,15 +307,16 @@ def check_symbols(report: Report, model: dict) -> None:
     modeled = {item["name"] for item in model["cFunctions"]}
     ffi = read_text(report, "SYM-1-ffi", ROOT / "src" / "ffi.rs")
     phonetic_ffi = read_text(report, "SYM-1-ffi", ROOT / "src" / "ffi" / "phonetic.rs")
+    wallbreaker_ffi = read_text(report, "SYM-1-ffi", ROOT / "src" / "ffi" / "wallbreaker.rs")
     header = read_text(report, "SYM-2-header", ROOT / "include" / "duallity.h")
     hpp = read_text(report, "SYM-3-hpp", ROOT / "include" / "duallity.hpp")
-    if ffi is None or phonetic_ffi is None or header is None or hpp is None:
+    if ffi is None or phonetic_ffi is None or wallbreaker_ffi is None or header is None or hpp is None:
         return
 
     exported = set(
         re.findall(
             r'pub\s+(?:unsafe\s+)?extern\s+"C"\s+fn\s+(duallity_[a-z0-9_]+)\s*\(',
-            ffi + "\n" + phonetic_ffi,
+            ffi + "\n" + phonetic_ffi + "\n" + wallbreaker_ffi,
         )
     )
     if exported == modeled:
@@ -1170,6 +1171,7 @@ def check_python(report: Report, model: dict) -> None:
         "duallity_wfst_cache_statistics",
         "duallity_wfst_cache_clear",
         "duallity_wfst_cache_set_policy",
+        "duallity_wallbreaker_wfst_new_results",
     }
     symbols_ok = symbols == required and symbols <= modeled
     report.add(

@@ -316,7 +316,10 @@ mod tests {
             )
         }
         .unwrap();
-        let handle = Box::new(DuallityWfst { resource, options });
+        let handle = Box::new(DuallityWfst {
+            resource,
+            options: Some(options),
+        });
         let retained = handle.resource.clone();
         name.fill(b'x');
         source_text.fill(b'x');

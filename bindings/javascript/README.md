@@ -12,7 +12,7 @@ It is a facade over the `duallity_*` C ABI documented in
 this README is the JavaScript-specific guide. The task-oriented cross-language walkthrough is
 [docs/guides/07 · Language bindings](../../docs/guides/07-language-bindings.md).
 
-The native C library reports ABI version 1, API revision 4. Its configured WFST constructor
+The complete native C library reports ABI version 1, API revision 6. Its configured WFST constructor
 and cache controls were added at API revision 3. The shared JavaScript runtime now bridges
 them for native N-API, browser WebAssembly, and Node WASI; this RC.6 development candidate
 exposes that bridge but has **not been published**. The positional constructor remains

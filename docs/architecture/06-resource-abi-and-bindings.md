@@ -15,10 +15,10 @@ trait contracts. This chapter describes the *second* interface duallity exposes:
 the modular language bindings built on it. It is the connective tissue at the level of *compiled
 artifacts* — the point where a dictionary built by one independently compiled library becomes a WFST
 that a second independently compiled library composes, with no shared Rust types and no serialization.
-It describes the shipped revision-2 surface. The additive, not-yet-shipped
+It starts with the eight functions of the earlier revision-2 surface. The
+current RC.6 source candidate also exports the additive, callable
 [revision-3 configuration contract](07-versioned-configurable-wfst-abi.md)
-is documented separately so its record declarations are not mistaken for
-callable functions.
+and later functions. Publication of that candidate is a separate release step.
 
 ## 1. Where duallity sits in the resource ABI
 
@@ -68,7 +68,7 @@ native phonetic constructors that return independently owned `VtResource` values
 | Function | Purpose | Returns | Panics across the boundary? | Complexity |
 |----------|---------|---------|-----------------------------|------------|
 | `duallity_abi_version()` | the stable ABI version (`1`) | `uint32_t` | no — trivial | $`\mathcal{O}(1)`$ |
-| `duallity_api_revision()` | the additive API revision (`4`) | `uint32_t` | no — trivial | $`\mathcal{O}(1)`$ |
+| `duallity_api_revision()` | the build's additive API revision (`6` with all bindings, `4` with phonetic features, `3` with minimal FFI) | `uint32_t` | no — trivial | $`\mathcal{O}(1)`$ |
 | `duallity_last_error_message()` | this thread's last boundary error | `const char*` | no — thread-local read | $`\mathcal{O}(1)`$ |
 | `duallity_wfst_new(...)` | capture a dictionary revision and build a lazy WFST | `DuallityStatus` | **no** — `catch_unwind` maps a panic to `PANIC` | $`\mathcal{O}(1)`$ in $`\lvert D \rvert`$ |
 | `duallity_wfst_new_ref(...)` | pointer-form equivalent of `duallity_wfst_new` for FFIs that cannot pass a C aggregate by value | `DuallityStatus` | **no** — delegates through the same contained constructor | $`\mathcal{O}(1)`$ in $`\lvert D \rvert`$ |
@@ -130,7 +130,7 @@ status is total and is the subject of the machine-checked proof in
 The `LIMIT_EXCEEDED` mapping is already active at ABI version `1`; it is not a
 future placeholder. In contrast, a legacy `maximum_distance` that does not
 fit the universal/generalized `u8` parameter still returns
-`INVALID_ARGUMENT`. The new revision-3 parser will distinguish malformed
+`INVALID_ARGUMENT`. The revision-3 parser distinguishes malformed
 records from count, byte-budget, and host-size overflows without changing
 those revision-2 results.
 

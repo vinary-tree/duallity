@@ -1,10 +1,11 @@
 # 07 · Versioned configurable WFST ABI contract
 
-> **Status:** this development branch exports API revision 3 while preserving
-> ABI version 1 and the eight earlier function signatures. The release has
-> **not** been published; language-level facades and final conformance remain
-> separate qualification tasks. Consumers must negotiate the returned API
-> revision before calling these functions.
+> **Status:** the complete language-binding build exports API revision 6;
+> minimal FFI builds report revision 3 and phonetic-only builds report
+> revision 4. Revision 3 introduced the configurable WFST functions described
+> here. All builds preserve ABI version 1 and the eight earlier function
+> signatures. Consumers must negotiate the returned API revision before
+> calling additive functions.
 >
 > **Prerequisites:** [resource ABI and bindings](06-resource-abi-and-bindings.md),
 > [lazy evaluation and caching](04-lazy-evaluation-and-caching.md), and
@@ -184,5 +185,5 @@ concurrent calls, and reentrant clear against the exported provider cache.
 The [revision-3 C-boundary qualification](../scientific-ledger/configurable-c-boundary-2026-09-29.md)
 checks the callable symbols, old/new C consumers, malformed records, output
 failure behavior, and snapshot-retain balance. The higher-level foreign
-facades and final package-wide conformance are follow-up tasks. No package
-publication is implied by this development-branch contract.
+facades and final package-wide conformance are qualified separately. This
+contract does not imply package publication.

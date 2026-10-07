@@ -28,7 +28,7 @@ extern "C" {
 #endif
 
 #define DUALLITY_ABI_VERSION 1u
-#define DUALLITY_API_REVISION 5u
+#define DUALLITY_API_REVISION 6u
 
 typedef enum DuallityStatus {
     DUALLITY_STATUS_OK = 0,
@@ -176,7 +176,62 @@ typedef struct DuallityWallBreakerResultV1 {
     uint64_t reserved[2];
 } DuallityWallBreakerResultV1;
 
+/* Revision-6 FZF scoring, bounded ranking, and configured WFST records.
+ * All fields are native-endian C ABI values. Unknown trailing bytes and all
+ * reserved fields must be zero. Ranking hit text is borrowed until free. */
+typedef enum DuallityFzfSchemeV1 {
+    DUALLITY_FZF_SCHEME_DEFAULT = 0,
+    DUALLITY_FZF_SCHEME_PATH = 1,
+    DUALLITY_FZF_SCHEME_HISTORY = 2
+} DuallityFzfSchemeV1;
+
+typedef struct DuallityFzfConfigV1 {
+    DuallityRecordHeaderV1 header;
+    uint32_t case_sensitive;
+    uint32_t scheme;
+    uint64_t top_k;
+    uint64_t max_query_chars;
+    uint64_t max_candidate_chars;
+    uint64_t max_work_units;
+    uint32_t cache_policy;
+    uint32_t reserved_zero;
+    uint64_t cache_capacity;
+    uint64_t reserved[2];
+} DuallityFzfConfigV1;
+
+typedef struct DuallityFzfScoreV1 {
+    DuallityRecordHeaderV1 header;
+    uint32_t matched;
+    int32_t score;
+    int32_t maximum_score;
+    uint32_t reserved_zero;
+    uint64_t reserved[2];
+} DuallityFzfScoreV1;
+
+typedef struct DuallityFzfStatisticsV1 {
+    DuallityRecordHeaderV1 header;
+    uint64_t columns_computed;
+    uint64_t candidates_scored;
+    uint64_t prefixes_pruned;
+    uint64_t score_bound_prefixes_pruned;
+    uint64_t length_prefixes_pruned;
+    uint64_t upper_bounds_computed;
+    uint64_t result_count;
+    uint64_t work_units;
+    uint64_t reserved[2];
+} DuallityFzfStatisticsV1;
+
+typedef struct DuallityFzfHitV1 {
+    DuallityRecordHeaderV1 header;
+    const uint8_t* term_data;
+    uint64_t term_len;
+    int32_t score;
+    uint32_t reserved_zero;
+    uint64_t reserved[2];
+} DuallityFzfHitV1;
+
 typedef struct DuallityWfst DuallityWfst;
+typedef struct DuallityFzfRanking DuallityFzfRanking;
 
 /* Revision-4 phonetic constructors return owned vt.scalar-wfst.1 resources. */
 typedef struct DuallityPhoneticRuleV1 {
@@ -236,6 +291,27 @@ DUALLITY_API DuallityStatus duallity_wfst_cache_set_policy(
     DuallityWfst* wfst,
     uint32_t policy,
     uint64_t capacity);
+DUALLITY_API DuallityStatus duallity_fzf_config_default(
+    DuallityFzfConfigV1* out_config);
+DUALLITY_API DuallityStatus duallity_fzf_score(
+    const uint8_t* query_data, size_t query_len,
+    const uint8_t* candidate_data, size_t candidate_len,
+    const DuallityFzfConfigV1* options, DuallityFzfScoreV1* out_score);
+DUALLITY_API DuallityStatus duallity_fzf_wfst_new_ref(
+    const VtResource* dictionary, const uint8_t* query_data, size_t query_len,
+    const DuallityFzfConfigV1* options, DuallityWfst** out_wfst);
+DUALLITY_API DuallityStatus duallity_fzf_wfst_config_get(
+    const DuallityWfst* wfst, DuallityFzfConfigV1* out_config);
+DUALLITY_API DuallityStatus duallity_fzf_rank_ref(
+    const VtResource* dictionary, const uint8_t* query_data, size_t query_len,
+    const DuallityFzfConfigV1* options, DuallityFzfRanking** out_ranking);
+DUALLITY_API DuallityStatus duallity_fzf_ranking_len(
+    const DuallityFzfRanking* ranking, uint64_t* out_len);
+DUALLITY_API DuallityStatus duallity_fzf_ranking_get(
+    const DuallityFzfRanking* ranking, uint64_t index, DuallityFzfHitV1* out_hit);
+DUALLITY_API DuallityStatus duallity_fzf_ranking_statistics(
+    const DuallityFzfRanking* ranking, DuallityFzfStatisticsV1* out_stats);
+DUALLITY_API void duallity_fzf_ranking_free(DuallityFzfRanking* ranking);
 /* Available in native-bindings-full builds at API revision 5. The returned
  * handle supports resource retention, cache statistics, clear and policy
  * controls, and must be released with duallity_wfst_free. */

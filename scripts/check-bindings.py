@@ -308,15 +308,16 @@ def check_symbols(report: Report, model: dict) -> None:
     ffi = read_text(report, "SYM-1-ffi", ROOT / "src" / "ffi.rs")
     phonetic_ffi = read_text(report, "SYM-1-ffi", ROOT / "src" / "ffi" / "phonetic.rs")
     wallbreaker_ffi = read_text(report, "SYM-1-ffi", ROOT / "src" / "ffi" / "wallbreaker.rs")
+    fzf_ffi = read_text(report, "SYM-1-ffi", ROOT / "src" / "ffi" / "fzf.rs")
     header = read_text(report, "SYM-2-header", ROOT / "include" / "duallity.h")
     hpp = read_text(report, "SYM-3-hpp", ROOT / "include" / "duallity.hpp")
-    if ffi is None or phonetic_ffi is None or wallbreaker_ffi is None or header is None or hpp is None:
+    if ffi is None or phonetic_ffi is None or wallbreaker_ffi is None or fzf_ffi is None or header is None or hpp is None:
         return
 
     exported = set(
         re.findall(
             r'pub\s+(?:unsafe\s+)?extern\s+"C"\s+fn\s+(duallity_[a-z0-9_]+)\s*\(',
-            ffi + "\n" + phonetic_ffi + "\n" + wallbreaker_ffi,
+            ffi + "\n" + phonetic_ffi + "\n" + wallbreaker_ffi + "\n" + fzf_ffi,
         )
     )
     if exported == modeled:
@@ -601,6 +602,41 @@ def check_config_abi(report: Report, model: dict) -> None:
             and 0 < expected <= 1 << 30
             and actual == expected,
             f"{macro} {'matches' if actual == expected else 'differs from'} configAbi",
+        )
+
+
+def check_fzf_abi(report: Report, model: dict) -> None:
+    fzf = model.get("fzfAbi")
+    header = read_text(report, "FZF-0-header", ROOT / "include" / "duallity.h")
+    if not isinstance(fzf, dict) or header is None:
+        report.add("FZF-0-model", False, "fzfAbi or public header is missing")
+        return
+    report.add(
+        "FZF-1-revision",
+        fzf.get("sinceApiRevision") == 6
+        and fzf.get("recordVersion") == 1
+        and model.get("apiRevision", 0) >= 6,
+        "FZF records are version 1 and available from API revision 6",
+    )
+    expected_schemes = fzf.get("schemes")
+    actual_schemes = header_enum_values(
+        header, "DuallityFzfSchemeV1", "DUALLITY_FZF_SCHEME_"
+    )
+    report.add(
+        "FZF-2-schemes",
+        actual_schemes == expected_schemes,
+        "public FZF schemes match fzfAbi",
+    )
+    records = fzf.get("records")
+    if not isinstance(records, dict) or not records:
+        report.add("FZF-3-records", False, "fzfAbi.records is absent or empty")
+        return
+    for name, expected in records.items():
+        actual = header_record_fields(header, name)
+        report.add(
+            f"FZF-record-{name}",
+            actual == expected,
+            f"{name} {'matches' if actual == expected else 'differs from'} fzfAbi",
         )
 
 
@@ -1376,6 +1412,7 @@ def main() -> int:
         check_symbols(report, model)
         check_enums(report, model)
         check_config_abi(report, model)
+        check_fzf_abi(report, model)
         generated = subprocess.run(
             [sys.executable, str(ROOT / "scripts/generate-config-abi.py"), "--check"],
             capture_output=True,

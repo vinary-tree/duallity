@@ -110,6 +110,46 @@ finally
 end
 ```
 
+## Native FZF ranking and configured graph
+
+FZF ranks an ordered query subsequence inside each dictionary term. The
+`FZF_SCHEME_PATH` bonus table favors path boundaries; `top_k` selects an exact
+ranked result capacity. Native traversal shares prefix score columns and
+returns work counters. A configured graph uses Arctic weights, where higher
+scores are better; close its owner after use.
+
+```@example fzf
+using Duallity
+import Libdictenstein as LD
+import VinaryTreeInterop as VTI
+
+dictionary = LD.DynamicDawg()
+try
+    LD.insert_batch!(dictionary,
+        ["foo/bar" => nothing, "FooBar" => nothing, "far" => nothing])
+    options = FzfOptions(scheme=FZF_SCHEME_PATH, top_k=2,
+        max_query_chars=16, max_candidate_chars=64,
+        max_work_units=1_000, cache_policy=LRU, cache_capacity=2)
+    ranking = fzf_rank(dictionary, "fb"; options)
+    @assert length(ranking.hits) <= 2
+    @assert ranking.statistics.work_units <= options.max_work_units
+    graph = fzf_wfst(dictionary, "fb"; options)
+    try
+        @assert VTI.weight_domain(graph.graph) == VTI.WEIGHT_ARCTIC_F64
+        clear_cache!(graph)
+        set_cache_policy!(graph, NO_CACHE)
+        @assert effective_fzf_options(graph).cache_policy == NO_CACHE
+    finally
+        close(graph)
+    end
+finally
+    close(dictionary)
+end
+```
+
+The [FZF design note](https://github.com/vinary-tree/duallity/blob/master/docs/design/fzf-wfst.md)
+derives the score bound and explains why the graph uses Arctic weights.
+
 ## Public API
 
 ```@autodocs

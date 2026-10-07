@@ -72,7 +72,20 @@ export ABI_VERSION,
     WFST_GENERALIZED_TRANSPOSITION,
     WFST_GENERALIZED_MERGE_AND_SPLIT,
     WFST_GENERALIZED_PHONETIC,
-    WFST_FZF
+    WFST_FZF,
+    FzfScheme,
+    FZF_SCHEME_DEFAULT,
+    FZF_SCHEME_PATH,
+    FZF_SCHEME_HISTORY,
+    FzfOptions,
+    FzfScore,
+    FzfHit,
+    FzfStatistics,
+    FzfRanking,
+    fzf_score,
+    fzf_rank,
+    fzf_wfst,
+    effective_fzf_options
 
 """A copied native failure with its stable status, operation, and diagnostic."""
 struct NativeError <: Exception
@@ -186,6 +199,7 @@ function __init__()
 end
 
 include("Config.jl")
+include("Fzf.jl")
 include("WallBreaker.jl")
 
 end # module

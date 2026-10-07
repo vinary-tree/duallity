@@ -169,7 +169,22 @@
   },
   "packageVersion": "4.0.0-rc.6",
   "abiVersion": 1,
-  "apiRevision": 5,
+  "apiRevision": 6,
+  "fzfAbi": {
+    "sinceApiRevision": 6,
+    "recordVersion": 1,
+    "schemes": { "DEFAULT": 0, "PATH": 1, "HISTORY": 2 },
+    "maximumTopK": 4096,
+    "maximumWorkUnits": 1000000,
+    "records": {
+      "DuallityFzfConfigV1": ["DuallityRecordHeaderV1 header", "uint32_t case_sensitive", "uint32_t scheme", "uint64_t top_k", "uint64_t max_query_chars", "uint64_t max_candidate_chars", "uint64_t max_work_units", "uint32_t cache_policy", "uint32_t reserved_zero", "uint64_t cache_capacity", "uint64_t reserved[2]"],
+      "DuallityFzfScoreV1": ["DuallityRecordHeaderV1 header", "uint32_t matched", "int32_t score", "int32_t maximum_score", "uint32_t reserved_zero", "uint64_t reserved[2]"],
+      "DuallityFzfStatisticsV1": ["DuallityRecordHeaderV1 header", "uint64_t columns_computed", "uint64_t candidates_scored", "uint64_t prefixes_pruned", "uint64_t score_bound_prefixes_pruned", "uint64_t length_prefixes_pruned", "uint64_t upper_bounds_computed", "uint64_t result_count", "uint64_t work_units", "uint64_t reserved[2]"],
+      "DuallityFzfHitV1": ["DuallityRecordHeaderV1 header", "const uint8_t* term_data", "uint64_t term_len", "int32_t score", "uint32_t reserved_zero", "uint64_t reserved[2]"]
+    },
+    "rankingOwnership": "owned-handle-with-borrowed-hit-text-until-free",
+    "tieOrder": "score-descending-then-UTF-8-term-ascending"
+  },
   "phoneticAbi": {
     "sinceApiRevision": 4,
     "feature": "phonetic-rules",
@@ -779,6 +794,92 @@
         { "name": "out_resource", "cType": "VtResource*", "direction": "out", "ownership": "owned-output-on-success", "nullability": "non-null" }
       ],
       "raku": { "bind": false, "reason": "The phonetic Raku facade has a dedicated parity leaf and must first model locale selectors and resource ownership" }
+    },
+    {
+      "name": "duallity_fzf_config_default", "rustModule": "ffi::fzf", "sinceApiRevision": 6,
+      "return": { "cType": "DuallityStatus", "ownership": "value", "nullability": "not-applicable" },
+      "parameters": [{ "name": "out_config", "cType": "DuallityFzfConfigV1*", "direction": "out", "ownership": "caller-sized-output", "nullability": "non-null" }],
+      "raku": { "bind": false, "reason": "Raku FZF configuration parity is tracked separately" }
+    },
+    {
+      "name": "duallity_fzf_score", "rustModule": "ffi::fzf", "sinceApiRevision": 6,
+      "return": { "cType": "DuallityStatus", "ownership": "value", "nullability": "not-applicable" },
+      "parameters": [
+        { "name": "query_data", "cType": "const uint8_t*", "direction": "in", "ownership": "borrowed-for-call", "nullability": "nullable-if-query_len-is-zero" },
+        { "name": "query_len", "cType": "size_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "candidate_data", "cType": "const uint8_t*", "direction": "in", "ownership": "borrowed-for-call", "nullability": "nullable-if-candidate_len-is-zero" },
+        { "name": "candidate_len", "cType": "size_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "options", "cType": "const DuallityFzfConfigV1*", "direction": "in", "ownership": "borrowed-for-call", "nullability": "non-null" },
+        { "name": "out_score", "cType": "DuallityFzfScoreV1*", "direction": "out", "ownership": "caller-sized-output", "nullability": "non-null" }
+      ],
+      "raku": { "bind": false, "reason": "Raku FZF scoring parity is tracked separately" }
+    },
+    {
+      "name": "duallity_fzf_wfst_new_ref", "rustModule": "ffi::fzf", "sinceApiRevision": 6,
+      "return": { "cType": "DuallityStatus", "ownership": "value", "nullability": "not-applicable" },
+      "parameters": [
+        { "name": "dictionary", "cType": "const VtResource*", "direction": "in", "ownership": "borrowed-capture-snapshot", "nullability": "non-null" },
+        { "name": "query_data", "cType": "const uint8_t*", "direction": "in", "ownership": "borrowed-for-call", "nullability": "nullable-if-query_len-is-zero" },
+        { "name": "query_len", "cType": "size_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "options", "cType": "const DuallityFzfConfigV1*", "direction": "in", "ownership": "borrowed-deep-copied-for-call", "nullability": "non-null" },
+        { "name": "out_wfst", "cType": "DuallityWfst**", "direction": "out", "ownership": "owned-output-on-success", "nullability": "non-null" }
+      ],
+      "raku": { "bind": false, "reason": "Raku FZF configuration parity is tracked separately" }
+    },
+    {
+      "name": "duallity_fzf_wfst_config_get", "rustModule": "ffi::fzf", "sinceApiRevision": 6,
+      "return": { "cType": "DuallityStatus", "ownership": "value", "nullability": "not-applicable" },
+      "parameters": [
+        { "name": "wfst", "cType": "const DuallityWfst*", "direction": "in", "ownership": "borrowed-for-call", "nullability": "non-null" },
+        { "name": "out_config", "cType": "DuallityFzfConfigV1*", "direction": "out", "ownership": "caller-sized-output", "nullability": "non-null" }
+      ],
+      "raku": { "bind": false, "reason": "Raku FZF configuration parity is tracked separately" }
+    },
+    {
+      "name": "duallity_fzf_rank_ref", "rustModule": "ffi::fzf", "sinceApiRevision": 6,
+      "return": { "cType": "DuallityStatus", "ownership": "value", "nullability": "not-applicable" },
+      "parameters": [
+        { "name": "dictionary", "cType": "const VtResource*", "direction": "in", "ownership": "borrowed-capture-snapshot", "nullability": "non-null" },
+        { "name": "query_data", "cType": "const uint8_t*", "direction": "in", "ownership": "borrowed-for-call", "nullability": "nullable-if-query_len-is-zero" },
+        { "name": "query_len", "cType": "size_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "options", "cType": "const DuallityFzfConfigV1*", "direction": "in", "ownership": "borrowed-for-call", "nullability": "non-null" },
+        { "name": "out_ranking", "cType": "DuallityFzfRanking**", "direction": "out", "ownership": "owned-output-on-success", "nullability": "non-null" }
+      ],
+      "raku": { "bind": false, "reason": "Raku FZF ranking parity is tracked separately" }
+    },
+    {
+      "name": "duallity_fzf_ranking_len", "rustModule": "ffi::fzf", "sinceApiRevision": 6,
+      "return": { "cType": "DuallityStatus", "ownership": "value", "nullability": "not-applicable" },
+      "parameters": [
+        { "name": "ranking", "cType": "const DuallityFzfRanking*", "direction": "in", "ownership": "borrowed-for-call", "nullability": "non-null" },
+        { "name": "out_len", "cType": "uint64_t*", "direction": "out", "ownership": "caller-output", "nullability": "non-null" }
+      ],
+      "raku": { "bind": false, "reason": "Raku FZF ranking parity is tracked separately" }
+    },
+    {
+      "name": "duallity_fzf_ranking_get", "rustModule": "ffi::fzf", "sinceApiRevision": 6,
+      "return": { "cType": "DuallityStatus", "ownership": "value", "nullability": "not-applicable" },
+      "parameters": [
+        { "name": "ranking", "cType": "const DuallityFzfRanking*", "direction": "in", "ownership": "borrowed-for-call", "nullability": "non-null" },
+        { "name": "index", "cType": "uint64_t", "direction": "in", "ownership": "value", "nullability": "not-applicable" },
+        { "name": "out_hit", "cType": "DuallityFzfHitV1*", "direction": "out", "ownership": "caller-sized-output-with-borrowed-text", "nullability": "non-null" }
+      ],
+      "raku": { "bind": false, "reason": "Raku FZF ranking parity is tracked separately" }
+    },
+    {
+      "name": "duallity_fzf_ranking_statistics", "rustModule": "ffi::fzf", "sinceApiRevision": 6,
+      "return": { "cType": "DuallityStatus", "ownership": "value", "nullability": "not-applicable" },
+      "parameters": [
+        { "name": "ranking", "cType": "const DuallityFzfRanking*", "direction": "in", "ownership": "borrowed-for-call", "nullability": "non-null" },
+        { "name": "out_stats", "cType": "DuallityFzfStatisticsV1*", "direction": "out", "ownership": "caller-sized-output", "nullability": "non-null" }
+      ],
+      "raku": { "bind": false, "reason": "Raku FZF ranking parity is tracked separately" }
+    },
+    {
+      "name": "duallity_fzf_ranking_free", "rustModule": "ffi::fzf", "sinceApiRevision": 6,
+      "return": { "cType": "void", "ownership": "none", "nullability": "not-applicable" },
+      "parameters": [{ "name": "ranking", "cType": "DuallityFzfRanking*", "direction": "in", "ownership": "consumed-when-non-null", "nullability": "nullable" }],
+      "raku": { "bind": false, "reason": "Raku FZF ranking parity is tracked separately" }
     }
   ],
   "javascript": {

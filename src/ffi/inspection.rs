@@ -319,6 +319,8 @@ mod tests {
         let handle = Box::new(DuallityWfst {
             resource,
             options: Some(options),
+            #[cfg(feature = "native-bindings-full")]
+            fzf_config: None,
         });
         let retained = handle.resource.clone();
         name.fill(b'x');

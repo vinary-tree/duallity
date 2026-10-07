@@ -23,16 +23,22 @@ packages and build duallity with its Julia facade enabled:
 ```julia
 using Pkg
 Pkg.develop(path="../vinary-tree-interop/bindings/julia/VinaryTreeInterop")
+Pkg.develop(path="../libdictenstein/bindings/julia/Libdictenstein")
 Pkg.develop(path="../liblevenshtein-rust/bindings/julia/Liblevenshtein")
+Pkg.develop(path="../lling-llang/bindings/julia/LlingLlang")
 Pkg.develop(path="bindings/julia/Duallity")
 ```
 
 ```sh
 cargo build --release --no-default-features --features julia-bindings
 export DUALLITY_LIBRARY="$PWD/target/release/libduallity.so"
-# WallBreaker also loads liblevenshtein's Julia-enabled native library.
+# The Julia package also loads the native libraries of its three dependencies.
+(cd ../libdictenstein && cargo build --release --no-default-features --features julia-bindings)
+export LIBDICTENSTEIN_LIBRARY="$PWD/../libdictenstein/target/release/liblibdictenstein.so"
 (cd ../liblevenshtein-rust && cargo build --release --no-default-features --features julia-bindings)
 export LIBLEVENSHTEIN_LIBRARY="$PWD/../liblevenshtein-rust/target/release/libliblevenshtein.so"
+(cd ../lling-llang && cargo build --release --no-default-features --features julia-bindings)
+export LLING_LLANG_LIBRARY="$PWD/../lling-llang/target/release/liblling_llang.so"
 ```
 
 Use `libduallity.dylib` on macOS and `duallity.dll` on Windows.
@@ -113,6 +119,65 @@ end
 Universal and generalized variants represent distances through `UInt8`, so
 their maximum distance is at most 255. The native boundary reports an error
 instead of narrowing a larger value.
+
+### Native FZF scoring and bounded ranking
+
+`fzf_score` computes the exact native score for one candidate. `fzf_rank`
+captures one immutable Unicode-scalar dictionary revision and returns the best
+`top_k` terms, copied into Julia strings. It orders hits by score descending
+and then by UTF-8 term ascending, so ties are stable across dictionary
+traversal orders. The ranking result includes native prefix-traversal counters.
+`fzf_wfst` exposes the same configured scorer as a lazy Arctic-weighted graph;
+its `ConfiguredWfst.graph` composes with other Arctic graphs. The
+[FZF prefix-flow diagram](../../../docs/diagrams/fzf-prefix-shared-dp.svg)
+shows how dictionary prefixes share dynamic-programming work.
+
+```julia
+dictionary = LD.DynamicDawg()
+LD.insert_batch!(dictionary,
+    ["foo/bar" => nothing, "FooBar" => nothing, "far" => nothing])
+options = FzfOptions(scheme=FZF_SCHEME_PATH, top_k=2,
+    max_query_chars=16, max_candidate_chars=64, max_work_units=1_000,
+    cache_policy=LRU, cache_capacity=64)
+ranking = fzf_rank(dictionary, "fb"; options)
+@assert length(ranking.hits) <= 2
+@assert ranking.statistics.work_units <= options.max_work_units
+@assert fzf_score("fb", "foo/bar"; options).score !== nothing
+
+fzf = fzf_wfst(dictionary, "fb"; options)
+try
+    @assert VTI.weight_domain(fzf.graph) == VTI.WEIGHT_ARCTIC_F64
+    @assert effective_fzf_options(fzf).scheme == FZF_SCHEME_PATH
+    clear_cache!(fzf)
+    set_cache_policy!(fzf, NO_CACHE)
+    @assert effective_fzf_options(fzf).cache_policy == NO_CACHE
+finally
+    close(fzf)
+    close(dictionary)
+end
+```
+
+| `FzfOptions` field | Meaning and native bound |
+|---|---|
+| `case_sensitive` | Compare Unicode scalars without case folding when true. The default uses ASCII and simple one-scalar Unicode lowercase matching. |
+| `scheme` | `FZF_SCHEME_DEFAULT`, `FZF_SCHEME_PATH`, or `FZF_SCHEME_HISTORY`; these select the native boundary-bonus table. |
+| `top_k` | Exact ranking capacity, 1–4096 for `fzf_rank`; zero disables ranking threshold tracking in `fzf_score` and `fzf_wfst`. |
+| `max_query_chars` | Maximum query length in Unicode scalars, at most 1000. |
+| `max_candidate_chars` | Maximum candidate length in Unicode scalars, at most 1,000,000. |
+| `max_work_units` | Maximum dictionary edges examined by `fzf_rank`, at most 1,000,000. Crossing it raises `NativeError(STATUS_LIMIT_EXCEEDED)` without partial hits. |
+| `cache_policy`, `cache_capacity` | Native WFST expansion-cache policy and LRU capacity. `CACHE_ALL`, `NO_CACHE`, and `LRU` are supported; zero-capacity FZF LRU resolves to no cache. |
+
+`fzf_score` returns `FzfScore` with `score === nothing` for a nonmatch and
+`maximum_score` for the chosen query and scheme. `fzf_rank` returns `FzfRanking`
+with `hits::Vector{FzfHit}` and `statistics::FzfStatistics`. The counters
+separate visited dynamic-programming columns, scored candidates, score-bound
+pruning, length pruning, upper-bound evaluations, and total work. The native
+ranking handle is released before the Julia result returns. A configured FZF
+WFST owns a separate graph retain and handle; `close` releases both.
+
+The [FZF design note](../../../docs/design/fzf-wfst.md) derives the Arctic
+score recurrence and pruning bound. The new C records and Julia mirror require
+`duallity_api_revision() >= 6`; earlier C entry points remain available.
 
 ### Revision-3 configurable WFST and cache controls
 

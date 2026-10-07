@@ -7,7 +7,7 @@
 //! owns exported residency; native wrapper caches are neither cloned nor used.
 
 use crate::{
-    FzfWfst, GeneralizedWfstBuilder, GeneralizedWfstLimits, LevenshteinWfst,
+    FzfConfig, FzfWfst, GeneralizedWfstBuilder, GeneralizedWfstLimits, LevenshteinWfst,
     UniversalLevenshteinWfst, WallBreakerWfst,
 };
 #[cfg(feature = "phonetic-rules")]
@@ -64,6 +64,7 @@ pub(crate) struct WfstConstruction {
     pub kind: WfstKind,
     pub limits: Option<GeneralizedWfstLimits>,
     pub operations: Option<OperationSet>,
+    pub fzf_config: Option<FzfConfig>,
     pub cache_policy: SharedCachePolicy,
 }
 
@@ -805,6 +806,7 @@ pub unsafe fn create_wfst(
                 kind,
                 limits: None,
                 operations: None,
+                fzf_config: None,
                 cache_policy: SharedCachePolicy::CacheAll,
             },
         )
@@ -829,6 +831,7 @@ pub(crate) unsafe fn create_wfst_configured(
         kind,
         limits,
         operations,
+        fzf_config,
         cache_policy,
     } = construction;
     let dictionary = ResourceDictionary::capture(dictionary)?;
@@ -893,7 +896,7 @@ pub(crate) unsafe fn create_wfst_configured(
             )
         }
         WfstKind::Fzf => Adapter::Fzf(
-            FzfWfst::new(&dictionary, query)
+            FzfWfst::with_config(&dictionary, query, fzf_config.unwrap_or_default())
                 .map_err(|error| BindingError::InvalidArgument(error.to_string()))?,
         ),
     };

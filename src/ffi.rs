@@ -10,6 +10,8 @@ mod inspection;
 use inspection::OwnedOptions;
 #[allow(dead_code)]
 mod config;
+#[cfg(feature = "native-bindings-full")]
+mod fzf;
 #[cfg(feature = "phonetic-rules")]
 mod phonetic;
 #[cfg(feature = "native-bindings-full")]
@@ -17,6 +19,11 @@ mod wallbreaker;
 pub use config::{
     DuallityCacheStatisticsV1, DuallityGeneralizedLimitsV1, DuallityOperationV1,
     DuallityRecordHeaderV1, DuallityRestrictionV1, DuallityWfstOptionsV1,
+};
+#[cfg(feature = "native-bindings-full")]
+pub use fzf::{
+    DuallityFzfConfigV1, DuallityFzfHitV1, DuallityFzfRanking, DuallityFzfScoreV1,
+    DuallityFzfStatisticsV1,
 };
 #[cfg(feature = "phonetic-rules")]
 pub use phonetic::DuallityPhoneticRuleV1;
@@ -41,7 +48,7 @@ use vinary_tree_interop::{VtResource, VtStatus};
 pub const DUALLITY_ABI_VERSION: u32 = 1;
 /// Additive project API revision for the complete language-binding surface.
 #[cfg(feature = "native-bindings-full")]
-pub const DUALLITY_API_REVISION: u32 = 5;
+pub const DUALLITY_API_REVISION: u32 = 6;
 /// Additive revision for a phonetic-only FFI build.
 #[cfg(all(feature = "phonetic-rules", not(feature = "native-bindings-full")))]
 pub const DUALLITY_API_REVISION: u32 = 4;
@@ -75,6 +82,8 @@ pub enum DuallityStatus {
 pub struct DuallityWfst {
     resource: OwnedWfstResource,
     options: Option<OwnedOptions>,
+    #[cfg(feature = "native-bindings-full")]
+    fzf_config: Option<fzf::DuallityFzfConfigV1>,
 }
 
 impl DuallityWfst {
@@ -317,6 +326,8 @@ pub extern "C" fn duallity_wfst_new(
         *slot = Box::into_raw(Box::new(DuallityWfst {
             resource,
             options: Some(options),
+            #[cfg(feature = "native-bindings-full")]
+            fzf_config: None,
         }));
         Ok(())
     })
@@ -474,6 +485,8 @@ pub unsafe extern "C" fn duallity_wfst_new_configured_ref(
         let handle = Box::into_raw(Box::new(DuallityWfst {
             resource,
             options: Some(owned_options),
+            #[cfg(feature = "native-bindings-full")]
+            fzf_config: None,
         }));
         unsafe { slot.write(handle) };
         Ok(())

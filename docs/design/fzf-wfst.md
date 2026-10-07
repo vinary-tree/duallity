@@ -133,6 +133,59 @@ materialization may create more states than its underlying DAWG.
 characters. Callers handling untrusted input should choose lower limits.
 Scores use `i32` with saturating bound arithmetic.
 
+### Revision-6 C and Julia boundary
+
+`DuallityFzfConfigV1` transports the native `case_sensitive`, `scheme`,
+`top_k`, `max_query_chars`, and `max_candidate_chars` settings. It also carries
+`max_work_units` for whole-dictionary ranking and the provider's cache policy
+and capacity for a configured FZF WFST. A record header states the readable
+size and version; reserved and unknown trailing bytes must be zero. The C
+boundary validates every field before capturing a dictionary snapshot.
+
+`duallity_fzf_score` scores one borrowed UTF-8 candidate and writes a
+caller-sized `DuallityFzfScoreV1`. `duallity_fzf_rank_ref` captures one
+dictionary revision and performs iterative depth-first traversal. Its explicit
+stack avoids recursion proportional to term length. The traversal counts each
+enumerated dictionary edge as one work unit. If the count would exceed
+`max_work_units`, it returns `DUALLITY_STATUS_LIMIT_EXCEEDED`, clears the output
+slot, and releases all intermediate state. It never returns a partial ranking.
+
+```text
+procedure RANK-SNAPSHOT(dictionary, query, config)
+    snapshot := capture(dictionary)
+    scorer   := FzfScorer(query, config)
+    work     := 0
+    stack    := [root(snapshot)]
+    best     := bounded minimum heap of size top_k
+    while stack is not empty:
+        event := pop(stack)
+        if event is LEAVE: scorer.leave(event.character); continue
+        scorer.enter(event.character)
+        if current node is final and scorer accepts it:
+            retain (term, score) in best when it outranks the worst hit
+        children := current node's edges
+        if work + length(children) > max_work_units: fail with LIMIT_EXCEEDED
+        work := work + length(children)
+        push matching children and a balanced LEAVE event
+    return best sorted by score descending, then UTF-8 term ascending
+```
+
+The ranking handle owns copied UTF-8 hit terms. A caller may borrow a hit's
+pointer only until `duallity_fzf_ranking_free`. Duallity.jl copies each hit
+and its counters before freeing the handle. The configured WFST uses the same
+`FzfConfig` but retains a separate lazy graph and provider cache. Cache clear
+and policy changes alter residency; they do not alter scores or accepted
+terms. Julia's `ConfiguredWfst` closes the graph retain and native handle in
+one operation.
+
+The ranking heap uses $`\mathcal{O}(k)`$ hit slots, with each retained term
+bounded by `max_candidate_chars`; the active traversal stack uses at most
+$`\mathcal{O}(E_v)`$ node events under the work ceiling. Score computation
+continues to take $`\mathcal{O}(mE_v)`$ time. Ties are ordered by term bytes
+after scoring, so provider edge enumeration order cannot change the published
+top-$`k`$ result. The [Julia binding guide](../../bindings/julia/Duallity/README.md)
+shows the API and deterministic cleanup.
+
 Evidence includes an independent batch implementation checked against 15
 published upstream scores, score-for-score differential testing over a
 checked-in real repository path corpus, generated trie/brute-force

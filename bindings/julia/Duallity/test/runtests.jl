@@ -190,7 +190,7 @@ end
 
 @testset "ABI and all public selectors" begin
     @test abi_version() == ABI_VERSION == 1
-    @test api_revision() >= API_REVISION == 5
+    @test api_revision() >= API_REVISION == 6
 
     dictionary = LD.DynamicDawg()
     try
@@ -219,6 +219,70 @@ end
         end
     finally
         close(dictionary)
+    end
+end
+
+@testset "FZF native scoring, bounded ranking, and cache lifecycle" begin
+    @test api_revision() >= 6
+    terms = ["foo/bar", "FooBar", "far", "fóó", "zoo", ""]
+    dictionary = LD.DynamicDawg()
+    LD.insert_batch!(dictionary, [term => nothing for term in terms])
+    try
+        for scheme in (FZF_SCHEME_DEFAULT, FZF_SCHEME_PATH,
+            FZF_SCHEME_HISTORY), case_sensitive in (false, true)
+            options = FzfOptions(; scheme, case_sensitive, top_k=3,
+                max_query_chars=8, max_candidate_chars=32,
+                max_work_units=1_000, cache_policy=LRU, cache_capacity=2)
+            expected = [(term, score.score) for term in terms
+                for score in (fzf_score("fb", term; options),)
+                if score.score !== nothing]
+            sort!(expected; by=entry -> (-entry[2], entry[1]))
+            result = fzf_rank(dictionary, "fb"; options)
+            @test [(hit.term, hit.score) for hit in result.hits] ==
+                expected[1:min(3, length(expected))]
+            @test result.statistics.result_count == length(result.hits)
+            @test result.statistics.columns_computed > 0
+            @test result.statistics.work_units > 0
+            graph = fzf_wfst(dictionary, "fb"; options)
+            try
+                @test VTI.weight_domain(graph.graph) == VTI.WEIGHT_ARCTIC_F64
+                @test effective_fzf_options(graph) == options
+                @test language(graph.graph) ==
+                    Dict(term => Float64(score) for (term, score) in expected)
+                @test cache_statistics(graph).resident_states <= 2
+                clear_cache!(graph)
+                @test cache_statistics(graph).resident_states == 0
+                set_cache_policy!(graph, NO_CACHE)
+                @test effective_fzf_options(graph).cache_policy == NO_CACHE
+                @test language(graph.graph) ==
+                    Dict(term => Float64(score) for (term, score) in expected)
+            finally
+                close(graph)
+            end
+            @test !isopen(graph)
+            @test_throws ArgumentError effective_fzf_options(graph)
+        end
+        @test fzf_score("", "").score == 0
+        @test fzf_score("f", "zoo").score === nothing
+        empty_ranking = fzf_rank(dictionary, "qqq")
+        @test isempty(empty_ranking.hits)
+        @test empty_ranking.statistics.result_count == 0
+        @test_throws ArgumentError fzf_rank(dictionary, "f";
+            options=FzfOptions(top_k=0))
+        @test_throws ArgumentError fzf_score("f", "foo";
+            options=FzfOptions(max_candidate_chars=-1))
+        @test_throws NativeError fzf_rank(dictionary, "f";
+            options=FzfOptions(top_k=2, max_work_units=1))
+        captured = fzf_wfst(dictionary, "fb";
+            options=FzfOptions(top_k=2))
+        prior = language(captured.graph)
+        LD.insert_batch!(dictionary, ["fbzz" => nothing])
+        @test language(captured.graph) == prior
+        close(dictionary)
+        @test language(captured.graph) == prior
+        close(captured)
+    finally
+        isopen(dictionary) && close(dictionary)
     end
 end
 

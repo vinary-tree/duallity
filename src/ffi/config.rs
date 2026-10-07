@@ -148,6 +148,7 @@ impl ParsedOptions {
             kind: self.kind,
             limits: self.limits,
             operations: self.operations,
+            fzf_config: None,
             cache_policy: self.cache_policy.effective(self.kind),
         }
     }

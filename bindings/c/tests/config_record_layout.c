@@ -18,6 +18,18 @@ _Static_assert(sizeof(((DuallityWfstOptionsV1*)0)->operation_count) == 8,
                "counts use fixed-width wire integers");
 _Static_assert(sizeof(((DuallityCacheStatisticsV1*)0)->hits) == 8,
                "statistics use fixed-width wire integers");
+_Static_assert(offsetof(DuallityFzfConfigV1, header) == 0,
+               "FZF config header must be first");
+_Static_assert(offsetof(DuallityFzfScoreV1, header) == 0,
+               "FZF score header must be first");
+_Static_assert(offsetof(DuallityFzfStatisticsV1, header) == 0,
+               "FZF statistics header must be first");
+_Static_assert(offsetof(DuallityFzfHitV1, header) == 0,
+               "FZF hit header must be first");
+_Static_assert(sizeof(((DuallityFzfConfigV1*)0)->max_work_units) == 8,
+               "FZF work bounds use fixed-width wire integers");
+_Static_assert(sizeof(((DuallityFzfHitV1*)0)->score) == 4,
+               "FZF scores use signed 32-bit wire integers");
 
 int main(void) {
     DuallityWfstOptionsV1 options = {0};

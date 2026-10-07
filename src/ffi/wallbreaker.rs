@@ -163,6 +163,7 @@ pub unsafe extern "C" fn duallity_wallbreaker_wfst_new_results(
         let handle = Box::into_raw(Box::new(DuallityWfst {
             resource,
             options: None,
+            fzf_config: None,
         }));
         unsafe { slot.write(handle) };
         Ok(())
@@ -286,7 +287,7 @@ mod tests {
         let query = b"cat";
         let cat = b"cat";
         let stride = size_of::<DuallityWallBreakerResultV1>() as u64;
-        let mut handle = 1usize as *mut DuallityWfst;
+        let mut handle = std::ptr::dangling_mut::<DuallityWfst>();
         let mut invalid = record(cat, 2);
         assert_eq!(
             unsafe {

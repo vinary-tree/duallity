@@ -386,7 +386,7 @@ fn version_pins_match_header_constants() {
     assert_eq!(
         duallity_api_revision(),
         if cfg!(feature = "native-bindings-full") {
-            5
+            6
         } else if cfg!(feature = "phonetic-rules") {
             4
         } else {
